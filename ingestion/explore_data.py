@@ -30,7 +30,9 @@ print("\nRecipeCategory örnekleri:")
 print(df["RecipeCategory"].value_counts().head(10))
 
 print("\nMakro besin örnekleri:")
-print(df[["Calories", "CarbohydrateContent", "FiberContent", "SugarContent", "ProteinContent"]].head(5))
+nutrition_cols = ["Calories", "FatContent", "SaturatedFatContent", "CholesterolContent",
+                  "SodiumContent", "CarbohydrateContent", "FiberContent", "SugarContent", "ProteinContent"]
+print(df[nutrition_cols].head(5))
 
 print("\nMakro besin kolonlarında eksik veri oranı:")
-print(df[["Calories", "CarbohydrateContent", "FiberContent", "SugarContent", "ProteinContent"]].isna().mean())
+print(df[nutrition_cols].isna().mean())
