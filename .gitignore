@@ -4,3 +4,20 @@ __pycache__/
 node_modules/
 .DS_Store
 venv/
+
+
+# Data files
+*.csv
+*.parquet
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environment
+venv/
+.venv/
+
+# OS files
+.DS_Store
+Thumbs.db
