@@ -138,7 +138,7 @@ df_sample["diet_tags"] = df_sample.apply(
 df_sample["description_for_embedding"] = df_sample.apply(build_description, axis=1)
 
 before = len(df_sample)
-df_sample = df_sample[df_sample["ingredients_clean"].apply(len) > 0].reset_index(drop=True)
+df_sample = df_sample[df_sample["ingredients_clean"].apply(len) >= 2].reset_index(drop=True)
 after = len(df_sample)
 print(f"Removed {before - after} recipes with empty ingredients")
 
