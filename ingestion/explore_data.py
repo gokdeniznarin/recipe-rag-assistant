@@ -36,3 +36,13 @@ print(df[nutrition_cols].head(5))
 
 print("\nMakro besin kolonlarında eksik veri oranı:")
 print(df[nutrition_cols].isna().mean())
+
+
+print("\nTotal unique categories:")
+print(df["RecipeCategory"].nunique())
+
+print("\nTop 30 categories:")
+print(df["RecipeCategory"].value_counts().head(30))
+
+print("\nCategories with very few recipes (potentially noisy):")
+print(df["RecipeCategory"].value_counts().tail(20))
