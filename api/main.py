@@ -3,6 +3,7 @@ from pydantic import BaseModel
 import chromadb
 from sentence_transformers import SentenceTransformer
 from filters import extract_filters
+from llm import generate_answer
 
 app = FastAPI(title="Recipe RAG Assistant API")
 
@@ -30,9 +31,10 @@ def root():
 def search_recipes(request: SearchRequest):
     query_embedding = model.encode(request.query).tolist()
 
-    # Kullanıcı sorgusundan diyet/süre/kalori filtrelerini çıkar
+    # 1. Kullanıcı sorgusundan filtre çıkar
     where_filter = extract_filters(request.query)
 
+    # 2. ChromaDB'de semantic + metadata arama yap
     results = collection.query(
         query_embeddings=[query_embedding],
         n_results=request.n_results,
@@ -62,8 +64,14 @@ def search_recipes(request: SearchRequest):
             "description": doc
         })
 
+    # 3. LLM'e bulunan tarifleri ver, doğal cevap üret
+    llm_answer = None
+    if len(recipes) > 0:
+        llm_answer = generate_answer(request.query, recipes)
+
     return {
         "query": request.query,
         "applied_filters": where_filter,
+        "answer": llm_answer,
         "results": recipes
     }
