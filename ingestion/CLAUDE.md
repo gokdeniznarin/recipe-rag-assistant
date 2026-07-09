@@ -7,7 +7,7 @@
 - **Backend:** Python, FastAPI
 - **Veritabanı:** Sadece ChromaDB (tek veritabanı kararı — hem semantic search hem metadata filtreleme aynı yerde yapılıyor, MongoDB kullanılmıyor)
 - **Embedding modeli:** sentence-transformers (İngilizce arayüz kararı verildiği için çok dilli model şart değil)
-- **LLM:** Anthropic Claude API (metin üretimi + fotoğraftan malzeme tanıma için vision)
+- - **LLM:** Google Gemini API (gemini-2.0-flash) — metin üretimi + fotoğraftan malzeme tanıma için vision. Ücretsiz katman test/geliştirme amaçlı kullanılıyor.
 - **Kimlik doğrulama:** JWT (kayıt/giriş sistemi)
 - **Kamera:** Tarayıcı `getUserMedia` API'si ile fotoğraf çekme, backend'e gönderip Claude vision ile malzeme tanıma
 - **Konteynerleştirme:** Docker + Docker Compose
@@ -40,11 +40,16 @@
 - **Hafta 3:** JWT (kayıt/giriş), fotoğraftan malzeme tanıma endpoint'i
 - **Hafta 4:** Frontend (metin + kamera sekmeleri), responsive tasarım, Docker Compose ile tam entegrasyon, test, README
 
-## Şu Ana Kadar Tamamlanan Dosyalar
+## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
 - `ingestion/explore_data.py` — dataset keşfi
-- `ingestion/clean_data.py` — temizleme pipeline'ı, `recipes_cleaned.csv` üretiyor
+- `ingestion/clean_data.py` — temizleme pipeline'ı, recipes_cleaned.csv üretiyor
 - `ingestion/validate_tags.py` — diyet etiketi ve veri kalitesi doğrulama scripti
-- `docker-compose.yml` — henüz sadece ChromaDB servisi eklenecek (bir sonraki adım)
+- `ingestion/load_to_chromadb.py` — embedding üretme ve ChromaDB'ye yükleme
+- `ingestion/test_search.py` — ChromaDB arama testleri
+- `api/main.py` — FastAPI backend, /api/recipes/search endpoint'i
+- `api/filters.py` — kullanıcı sorgusundan diyet/süre/kalori filtresi çıkarımı
+- `api/llm.py` — Gemini API ile LLM cevap üretimi (yeni ekleniyor)
+- `docker-compose.yml` — ChromaDB servisi
 
 ## Henüz Yapılmadı
 - ChromaDB Docker kurulumu ve veri yükleme
@@ -54,6 +59,9 @@
 - Frontend
 - GitHub'a bağlama (Faz 1 bitince yapılacak — henüz sadece lokal Git kullanılıyor)
 
-## Notlar
-- Staj hocası "güncel, yatırım alabilecek" bir konu istemişti — yemek tarifi asistanı biraz sıradan bulunabilir riski var ama mimari (RAG, hybrid search) yeterince zengin olduğu için devam ediliyor
-- Kullanıcı (Gökdeniz) hem VS Code'daki Claude Code eklentisini hem claude.ai sohbetini birlikte kullanıyor — bu dosya ikisi arasında bağlam köprüsü görevi görüyor
+## Güncel Durum (Faz 2 devam ediyor)
+- ChromaDB'de 4886 tarif yüklü, çalışıyor
+- FastAPI backend çalışıyor (port 8080, ChromaDB port 8000'de - çakışma yok)
+- Semantic search + metadata filtreleme (hybrid search) doğrulandı
+- Kullanıcı sorgusundan filtre çıkarımı (filters.py) çalışıyor ve main.py'ye entegre edildi
+- Sıradaki adım: llm.py ile Gemini entegrasyonu, sonra arama endpoint'ine bağlama
