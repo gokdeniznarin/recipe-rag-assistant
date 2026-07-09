@@ -7,7 +7,7 @@
 - **Backend:** Python, FastAPI
 - **Veritabanı:** Sadece ChromaDB (tek veritabanı kararı — hem semantic search hem metadata filtreleme aynı yerde yapılıyor, MongoDB kullanılmıyor)
 - **Embedding modeli:** sentence-transformers (İngilizce arayüz kararı verildiği için çok dilli model şart değil)
-- - **LLM:** Google Gemini API (gemini-2.0-flash) — metin üretimi + fotoğraftan malzeme tanıma için vision. Ücretsiz katman test/geliştirme amaçlı kullanılıyor.
+- **LLM:** Google Gemini API (gemini-2.5-flash, `google-genai` kütüphanesi kullanılıyor — eski `google-generativeai` deprecated olduğu için güncel kütüphaneye geçildi)
 - **Kimlik doğrulama:** JWT (kayıt/giriş sistemi)
 - **Kamera:** Tarayıcı `getUserMedia` API'si ile fotoğraf çekme, backend'e gönderip Claude vision ile malzeme tanıma
 - **Konteynerleştirme:** Docker + Docker Compose
