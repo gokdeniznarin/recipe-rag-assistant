@@ -2,10 +2,10 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import chromadb
 from sentence_transformers import SentenceTransformer
+from filters import extract_filters
 
 app = FastAPI(title="Recipe RAG Assistant API")
 
-# Embedding modelini ve ChromaDB bağlantısını uygulama başlarken bir kere yükle
 print("Loading embedding model...")
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
@@ -30,9 +30,13 @@ def root():
 def search_recipes(request: SearchRequest):
     query_embedding = model.encode(request.query).tolist()
 
+    # Kullanıcı sorgusundan diyet/süre/kalori filtrelerini çıkar
+    where_filter = extract_filters(request.query)
+
     results = collection.query(
         query_embeddings=[query_embedding],
-        n_results=request.n_results
+        n_results=request.n_results,
+        where=where_filter
     )
 
     recipes = []
@@ -58,4 +62,8 @@ def search_recipes(request: SearchRequest):
             "description": doc
         })
 
-    return {"query": request.query, "results": recipes}
+    return {
+        "query": request.query,
+        "applied_filters": where_filter,
+        "results": recipes
+    }
