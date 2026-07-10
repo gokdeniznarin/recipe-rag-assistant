@@ -4,6 +4,7 @@ import chromadb
 from sentence_transformers import SentenceTransformer
 from filters import extract_filters
 from llm import generate_answer
+from auth import create_user
 
 app = FastAPI(title="Recipe RAG Assistant API")
 
@@ -75,3 +76,17 @@ def search_recipes(request: SearchRequest):
         "answer": llm_answer,
         "results": recipes
     }
+
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+
+
+@app.post("/api/auth/register")
+def register(request: RegisterRequest):
+    try:
+        create_user(request.email, request.password)
+        return {"message": "User registered successfully", "email": request.email}
+    except ValueError as e:
+        return {"error": str(e)}
