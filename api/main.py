@@ -4,7 +4,7 @@ import chromadb
 from sentence_transformers import SentenceTransformer
 from filters import extract_filters
 from llm import generate_answer
-from auth import create_user
+from auth import create_user, get_user_by_email, verify_password, create_access_token
 
 app = FastAPI(title="Recipe RAG Assistant API")
 
@@ -90,3 +90,23 @@ def register(request: RegisterRequest):
         return {"message": "User registered successfully", "email": request.email}
     except ValueError as e:
         return {"error": str(e)}
+    
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+@app.post("/api/auth/login")
+def login(request: LoginRequest):
+    user = get_user_by_email(request.email)
+
+    if user is None:
+        return {"error": "Invalid email or password"}
+
+    if not verify_password(request.password, user["hashed_password"]):
+        return {"error": "Invalid email or password"}
+
+    token = create_access_token(request.email)
+    return {"access_token": token, "token_type": "bearer"}    
