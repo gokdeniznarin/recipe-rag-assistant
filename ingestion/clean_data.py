@@ -16,6 +16,13 @@ def parse_ingredients(raw_string):
         return []
     return re.findall(r'"([^"]+)"', raw_string)
 
+def parse_instructions(raw_string):
+    """c("adım1", "adım2") formatını numaralı, okunaklı bir metne çevirir"""
+    if pd.isna(raw_string):
+        return ""
+    steps = re.findall(r'"([^"]+)"', raw_string)
+    return " ".join(f"{i+1}. {step}" for i, step in enumerate(steps))
+
 def parse_duration_to_minutes(iso_duration):
     """PT24H45M formatını dakikaya çevirir (örn: 1485)"""
     if pd.isna(iso_duration):
@@ -128,6 +135,7 @@ print(f"Sampled {len(df_sample)} recipes for processing")
 print("Cleaning fields...")
 df_sample["name_clean"] = df_sample["Name"].apply(clean_text)
 df_sample["ingredients_clean"] = df_sample["RecipeIngredientParts"].apply(parse_ingredients)
+df_sample["instructions_clean"] = df_sample["RecipeInstructions"].apply(parse_instructions)
 df_sample["cook_time_min"] = df_sample["CookTime"].apply(parse_duration_to_minutes)
 df_sample["prep_time_min"] = df_sample["PrepTime"].apply(parse_duration_to_minutes)
 df_sample["total_time_min"] = df_sample["TotalTime"].apply(parse_duration_to_minutes)

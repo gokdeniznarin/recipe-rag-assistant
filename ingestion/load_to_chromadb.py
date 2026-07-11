@@ -66,7 +66,7 @@ for start in range(0, total, batch_size):
             "vegetarian": "vegetarian" in row["diet_tags"],
             "pescatarian": "pescatarian" in row["diet_tags"],
             "vegan": "vegan" in row["diet_tags"],
-            "instructions": str(row["RecipeInstructions"])[:1000],  # çok uzunsa kısalt
+            "instructions": str(row["instructions_clean"])[:1000],  # çok uzunsa kısalt
         })
 
     collection.add(
