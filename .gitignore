@@ -21,3 +21,8 @@ venv/
 # OS files
 .DS_Store
 Thumbs.db
+
+
+*.jpg
+*.jpeg
+*.png
