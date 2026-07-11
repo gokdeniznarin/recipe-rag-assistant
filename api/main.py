@@ -1,10 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from pydantic import BaseModel
 import chromadb
 from sentence_transformers import SentenceTransformer
 from filters import extract_filters
 from llm import generate_answer
-from auth import create_user, get_user_by_email, verify_password, create_access_token
+from auth import create_user, get_user_by_email, verify_password, create_access_token, get_current_user_email
 
 app = FastAPI(title="Recipe RAG Assistant API")
 
@@ -29,7 +29,7 @@ def root():
 
 
 @app.post("/api/recipes/search")
-def search_recipes(request: SearchRequest):
+def search_recipes(request: SearchRequest, user_email: str = Depends(get_current_user_email)):
     query_embedding = model.encode(request.query).tolist()
 
     # 1. Kullanıcı sorgusundan filtre çıkar

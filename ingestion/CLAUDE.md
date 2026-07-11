@@ -59,9 +59,24 @@
 - Frontend
 - GitHub'a bağlama (Faz 1 bitince yapılacak — henüz sadece lokal Git kullanılıyor)
 
-## Güncel Durum (Faz 2 devam ediyor)
-- ChromaDB'de 4886 tarif yüklü, çalışıyor
-- FastAPI backend çalışıyor (port 8080, ChromaDB port 8000'de - çakışma yok)
-- Semantic search + metadata filtreleme (hybrid search) doğrulandı
-- Kullanıcı sorgusundan filtre çıkarımı (filters.py) çalışıyor ve main.py'ye entegre edildi
-- Sıradaki adım: llm.py ile Gemini entegrasyonu, sonra arama endpoint'ine bağlama
+## Güncel Durum (Faz 3 devam ediyor)
+- 3.1 Kayıt endpoint'i tamamlandı
+- 3.2 Giriş endpoint'i tamamlandı (JWT token üretimi çalışıyor)
+- Sıradaki adım: 3.3 - arama endpoint'ini JWT ile koruma
+
+## Arama Akışı Kararı (Faz 3/4)
+Üç bağımsız kullanım senaryosu:
+1. Sadece metin → /api/recipes/search
+2. Sadece fotoğraf (metin boş) → /api/recipes/from-image
+3. Fotoğraf + opsiyonel ek metin → /api/recipes/from-image (additional_text dolu)
+Fotoğraftan tanınan malzemeler asla otomatik olarak text kutusuna yazılmaz, 
+ayrı bir "Detected: ..." alanında gösterilir. Text kutusu her zaman kullanıcının 
+kontrolünde, bağımsız kalır.
+
+
+## Bilinen Sınırlama: Swagger UI + Custom Header
+POST /api/recipes/search endpoint'i JWT korumalı (Header parametresi kullanıyor). 
+Swagger UI'nin "Try it out" arayüzü bu header'ı isteğe eklemede sorun yaşıyor 
+(muhtemelen FastAPI/Swagger versiyon uyumsuzluğu). Backend'in kendisi doğru 
+çalışıyor - PowerShell Invoke-RestMethod ile doğrulandı. Gerçek testler için 
+Swagger UI yerine PowerShell/curl.exe veya ileride yazılacak frontend kullanılmalı.

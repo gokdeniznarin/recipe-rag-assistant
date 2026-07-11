@@ -1,8 +1,9 @@
 import os
 from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
-from jose import jwt
+from jose import jwt, JWTError
 import chromadb
+from fastapi import Header, HTTPException
 
 # Şifre hashleme ayarı
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -63,3 +64,19 @@ def create_user(email: str, password: str):
         documents=[email],
         metadatas=[{"hashed_password": hashed, "created_at": str(datetime.now(timezone.utc))}]
     )
+
+
+
+def get_current_user_email(authorization: str = Header(...)) -> str:
+    """Header'daki JWT token'ı doğrular, geçerliyse kullanıcının e-postasını döner."""
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authorization header format")
+
+    token = authorization.replace("Bearer ", "")
+
+    try:
+        email = decode_access_token(token)
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    return email    
