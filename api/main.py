@@ -5,6 +5,7 @@ from sentence_transformers import SentenceTransformer
 from filters import extract_filters
 from llm import generate_answer, detect_ingredients_from_image
 from auth import create_user, get_user_by_email, verify_password, create_access_token, get_current_user_email
+from favorites import add_favorite, get_favorites, remove_favorite
 
 app = FastAPI(title="Recipe RAG Assistant API")
 
@@ -216,3 +217,32 @@ def get_recipe_detail(recipe_id: str, user_email: str = Depends(get_current_user
         },
         "description": results["documents"][0]
     }
+
+
+
+class FavoriteRequest(BaseModel):
+    recipe_id: str
+
+
+@app.post("/api/favorites/add")
+def add_favorite_endpoint(request: FavoriteRequest, user_email: str = Depends(get_current_user_email)):
+    try:
+        add_favorite(user_email, request.recipe_id)
+        return {"message": "Recipe added to favorites", "recipe_id": request.recipe_id}
+    except ValueError as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/favorites")
+def list_favorites_endpoint(user_email: str = Depends(get_current_user_email)):
+    favorites = get_favorites(user_email)
+    return {"favorites": favorites}
+
+
+@app.delete("/api/favorites/{recipe_id}")
+def remove_favorite_endpoint(recipe_id: str, user_email: str = Depends(get_current_user_email)):
+    try:
+        remove_favorite(user_email, recipe_id)
+        return {"message": "Recipe removed from favorites", "recipe_id": recipe_id}
+    except ValueError as e:
+        return {"error": str(e)}
