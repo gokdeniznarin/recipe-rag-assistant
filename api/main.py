@@ -182,3 +182,37 @@ def search_recipes_from_image(
         "answer": llm_answer,
         "results": recipes
     }
+
+
+
+
+
+@app.get("/api/recipes/{recipe_id}")
+def get_recipe_detail(recipe_id: str, user_email: str = Depends(get_current_user_email)):
+    results = collection.get(ids=[recipe_id])
+
+    if len(results["ids"]) == 0:
+        return {"error": "Recipe not found"}
+
+    meta = results["metadatas"][0]
+
+    return {
+        "id": results["ids"][0],
+        "name": meta["name"],
+        "category": meta["category"],
+        "total_time_min": meta["total_time_min"],
+        "calories": meta["calories"],
+        "protein_content": meta["protein_content"],
+        "carbohydrate_content": meta["carbohydrate_content"],
+        "fat_content": meta["fat_content"],
+        "instructions": meta.get("instructions", ""),
+        "diet_tags": {
+            "gluten_free": meta["gluten_free"],
+            "dairy_free": meta["dairy_free"],
+            "nut_free": meta["nut_free"],
+            "vegetarian": meta["vegetarian"],
+            "pescatarian": meta["pescatarian"],
+            "vegan": meta["vegan"],
+        },
+        "description": results["documents"][0]
+    }
