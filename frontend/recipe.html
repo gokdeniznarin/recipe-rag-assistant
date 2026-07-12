@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recipe — Recipe Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="app-header-inner">
+      <a href="search.html" class="brand">
+        <span class="brand-mark">✦</span>
+        <span class="brand-name">Recipe Assistant</span>
+      </a>
+      <nav class="app-nav">
+        <a href="favorites.html" class="nav-link">Favorites</a>
+        <button id="logout-btn" class="btn-outline btn-sm">Sign out</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page">
+    <a href="search.html" class="back-link">← Back to search</a>
+
+    <!-- Yükleniyor -->
+    <div id="loading" class="loading">
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+    </div>
+
+    <!-- Tarif -->
+    <article id="recipe" class="recipe-detail hidden">
+      <header class="recipe-header">
+        <p id="recipe-category" class="recipe-category"></p>
+        <div class="recipe-title-row">
+          <h1 id="recipe-title" class="recipe-title"></h1>
+          <button id="favorite-btn" class="favorite-btn" aria-label="Add to favorites">
+            <span class="heart">♡</span>
+          </button>
+        </div>
+        <div id="recipe-tags" class="recipe-tags-detail"></div>
+      </header>
+
+      <!-- Bilgi çubuğu -->
+      <div class="info-strip">
+        <div class="info-cell">
+          <span class="info-label">Time</span>
+          <span id="info-time" class="info-value">—</span>
+        </div>
+        <div class="info-cell">
+          <span class="info-label">Calories</span>
+          <span id="info-calories" class="info-value">—</span>
+        </div>
+        <div class="info-cell">
+          <span class="info-label">Protein</span>
+          <span id="info-protein" class="info-value">—</span>
+        </div>
+        <div class="info-cell">
+          <span class="info-label">Carbs</span>
+          <span id="info-carbs" class="info-value">—</span>
+        </div>
+        <div class="info-cell">
+          <span class="info-label">Fat</span>
+          <span id="info-fat" class="info-value">—</span>
+        </div>
+      </div>
+
+      <!-- İçerik alanı -->
+      <section class="recipe-section">
+        <h2 class="section-title">About</h2>
+        <p id="recipe-description" class="recipe-description"></p>
+      </section>
+
+      <section class="recipe-section">
+        <h2 class="section-title">Instructions</h2>
+        <ol id="recipe-instructions" class="instructions-list"></ol>
+      </section>
+    </article>
+
+    <div id="recipe-error" class="page-error hidden"></div>
+  </main>
+
+  <script src="js/api.js"></script>
+  <script src="js/recipe.js"></script>
+</body>
+</html>
