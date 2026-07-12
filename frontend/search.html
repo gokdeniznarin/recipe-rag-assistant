@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Search — Recipe Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="app-header-inner">
+      <a href="search.html" class="brand">
+        <span class="brand-mark">✦</span>
+        <span class="brand-name">Recipe Assistant</span>
+      </a>
+      <nav class="app-nav">
+        <a href="favorites.html" class="nav-link">Favorites</a>
+        <button id="logout-btn" class="btn-outline btn-sm">Sign out</button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Ana içerik -->
+  <main class="page">
+    <section class="search-hero">
+      <h1 class="page-title">Find your next meal</h1>
+      <p class="page-sub">Describe what you want, or show us what's in your fridge.</p>
+    </section>
+
+    <!-- Metin / Kamera sekmeleri -->
+    <div class="mode-tabs">
+      <button class="mode-tab active" data-mode="text">Text search</button>
+      <button class="mode-tab" data-mode="camera">Camera search</button>
+    </div>
+
+    <!-- Metin sekmesi -->
+    <section id="text-panel" class="search-panel">
+      <form id="text-form" class="search-form">
+        <input
+          type="text"
+          id="text-query"
+          class="search-input"
+          placeholder='Try "gluten free quick chicken dinner"'
+          required
+        />
+        <button type="submit" class="btn-accent">Search</button>
+      </form>
+    </section>
+
+    <!-- Kamera sekmesi -->
+    <section id="camera-panel" class="search-panel hidden">
+      <div class="camera-block">
+        <video id="camera-preview" class="camera-preview" autoplay playsinline></video>
+        <canvas id="camera-canvas" class="hidden"></canvas>
+
+        <div class="camera-controls">
+          <button id="start-camera-btn" class="btn-outline">Start camera</button>
+          <button id="capture-btn" class="btn-accent hidden">Take photo</button>
+          <button id="retake-btn" class="btn-outline hidden">Retake</button>
+        </div>
+
+        <div id="detected-ingredients" class="detected-box hidden">
+          <span class="detected-label">Detected:</span>
+          <span id="detected-list" class="detected-list"></span>
+        </div>
+
+        <form id="camera-form" class="search-form hidden">
+          <input
+            type="text"
+            id="camera-extra"
+            class="search-input"
+            placeholder="Add optional text (e.g. 'quick and vegetarian')"
+          />
+          <button type="submit" class="btn-accent">Search with photo</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Yükleniyor durumu -->
+    <div id="loading" class="loading hidden">
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+    </div>
+
+    <!-- Sonuçlar -->
+    <section id="results" class="results hidden">
+      <div class="llm-answer">
+        <p class="llm-eyebrow">Assistant</p>
+        <p id="llm-text" class="llm-text"></p>
+      </div>
+
+      <div class="results-header">
+        <h2 class="results-title">Recipes</h2>
+        <span id="results-count" class="results-count"></span>
+      </div>
+
+      <div id="recipe-list" class="recipe-list"></div>
+    </section>
+
+    <!-- Hata mesajı -->
+    <div id="search-error" class="page-error hidden"></div>
+  </main>
+
+  <script src="js/api.js"></script>
+  <script src="js/search.js"></script>
+</body>
+</html>
