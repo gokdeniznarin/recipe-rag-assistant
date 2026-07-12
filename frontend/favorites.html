@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Favorites — Recipe Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="app-header-inner">
+      <a href="search.html" class="brand">
+        <span class="brand-mark">✦</span>
+        <span class="brand-name">Recipe Assistant</span>
+      </a>
+      <nav class="app-nav">
+        <a href="favorites.html" class="nav-link">Favorites</a>
+        <button id="logout-btn" class="btn-outline btn-sm">Sign out</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="search-hero">
+      <h1 class="page-title">Your favorites</h1>
+      <p class="page-sub">Recipes you've saved to come back to.</p>
+    </section>
+
+    <!-- Yükleniyor -->
+    <div id="loading" class="loading">
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+    </div>
+
+    <!-- Boş durum -->
+    <div id="empty-state" class="empty-state hidden">
+      <div class="empty-icon">♡</div>
+      <h2 class="empty-title">No favorites yet</h2>
+      <p class="empty-text">Save recipes from search results to see them here.</p>
+      <a href="search.html" class="btn-accent empty-btn">Start searching</a>
+    </div>
+
+    <!-- Liste -->
+    <div id="favorites-list" class="recipe-list hidden"></div>
+
+    <!-- Hata -->
+    <div id="favorites-error" class="page-error hidden"></div>
+  </main>
+
+  <script src="js/api.js"></script>
+  <script src="js/favorites.js"></script>
+</body>
+</html>
