@@ -6,8 +6,16 @@ from filters import extract_filters
 from llm import generate_answer, detect_ingredients_from_image
 from auth import create_user, get_user_by_email, verify_password, create_access_token, get_current_user_email
 from favorites import add_favorite, get_favorites, remove_favorite
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Recipe RAG Assistant API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 print("Loading embedding model...")
 model = SentenceTransformer('all-MiniLM-L6-v2')
