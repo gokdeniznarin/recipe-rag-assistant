@@ -105,3 +105,54 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
     btn.textContent = 'Create account';
   }
 });
+
+
+
+// ── Google Sign-In ───────────────────────────────────────
+const GOOGLE_CLIENT_ID = '490027664953-ne5lp527bovm51j30qh3aqrto329fjog.apps.googleusercontent.com';
+
+async function handleGoogleCredential(response) {
+  const errorEl = document.getElementById('google-error');
+  errorEl.textContent = '';
+
+  try {
+    const res = await fetch(`${API}/api/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_token: response.credential }),
+    });
+    const data = await res.json();
+
+    if (data.access_token) {
+      saveToken(data.access_token);
+      window.location.href = 'search.html';
+    } else {
+      errorEl.textContent = data.error || 'Google sign-in failed.';
+    }
+  } catch {
+    errorEl.textContent = 'Could not reach the server. Is it running?';
+  }
+}
+
+// Google kütüphanesi yüklendiğinde butonu render et
+window.addEventListener('load', () => {
+  if (typeof google === 'undefined') {
+    console.warn('Google Identity Services could not be loaded.');
+    return;
+  }
+
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: handleGoogleCredential,
+  });
+
+  google.accounts.id.renderButton(
+    document.getElementById('google-btn'),
+    {
+      theme: 'outline',
+      size: 'large',
+      text: 'continue_with',
+      shape: 'rectangular',
+    }
+  );
+});

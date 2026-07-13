@@ -869,3 +869,102 @@ body {
   text-decoration: none;
   display: inline-block;
 }
+
+
+/* ═══════════════════════════════════════════════════════ */
+/*  VOICE SEARCH (mic button inside search input)         */
+/* ═══════════════════════════════════════════════════════ */
+
+.search-input-wrap {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-input-wrap .search-input {
+  width: 100%;
+  padding-right: 3rem;  /* mic ikonu için sağ boşluk */
+}
+
+.mic-btn {
+  position: absolute;
+  right: 0.4rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--olive-mid);
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.mic-btn:hover {
+  background: var(--bg);
+  color: var(--olive);
+}
+
+.mic-btn.is-listening {
+  color: var(--accent-dk);
+  background: #FDECEA;
+  animation: mic-pulse 1.5s infinite;
+}
+
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(232, 130, 74, 0.5); }
+  50%      { box-shadow: 0 0 0 10px rgba(232, 130, 74, 0); }
+}
+
+.mic-btn svg { display: block; }
+
+
+
+/* ═══════════════════════════════════════════════════════ */
+/*  GOOGLE SIGN-IN                                         */
+/* ═══════════════════════════════════════════════════════ */
+
+.google-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+#google-btn {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.divider {
+  position: relative;
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.divider::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--border);
+}
+
+.divider-text {
+  position: relative;
+  background: var(--surface);
+  padding: 0 0.85rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+}

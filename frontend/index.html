@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body class="auth-page">
 
@@ -19,6 +20,16 @@
     </div>
 
     <div class="auth-card">
+      <!-- Google Sign-In -->
+      <div class="google-block">
+        <div id="google-btn"></div>
+        <p class="form-error" id="google-error"></p>
+      </div>
+
+      <div class="divider">
+        <span class="divider-text">or</span>
+      </div>
+      
       <div class="tab-row">
         <button class="tab-btn active" data-tab="login">Sign in</button>
         <button class="tab-btn" data-tab="register">Create account</button>
