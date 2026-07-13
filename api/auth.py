@@ -4,6 +4,9 @@ from passlib.context import CryptContext
 from jose import jwt, JWTError
 import chromadb
 from fastapi import Header, HTTPException
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+
 
 # Şifre hashleme ayarı
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -12,6 +15,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "gelistirme-icin-gizli-anahtar-degistir")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
+GOOGLE_CLIENT_ID = "490027664953-ne5lp527bovm51j30qh3aqrto329fjog.apps.googleusercontent.com"
 
 # ChromaDB'de kullanıcılar için ayrı bir koleksiyon
 chroma_client = chromadb.HttpClient(host='localhost', port=8000)
@@ -42,27 +46,35 @@ def decode_access_token(token: str) -> str:
 
 
 def get_user_by_email(email: str):
-    """ChromaDB'de e-postaya göre kullanıcı arar."""
     results = users_collection.get(ids=[email])
     if len(results["ids"]) == 0:
         return None
+    meta = results["metadatas"][0]
     return {
         "email": results["ids"][0],
-        "hashed_password": results["metadatas"][0]["hashed_password"],
+        "hashed_password": meta["hashed_password"],
+        "auth_provider": meta.get("auth_provider", "password"),
+        "created_at": meta.get("created_at", ""),
     }
 
 
 def create_user(email: str, password: str):
-    """Yeni bir kullanıcı oluşturur, ChromaDB'ye kaydeder."""
     existing = get_user_by_email(email)
     if existing is not None:
+        if existing["auth_provider"] == "google":
+            raise ValueError("This email is already registered with Google. Please sign in with Google.")
         raise ValueError("A user with this email already exists.")
 
     hashed = hash_password(password)
     users_collection.add(
         ids=[email],
+        embeddings=[[0.0] * 384],
         documents=[email],
-        metadatas=[{"hashed_password": hashed, "created_at": str(datetime.now(timezone.utc))}]
+        metadatas=[{
+            "hashed_password": hashed,
+            "auth_provider": "password",
+            "created_at": str(datetime.now(timezone.utc))
+        }]
     )
 
 
@@ -80,3 +92,47 @@ def get_current_user_email(authorization: str = Header(...)) -> str:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     return email    
+
+
+
+def verify_google_token(token: str) -> dict:
+    """Google ID token'ını doğrular, içindeki kullanıcı bilgilerini döner."""
+    idinfo = id_token.verify_oauth2_token(
+        token,
+        google_requests.Request(),
+        GOOGLE_CLIENT_ID
+    )
+    return {
+        "email": idinfo["email"],
+        "name": idinfo.get("name", ""),
+    }
+
+
+def create_or_get_google_user(email: str) -> str:
+    """Google kullanıcısını ChromaDB'de oluşturur ya da mevcut hesabı 'both' olarak günceller."""
+    existing = get_user_by_email(email)
+
+    if existing is None:
+        # Yeni Google kullanıcısı — şifresi yok
+        users_collection.add(
+            ids=[email],
+            embeddings=[[0.0] * 384],
+            documents=[email],
+            metadatas=[{
+                "hashed_password": "",
+                "auth_provider": "google",
+                "created_at": str(datetime.now(timezone.utc)),
+            }]
+        )
+    elif existing["auth_provider"] == "password":
+        # Klasik kullanıcı Google ile de bağlandı → "both"
+        users_collection.update(
+            ids=[email],
+            metadatas=[{
+                "hashed_password": existing["hashed_password"],
+                "auth_provider": "both",
+                "created_at": existing["created_at"],
+            }]
+        )
+
+    return email
