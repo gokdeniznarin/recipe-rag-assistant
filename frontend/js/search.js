@@ -222,3 +222,64 @@ cameraForm.addEventListener('submit', async (e) => {
 
 // Sayfa kapatılırken kamerayı serbest bırak
 window.addEventListener('beforeunload', stopCamera);
+
+
+// ── Web Speech API (voice search) ────────────────────────
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const micBtn = document.getElementById('mic-btn');
+let recognition = null;
+let isListening = false;
+
+if (SpeechRecognition && micBtn) {
+  recognition = new SpeechRecognition();
+  recognition.lang = 'en-US';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+
+  recognition.onresult = (event) => {
+  // Tüm parçaları birleştir (interim + final)
+  let transcript = '';
+  for (let i = 0; i < event.results.length; i++) {
+    transcript += event.results[i][0].transcript;
+  }
+  textQuery.value = transcript.trim();
+};
+
+  recognition.onerror = (event) => {
+    console.warn('Speech recognition error:', event.error);
+    stopListening();
+  };
+
+  recognition.onend = () => {
+    stopListening();
+  };
+
+  micBtn.addEventListener('click', () => {
+    if (isListening) {
+      recognition.stop();
+    } else {
+      startListening();
+    }
+  });
+} else if (micBtn) {
+  // Tarayıcı desteklemiyorsa butonu gizle
+  micBtn.classList.add('hidden');
+}
+
+function startListening() {
+  try {
+    recognition.start();
+    isListening = true;
+    micBtn.classList.add('is-listening');
+    micBtn.setAttribute('aria-label', 'Stop listening');
+  } catch (err) {
+    console.warn(err);
+  }
+}
+
+function stopListening() {
+  isListening = false;
+  micBtn.classList.remove('is-listening');
+  micBtn.setAttribute('aria-label', 'Voice search');
+}

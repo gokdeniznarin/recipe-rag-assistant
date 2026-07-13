@@ -7,9 +7,11 @@
 - **Backend:** Python, FastAPI
 - **Veritabanı:** Sadece ChromaDB (tek veritabanı kararı — hem semantic search hem metadata filtreleme aynı yerde yapılıyor, MongoDB kullanılmıyor)
 - **Embedding modeli:** sentence-transformers (İngilizce arayüz kararı verildiği için çok dilli model şart değil)
-- **LLM:** Google Gemini API (gemini-2.5-flash, `google-genai` kütüphanesi kullanılıyor — eski `google-generativeai` deprecated olduğu için güncel kütüphaneye geçildi)
-- **Kimlik doğrulama:** JWT (kayıt/giriş sistemi)
-- **Kamera:** Tarayıcı `getUserMedia` API'si ile fotoğraf çekme, backend'e gönderip Claude vision ile malzeme tanıma
+- **LLM:** Google Gemini API (`gemini-flash-latest` alias — her zaman en güncel flash modeline yönleniyor, model deprecation'lara karşı güvende), `google-genai` kütüphanesi kullanılıyor (eski `google-generativeai` deprecated olduğu için güncel kütüphaneye geçildi). Model adı `gemini-2.5-flash`'tan `gemini-flash-latest`'a geçildi çünkü ikinci bir API key alındığında yeni Google Cloud projesinde `gemini-2.5-flash`'a erişim kapalıydı.
+- **Frontend:** Sade HTML/CSS/JS (React/Next.js tercih edilmedi — React öğrenme eğrisi kalan sürede risk yaratıyordu, projenin asıl değeri backend RAG pipeline'ında). Sayfa başına ayrı HTML dosyaları, ortak CSS tek dosyada, her sayfanın kendi JS dosyası. Sayfa yönlendirme klasik `<a href>` ile — SPA değil, MPA. Vercel'e statik site olarak deploy edilebilir yapıda.
+- **Frontend tasarım:** Koyu zeytin yeşili (`#2D3B2D`) + krem (`#F5F0E8`) + sıcak turuncu aksan (`#E8824A`) paleti, Playfair Display (serif başlıklar, yemek dergisi hissi) + Inter (UI). Merkezi CSS tokens ile tutarlı stil.
+- **Kimlik doğrulama:** JWT (kayıt/giriş sistemi). Frontend token'ı `localStorage`'da tutuyor, `api.js` içinde ortak fetch wrapper her istekte `Authorization: Bearer` header'ı ekliyor. 401 dönerse otomatik logout + `index.html`'e yönlendirme.
+- **Kamera:** Tarayıcı `getUserMedia` API'si ile fotoğraf çekme, base64 olarak backend'e gönderilip Gemini vision ile malzeme tanıma (aynı Gemini modeli hem metin üretimi hem vision için kullanılıyor)
 - **Konteynerleştirme:** Docker + Docker Compose
 - **Dil:** Arayüz İngilizce (dataset de İngilizce, tutarlılık için)
 - **Git:** Conventional commits, İngilizce mesajlar, scope kullanımı (örn. `feat(data): ...`, `fix(auth): ...`)
@@ -34,31 +36,54 @@
 - FastAPI'de tek ana endpoint mantığı: `/api/recipes/search` (metin), `/api/recipes/from-image` (fotoğraf)
 - Hybrid search: kullanıcı sorgusundan kural bazlı ya da LLM ile filtre (diyet, süre) çıkarılıp ChromaDB'nin `where` parametresiyle metadata filtreleme + semantic search birlikte yapılıyor
 
-## Proje Planı (1 aylık, 4 hafta)
-- **Hafta 1 (şu an buradayız):** Veri hazırlama — TAMAMLANDI (dataset indirme, temizleme, diyet etiketleme, doğrulama). Sıradaki adım: ChromaDB'yi Docker ile kurup temiz veriyi embedding'e çevirip yüklemek.
-- **Hafta 2:** FastAPI backend, filtre çıkarımı, LLM entegrasyonu, arama endpoint'i
-- **Hafta 3:** JWT (kayıt/giriş), fotoğraftan malzeme tanıma endpoint'i
-- **Hafta 4:** Frontend (metin + kamera sekmeleri), responsive tasarım, Docker Compose ile tam entegrasyon, test, README
+## Proje Planı (1 aylık, 4+ hafta)
+- **Hafta 1:** Veri hazırlama ✅ (dataset indirme, temizleme, diyet etiketleme, doğrulama, ChromaDB yükleme)
+- **Hafta 2:** FastAPI backend ✅ (filtre çıkarımı, LLM entegrasyonu, arama endpoint'i)
+- **Hafta 3:** JWT (kayıt/giriş) ✅, fotoğraftan malzeme tanıma endpoint'i ✅, favoriler sistemi ✅
+- **Hafta 4:** Frontend ✅ (tüm sayfalar, tüm akışlar, tutarlı tasarım)
+- **Hafta 5 (şu an buradayız):** Google OAuth, mikrofon (Web Speech API), Docker Compose'a frontend ekleme, README, sunum hazırlığı
 
 ## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
+### Backend
 - `ingestion/explore_data.py` — dataset keşfi
 - `ingestion/clean_data.py` — temizleme pipeline'ı, recipes_cleaned.csv üretiyor (instructions_clean dahil)
 - `ingestion/validate_tags.py` — diyet etiketi ve veri kalitesi doğrulama scripti
 - `ingestion/load_to_chromadb.py` — embedding üretme ve ChromaDB'ye yükleme
 - `ingestion/test_search.py` — ChromaDB arama testleri
-- `api/main.py` — FastAPI backend: /api/recipes/search, /api/recipes/from-image, /api/recipes/{recipe_id}, /api/favorites/* endpoint'leri
+- `api/main.py` — FastAPI backend + CORS middleware (tüm origin'lere açık, geliştirme için): /api/recipes/search, /api/recipes/from-image, /api/recipes/{recipe_id}, /api/favorites/* endpoint'leri
 - `api/auth.py` — JWT + bcrypt, kullanıcı kayıt/giriş, koruma decorator'ı
-- `api/llm.py` — Gemini API ile LLM cevap üretimi + fotoğraftan malzeme tanıma
+- `api/llm.py` — Gemini API ile LLM cevap üretimi + fotoğraftan malzeme tanıma (`gemini-flash-latest`)
 - `api/filters.py` — kullanıcı sorgusundan diyet/süre/kalori filtresi çıkarımı
 - `api/favorites.py` — favoriler sistemi (Repository Pattern'den esinlenmiş, kendi ChromaDB koleksiyonunu kendi yönetiyor; aynı desen auth.py'de de var)
 - `docker-compose.yml` — ChromaDB servisi
 
+### Frontend
+- `frontend/index.html` — giriş/kayıt sayfası (Sign in / Create account sekmeleri)
+- `frontend/search.html` — ana arama sayfası (Text search / Camera search sekmeleri)
+- `frontend/recipe.html` — tarif detay sayfası (instructions + kalp butonu ile favori toggle)
+- `frontend/favorites.html` — kayıtlı tariflerin listesi (boş durum ekranı ile)
+- `frontend/css/style.css` — tüm sayfalar için ortak CSS (design tokens, layout, components)
+- `frontend/js/api.js` — ortak API katmanı (token yönetimi, fetch wrapper, otomatik logout)
+- `frontend/js/auth.js` — giriş/kayıt formu mantığı
+- `frontend/js/search.js` — arama sayfası, mode tabs, kamera stream (`getUserMedia`), sonuç render
+- `frontend/js/recipe.js` — detay sayfası, `parseInstructions()` (R vector kalıntılarını filtreliyor)
+- `frontend/js/favorites.js` — favori listesini çekip her ID için detay endpoint'inden tarif bilgisi paralel çekiyor
+
 ## Henüz Yapılmadı
-- Frontend (Faz 4)
-- Google OAuth, mikrofon (Faz 5)
+- Google OAuth (Faz 5)
+- Mikrofon / Web Speech API sesli arama (Faz 5)
+- Docker Compose'a frontend ekleme, tam containerize deployment (Faz 5)
+- README + sunum hazırlığı (Faz 5)
 - GitHub'a bağlama (Faz 5 sonunda toplu push planlanıyor — henüz sadece lokal Git kullanılıyor)
 
-## Güncel Durum: Faz 3 TAMAMLANDI ✅
+### Ertelenen küçük iyileştirmeler
+- LLM cevabındaki `**bold**` markdown karakterlerinin HTML render'ı (şu an ham metin görünüyor)
+- Instructions'daki bazı adımların sonundaki tekil `\` backslash temizliği (dataset veri kalitesi kalıntısı)
+- `filters.py` iyileştirmeleri (malzeme çıkarımı, sayısal ifadeler "under 30 minutes", olumsuz ifadeler)
+
+## Güncel Durum: Faz 4 TAMAMLANDI ✅
+
+### Faz 3 (Backend + Auth + Favoriler) ✅
 - 3.1 Kayıt endpoint'i ✅
 - 3.2 Giriş endpoint'i ✅ (JWT token üretimi çalışıyor)
 - 3.3 Arama endpoint'i JWT ile korundu ✅
@@ -66,10 +91,25 @@
 - 3.5 Fotoğraf endpoint'i ✅ (/api/recipes/from-image)
 - 3.6 Favoriler sistemi ✅ (/api/favorites/add, /api/favorites, /api/favorites/{recipe_id})
 
+### Faz 4 (Frontend) ✅
+- 4.1 Giriş/kayıt sayfası ✅ (index.html, "What's in your kitchen?" hero, sekmeli form)
+- 4.2 Arama sayfası ✅ (search.html, text + camera sekmeleri, sonuç kartları, LLM cevabı kutusu)
+- 4.3 Tarif detay sayfası ✅ (recipe.html, 5 sütunlu bilgi çubuğu, numaralı adım kartları, kalp favori butonu)
+- 4.4 Favoriler listesi sayfası ✅ (favorites.html, boş durum ekranı ile)
+- 4.5 Ortak API katmanı ✅ (api.js, token yönetimi + fetch wrapper + otomatik logout)
+
 ### Faz 3 sırasında eklenen ek işler
 - **Tarif detay endpoint'i** (`GET /api/recipes/{recipe_id}`): Kullanıcı arama sonuçlarından bir tarife tıkladığında instructions dahil tüm detayları getirir. Hem text hem image search sonuçlarından çağrılabilir, arama yöntemine bağımlı değil.
 - **Instructions veri temizliği düzeltmesi**: `RecipeInstructions` kolonu R vector formatında (`c("adım1", "adım2")`) ChromaDB'ye ham haliyle yükleniyordu. `clean_data.py`'ye `parse_instructions()` fonksiyonu eklendi, `instructions_clean` kolonu üretiliyor ve numaralı adımlara çevriliyor (`"1. ... 2. ..."`). ChromaDB yeniden yüklendi.
 - **Favoriler mimarisi**: `favorites.py`, `auth.py` ile aynı desende — kendi ChromaDB koleksiyonunu (`favorites`) kendi yönetiyor. Bileşik ID (`{user_email}_{recipe_id}`) ile duplike kayıt engelleniyor. `main.py` sadece `add_favorite()`, `get_favorites()`, `remove_favorite()` fonksiyonlarını çağırıyor, ChromaDB detaylarını bilmiyor.
+
+### Faz 4 sırasında karşılaşılan/çözülen konular
+- **CORS**: Frontend (Live Server, `127.0.0.1:XXXXX`) ile backend (FastAPI, `localhost:8080`) farklı origin'ler. `main.py`'ye `CORSMiddleware` eklendi, `allow_origins=["*"]` (geliştirme için, production'da kısıtlanacak).
+- **Gemini model deprecation**: İkinci Gemini API key alındığında yeni Google Cloud projesinde `gemini-2.5-flash` "no longer available to new users" hatası verdi. `llm.py`'de model adı `gemini-flash-latest` alias'ına çevrildi — Google bu alias'ı her zaman en güncel flash modeline yönlendiriyor, gelecek deprecation'lardan korumalı.
+- **Gemini free tier kota limiti**: Günde 20 istek limiti var. Yoğun test günlerinde takılıyor. `llm.py` çağrılarının try/except ile sarılması ertelendi (opsiyonel iyileştirme).
+- **Diyet tag sıralaması**: `search.js` ve `recipe.js`'de aktif diyet tag'leri `[vegan, vegetarian, pescatarian, gluten_free, dairy_free, nut_free]` sırasıyla gösteriliyor — yemek türü bilgisi allergen-free bilgisinden önce görünüyor.
+- **Instructions parse edge case**: Bazı tariflerin ham verisinde R vector'daki boş elementler `,` veya `\` gibi anlamsız karakterlere çevrilmiş, bu da 17 tane sahte adım oluşturuyordu. `recipe.js`'deki `parseInstructions()` fonksiyonu 3 karakterden kısa ve sadece noktalama içeren parçaları filtreliyor. Sağlıklı tarifleri etkilemiyor.
+- **Live Server + `file://` protokolü**: `getUserMedia` API'si `file://` üzerinde çalışmıyor, HTTP sunucusu şart. VS Code Live Server extension kullanılıyor.
 
 ## ChromaDB Koleksiyonları (güncel, 3 tane)
 - `recipes` — 4886 tarif (bkz. yukarıdaki alanlar)
@@ -90,10 +130,37 @@ Kullanıcı sonuç listesinden bir tarife tıkladığında `GET /api/recipes/{re
 çağrılır (instructions dahil tüm detayları döner). Bu endpoint arama yönteminden 
 bağımsız, tek bir ortak detay sayfası mantığı.
 
+## Frontend Mimari Akışları (Faz 4)
+
+**Sayfa akışı:**
+- `index.html` → giriş/kayıt → başarılı olunca `search.html`'e yönlendirme (`window.location`)
+- `search.html` → arama sonuçları → tarif kartına tıklayınca `recipe.html?id=XXX`
+- `recipe.html` → detay + favori butonu → "Back to search" ile geri, ya da header'daki "Favorites" ile favoriler listesine
+- `favorites.html` → favori kartlar → detay sayfasına
+
+**Token yönetimi:**
+- Giriş başarılıysa `localStorage.setItem('recipe_token', token)`
+- `api.js` her sayfada ilk yüklenir, token yoksa `index.html`'e otomatik yönlendirme (auth guard)
+- `apiRequest()` wrapper'ı her istekte `Authorization: Bearer <token>` header ekliyor
+- Backend 401 dönerse `clearToken()` + `index.html`'e yönlendirme
+- Sign out butonu tüm sayfalarda üstte
+
+**Kamera akışı (`search.js`):**
+- Start camera → `navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment'}})`
+- Take photo → `<canvas>`'a çizip `canvas.toDataURL('image/jpeg', 0.85)` ile base64
+- Search with photo → base64 backend'e, `stream.getTracks().forEach(t => t.stop())` ile kamera serbest
+- Sekme değişirse veya sayfa kapanırsa kamera stop
+- Detected ingredients ayrı bir kutuda (asla input'a yazılmıyor — Faz 3 kararı korundu)
+
+**Favori butonu (`recipe.js`):**
+- Sayfa yüklendiğinde `GET /api/favorites` çağrılıp bu tarif listede mi kontrol
+- Kalp boşsa (`♡`) POST `/api/favorites/add`, doluysa (`♥`) DELETE `/api/favorites/{id}`
+- Debounce yok, buton disabled durumu ile double-click önleniyor
+
 
 ## Bilinen Sınırlama: Swagger UI + Custom Header
 POST /api/recipes/search endpoint'i JWT korumalı (Header parametresi kullanıyor). 
 Swagger UI'nin "Try it out" arayüzü bu header'ı isteğe eklemede sorun yaşıyor 
 (muhtemelen FastAPI/Swagger versiyon uyumsuzluğu). Backend'in kendisi doğru 
-çalışıyor - PowerShell Invoke-RestMethod ile doğrulandı. Gerçek testler için 
-Swagger UI yerine PowerShell/curl.exe veya ileride yazılacak frontend kullanılmalı.
+çalışıyor - PowerShell Invoke-RestMethod ve frontend ile doğrulandı. Faz 4 
+sonrasında frontend tam çalıştığı için bu artık kritik bir problem değil.
