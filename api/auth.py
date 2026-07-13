@@ -18,7 +18,8 @@ ACCESS_TOKEN_EXPIRE_HOURS = 24
 GOOGLE_CLIENT_ID = "490027664953-ne5lp527bovm51j30qh3aqrto329fjog.apps.googleusercontent.com"
 
 # ChromaDB'de kullanıcılar için ayrı bir koleksiyon
-chroma_client = chromadb.HttpClient(host='localhost', port=8000)
+CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
+chroma_client = chromadb.HttpClient(host=CHROMA_HOST, port=8000)
 users_collection = chroma_client.get_or_create_collection("users")
 
 

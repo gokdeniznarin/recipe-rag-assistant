@@ -1,7 +1,9 @@
+import os
 from datetime import datetime, timezone
 import chromadb
 
-chroma_client = chromadb.HttpClient(host='localhost', port=8000)
+CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
+chroma_client = chromadb.HttpClient(host=CHROMA_HOST, port=8000)
 favorites_collection = chroma_client.get_or_create_collection("favorites")
 
 

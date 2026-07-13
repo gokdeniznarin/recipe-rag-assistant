@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends
+import os
 from pydantic import BaseModel
 import chromadb
 from sentence_transformers import SentenceTransformer
@@ -21,7 +22,8 @@ print("Loading embedding model...")
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
 print("Connecting to ChromaDB...")
-chroma_client = chromadb.HttpClient(host='localhost', port=8000)
+CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
+chroma_client = chromadb.HttpClient(host=CHROMA_HOST, port=8000)
 collection = chroma_client.get_collection("recipes")
 
 print(f"Ready! Collection has {collection.count()} recipes.")
