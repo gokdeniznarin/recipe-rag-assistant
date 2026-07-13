@@ -125,6 +125,11 @@ def login(request: LoginRequest):
     return {"access_token": token, "token_type": "bearer"}
 
 
+@app.get("/api/auth/me")
+def get_me(user_email: str = Depends(get_current_user_email)):
+    return {"email": user_email}
+
+
 class GoogleAuthRequest(BaseModel):
     id_token: str
 

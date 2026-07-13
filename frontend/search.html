@@ -19,9 +19,18 @@
         <span class="brand-name">Recipe Assistant</span>
       </a>
       <nav class="app-nav">
-        <a href="favorites.html" class="nav-link">Favorites</a>
-        <button id="logout-btn" class="btn-outline btn-sm">Sign out</button>
-      </nav>
+  <a href="favorites.html" class="nav-link">Favorites</a>
+  
+  <div class="user-menu">
+    <button id="user-btn" class="user-btn">
+      <span id="user-email">…</span>
+      <span class="chevron">▾</span>
+    </button>
+    <div id="user-dropdown" class="user-dropdown hidden">
+      <button id="logout-btn" class="dropdown-item">Sign out</button>
+    </div>
+  </div>
+</nav>
     </div>
   </header>
 

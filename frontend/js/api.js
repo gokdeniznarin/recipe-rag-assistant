@@ -46,8 +46,46 @@ async function apiRequest(path, options = {}) {
   return res.json();
 }
 
-// ── Ortak: sign out butonu ───────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-  const btn = document.getElementById('logout-btn');
-  if (btn) btn.addEventListener('click', logout);
-});
+
+// ── Kullanıcı menüsü ─────────────────────────────────────
+async function loadUserEmail() {
+  const emailEl = document.getElementById('user-email');
+  if (!emailEl) return;
+
+  try {
+    const data = await apiRequest('/api/auth/me');
+    emailEl.textContent = data.email;
+  } catch {
+    emailEl.textContent = 'Account';
+  }
+}
+
+function initUserMenu() {
+  // Sign out butonu
+  const logoutBtn = document.getElementById('logout-btn');
+  if (logoutBtn) logoutBtn.addEventListener('click', logout);
+
+  // Kullanıcı menüsü aç/kapa
+  const userBtn = document.getElementById('user-btn');
+  const dropdown = document.getElementById('user-dropdown');
+
+  if (userBtn && dropdown) {
+    userBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dropdown.classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', () => {
+      dropdown.classList.add('hidden');
+    });
+  }
+
+  loadUserEmail();
+}
+
+// DOM hazırsa hemen çalıştır, değilse bekle
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initUserMenu);
+} else {
+  initUserMenu();
+}
