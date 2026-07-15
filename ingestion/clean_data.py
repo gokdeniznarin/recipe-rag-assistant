@@ -39,11 +39,20 @@ def parse_duration_to_minutes(iso_duration):
     
     return total_minutes if total_minutes > 0 else None
 
-def extract_diet_tags(ingredients_list, category=""):
+def extract_diet_tags(ingredients_list, category="", name=""):
     """Malzeme ve kategori üzerinden diyet etiketi çıkarır"""
     tags = []
     ingredients_text = " ".join(ingredients_list).lower()
     category_lower = str(category).lower()
+
+
+    name_lower = str(name).lower()
+
+    # Tarif adında "vegan/vegetarian/plant-based" gibi bir işaret var mı?
+    # Varsa adındaki et kelimeleri bitki bazlı taklit üründür (örn. "Vegan Chicken Nuggets")
+    plant_based_signals = ["vegan", "vegetarian", "plant-based", "plant based",
+                           "meatless", "meat-free", "veggie"]
+    is_plant_based_by_name = any(sig in name_lower for sig in plant_based_signals)
     
     # --- Gluten-free ---
     gluten_words = ["flour", "wheat", "bread", "pasta", "barley", "rye",
@@ -64,10 +73,18 @@ def extract_diet_tags(ingredients_list, category=""):
     meat_categories = ["chicken", "beef", "pork", "poultry", "meat", "lamb", "turkey"]
     seafood_categories = ["fish", "seafood", "salmon", "tuna"]
     
+    # Tarif adında et kelimesi var mı? (sadece bitki bazlı sinyal YOKSA sayılır)
+    name_has_land_meat = (not is_plant_based_by_name
+                          and any(word in name_lower for word in land_meat))
+    name_has_seafood = (not is_plant_based_by_name
+                        and any(word in name_lower for word in seafood))
+
     has_land_meat = (any(word in ingredients_text for word in land_meat)
-                      or any(c in category_lower for c in meat_categories))
+                      or any(c in category_lower for c in meat_categories)
+                      or name_has_land_meat)
     has_seafood = (any(word in ingredients_text for word in seafood)
-                   or any(c in category_lower for c in seafood_categories))
+                   or any(c in category_lower for c in seafood_categories)
+                   or name_has_seafood)
     
     if not has_land_meat and has_seafood:
         tags.append("pescatarian")
@@ -140,9 +157,9 @@ df_sample["cook_time_min"] = df_sample["CookTime"].apply(parse_duration_to_minut
 df_sample["prep_time_min"] = df_sample["PrepTime"].apply(parse_duration_to_minutes)
 df_sample["total_time_min"] = df_sample["TotalTime"].apply(parse_duration_to_minutes)
 df_sample["diet_tags"] = df_sample.apply(
-    lambda row: extract_diet_tags(row["ingredients_clean"], row["RecipeCategory"]),
-    axis=1
-)
+        lambda row: extract_diet_tags(row["ingredients_clean"], row["RecipeCategory"], row["name_clean"]),
+        axis=1
+    )
 df_sample["description_for_embedding"] = df_sample.apply(build_description, axis=1)
 
 before = len(df_sample)
