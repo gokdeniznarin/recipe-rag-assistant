@@ -79,7 +79,13 @@ def search_recipes(request: SearchRequest, user_email: str = Depends(get_current
     # 3. LLM'e bulunan tarifleri ver, doğal cevap üret
     llm_answer = None
     if len(recipes) > 0:
-        llm_answer = generate_answer(request.query, recipes)
+        try:
+            llm_answer = generate_answer(request.query, recipes)
+        except Exception as e:
+            print(f"LLM error (skipping): {e}")
+            llm_answer = "AI commentary is temporarily unavailable. Here are the matching recipes."
+   
+        
 
     return {
         "query": request.query,
@@ -209,7 +215,13 @@ def search_recipes_from_image(
 
     llm_answer = None
     if len(recipes) > 0:
-        llm_answer = generate_answer(combined_query, recipes)
+        try:
+            llm_answer = generate_answer(combined_query, recipes)
+        except Exception as e:
+            print(f"LLM error (skipping): {e}")
+            llm_answer = "AI commentary is temporarily unavailable. Here are the matching recipes."
+    
+        
 
     return {
         "detected_ingredients": detected_ingredients,
