@@ -7,7 +7,12 @@ from google import genai
 load_dotenv()
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-MODEL_NAME = "gemini-flash-latest"
+# `gemini-flash-latest` alias'ından sabit sürüme dönüldü: alias'ın işaret ettiği
+# model free tier'da sürekli 503 (overloaded) veriyordu ve SDK retry'ları her
+# çağrıyı ~20sn'ye çıkarıyordu. `gemini-2.5-flash` aynı istekte ~2.3sn.
+# Ödünleşim: sabit sürüm ileride deprecate olabilir (alias'a geçme sebebi buydu).
+# Deprecate olursa hata mesajı net gelir; o noktada güncel sürüme taşınır.
+MODEL_NAME = "gemini-2.5-flash"
 
 
 def generate_answer(user_query: str, recipes: list) -> str:
