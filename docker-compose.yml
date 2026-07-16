@@ -19,6 +19,10 @@ services:
       - .env
     environment:
       - CHROMA_HOST=chromadb
+      - GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/firebase-key.json
+    volumes:
+      # Firebase service-account anahtarı — repo'ya girmez (.gitignore), salt-okunur mount
+      - ./api/firebase-key.json:/run/secrets/firebase-key.json:ro
     depends_on:
       - chromadb
 
@@ -27,6 +31,10 @@ services:
     container_name: recipe_frontend
     ports:
       - "3000:80"
+    volumes:
+      # Geliştirme kolaylığı: frontend dosyalarını canlı mount et — JS/HTML
+      # değişince rebuild gerekmez, tarayıcıyı yenilemek yeterli.
+      - ./frontend:/usr/share/nginx/html:ro
     depends_on:
       - api
 

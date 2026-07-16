@@ -26,3 +26,7 @@ Thumbs.db
 *.jpg
 *.jpeg
 *.png
+
+# Firebase service-account anahtarı — ASLA commit etme!
+firebase-key.json
+*-firebase-adminsdk-*.json
