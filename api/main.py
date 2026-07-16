@@ -5,7 +5,7 @@ import chromadb
 from sentence_transformers import SentenceTransformer
 from filters import extract_filters
 from llm import generate_answer, detect_ingredients_from_image
-from auth import create_user, get_user_by_email, verify_password, create_access_token, get_current_user_email, verify_google_token, create_or_get_google_user
+from auth import get_current_user_email
 from favorites import add_favorite, get_favorites, remove_favorite
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -95,65 +95,9 @@ def search_recipes(request: SearchRequest, user_email: str = Depends(get_current
     }
 
 
-class RegisterRequest(BaseModel):
-    email: str
-    password: str
-
-
-@app.post("/api/auth/register")
-def register(request: RegisterRequest):
-    try:
-        create_user(request.email, request.password)
-        return {"message": "User registered successfully", "email": request.email}
-    except ValueError as e:
-        return {"error": str(e)}
-    
-
-
-class LoginRequest(BaseModel):
-    email: str
-    password: str
-
-
-@app.post("/api/auth/login")
-def login(request: LoginRequest):
-    user = get_user_by_email(request.email)
-
-    if user is None:
-        return {"error": "Invalid email or password"}
-
-    # Google-only hesaplar klasik yolla giremez
-    if user["auth_provider"] == "google":
-        return {"error": "This account uses Google sign-in. Please use the Google button."}
-
-    if not verify_password(request.password, user["hashed_password"]):
-        return {"error": "Invalid email or password"}
-
-    token = create_access_token(request.email)
-    return {"access_token": token, "token_type": "bearer"}
-
-
 @app.get("/api/auth/me")
 def get_me(user_email: str = Depends(get_current_user_email)):
     return {"email": user_email}
-
-
-class GoogleAuthRequest(BaseModel):
-    id_token: str
-
-
-@app.post("/api/auth/google")
-def google_auth(request: GoogleAuthRequest):
-    try:
-        user_info = verify_google_token(request.id_token)
-        email = create_or_get_google_user(user_info["email"])
-        token = create_access_token(email)
-        return {"access_token": token, "token_type": "bearer"}
-    except ValueError as e:
-        return {"error": f"Invalid Google token: {str(e)}"}
-    except Exception as e:
-        return {"error": f"Authentication failed: {str(e)}"}
-
 
 
 class ImageSearchRequest(BaseModel):
