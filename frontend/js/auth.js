@@ -1,33 +1,53 @@
-const API = 'http://localhost:8080';
-
-// ── Token yönetimi ───────────────────────────────────────
-function saveToken(token) {
-  localStorage.setItem('recipe_token', token);
-}
-
-function getToken() {
-  return localStorage.getItem('recipe_token');
-}
-
-function clearToken() {
-  localStorage.removeItem('recipe_token');
-}
+/**
+ * Giriş sayfası (index.html) mantığı — kimlik doğrulama Firebase Auth ile.
+ * Bu dosya, Firebase compat SDK script'leri ve firebase.js'ten SONRA yüklenir.
+ */
 
 // Zaten giriş yapılmışsa direkt search.html'e yönlendir
-if (getToken()) {
-  window.location.href = 'search.html';
+authReady.then((user) => {
+  if (user) window.location.href = 'search.html';
+});
+
+// Google ile girilmeye çalışılıp "bu email şifreyle kayıtlı" hatası alınırsa,
+// Google kimliği burada bekletilir; kullanıcı şifresiyle giriş yapınca hesaba bağlanır.
+let pendingGoogleCredential = null;
+
+// ── Firebase hata kodlarını okunur mesajlara çevir ──────
+function friendlyError(code) {
+  switch (code) {
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+      // Google ile kayıt olan kullanıcının şifresi yoktur — ipucu ver.
+      return 'Invalid email or password. If you signed up with Google, use the Google button.';
+    case 'auth/email-already-in-use':
+      return 'An account with this email already exists. If you signed up with Google, use the Google button.';
+    case 'auth/weak-password':
+      return 'Password should be at least 6 characters.';
+    case 'auth/invalid-email':
+      return 'Please enter a valid email address.';
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return '';  // kullanıcı iptal etti — mesaj gösterme
+    case 'auth/network-request-failed':
+      return 'Network error. Please check your connection.';
+    default:
+      return 'Something went wrong. Please try again.';
+  }
 }
 
 // ── Tab geçişi ───────────────────────────────────────────
+function showTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === tab)
+  );
+  document.getElementById('login-form').classList.toggle('hidden', tab !== 'login');
+  document.getElementById('register-form').classList.toggle('hidden', tab !== 'register');
+}
+
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-
-    const tab = btn.dataset.tab;
-    document.getElementById('login-form').classList.toggle('hidden', tab !== 'login');
-    document.getElementById('register-form').classList.toggle('hidden', tab !== 'register');
-
+    showTab(btn.dataset.tab);
     // Hata mesajlarını temizle
     document.getElementById('login-error').textContent = '';
     document.getElementById('register-error').textContent = '';
@@ -48,22 +68,18 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   btn.textContent = 'Signing in…';
 
   try {
-    const res  = await fetch(`${API}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
+    const result = await auth.signInWithEmailAndPassword(email, password);
 
-    if (data.access_token) {
-      saveToken(data.access_token);
-      window.location.href = 'search.html';
-    } else {
-      errorEl.textContent = data.error || 'Invalid email or password.';
+    // Google girişi bekliyorsa, kimliği kanıtlanmış bu hesaba bağla —
+    // bundan sonra kullanıcı hem şifreyle hem Google ile girebilir.
+    if (pendingGoogleCredential) {
+      await result.user.linkWithCredential(pendingGoogleCredential);
+      pendingGoogleCredential = null;
     }
-  } catch {
-    errorEl.textContent = 'Could not reach the server. Is it running?';
-  } finally {
+
+    window.location.href = 'search.html';
+  } catch (err) {
+    errorEl.textContent = friendlyError(err.code);
     btn.disabled = false;
     btn.textContent = 'Sign in';
   }
@@ -73,86 +89,67 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 document.getElementById('register-form').addEventListener('submit', async (e) => {
   e.preventDefault();
 
-  const email     = document.getElementById('reg-email').value.trim();
-  const password  = document.getElementById('reg-password').value;
-  const errorEl   = document.getElementById('register-error');
-  const successEl = document.getElementById('register-success');
-  const btn       = e.target.querySelector('button[type="submit"]');
+  const email    = document.getElementById('reg-email').value.trim();
+  const password = document.getElementById('reg-password').value;
+  const errorEl  = document.getElementById('register-error');
+  const btn      = e.target.querySelector('button[type="submit"]');
 
   errorEl.textContent = '';
-  successEl.classList.add('hidden');
   btn.disabled = true;
   btn.textContent = 'Creating account…';
 
   try {
-    const res  = await fetch(`${API}/api/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
+    // Firebase hesabı oluşturur ve kullanıcıyı otomatik giriş yaptırır.
+    const result = await auth.createUserWithEmailAndPassword(email, password);
 
-    if (data.message) {
-      successEl.classList.remove('hidden');
-      e.target.reset();
-    } else {
-      errorEl.textContent = data.error || 'Registration failed.';
+    // Doğrulama maili gönder. Kritik: email doğrulanmadan aynı adresle Google'a
+    // girilirse, Firebase güvenlik gereği doğrulanmamış şifreyi siler. Doğrulanmış
+    // email'de ise Google'ı şifrenin YANINA ekler — ikisi birlikte çalışır.
+    try {
+      await result.user.sendEmailVerification();
+    } catch (e) {
+      console.warn('Verification email could not be sent:', e);
     }
-  } catch {
-    errorEl.textContent = 'Could not reach the server. Is it running?';
-  } finally {
+
+    window.location.href = 'search.html';
+  } catch (err) {
+    errorEl.textContent = friendlyError(err.code);
     btn.disabled = false;
     btn.textContent = 'Create account';
   }
 });
 
-
-
 // ── Google Sign-In ───────────────────────────────────────
-const GOOGLE_CLIENT_ID = '490027664953-ne5lp527bovm51j30qh3aqrto329fjog.apps.googleusercontent.com';
+const googleProvider = new firebase.auth.GoogleAuthProvider();
+// Her girişte hesap seçme ekranını zorla — yoksa tek oturumu otomatik seçer
+googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-async function handleGoogleCredential(response) {
+document.getElementById('google-btn').addEventListener('click', async () => {
   const errorEl = document.getElementById('google-error');
   errorEl.textContent = '';
 
   try {
-    const res = await fetch(`${API}/api/auth/google`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id_token: response.credential }),
-    });
-    const data = await res.json();
+    await auth.signInWithPopup(googleProvider);
+    window.location.href = 'search.html';
+  } catch (err) {
+    // Bu email şifreyle kayıtlı: Firebase güvenlik gereği otomatik bağlamaz,
+    // önce kullanıcının mevcut şifresiyle kimliğini kanıtlaması gerekir.
+    if (err.code === 'auth/account-exists-with-different-credential') {
+      pendingGoogleCredential =
+        err.credential ||
+        (firebase.auth.GoogleAuthProvider.credentialFromError &&
+          firebase.auth.GoogleAuthProvider.credentialFromError(err));
 
-    if (data.access_token) {
-      saveToken(data.access_token);
-      window.location.href = 'search.html';
-    } else {
-      errorEl.textContent = data.error || 'Google sign-in failed.';
+      const email = err.email || (err.customData && err.customData.email) || '';
+
+      showTab('login');
+      document.getElementById('login-email').value = email;
+      document.getElementById('login-error').textContent =
+        'This email is already registered with a password. Sign in with your password to link your Google account.';
+      document.getElementById('login-password').focus();
+      return;
     }
-  } catch {
-    errorEl.textContent = 'Could not reach the server. Is it running?';
+
+    errorEl.textContent = friendlyError(err.code);
   }
-}
-
-// Google kütüphanesi yüklendiğinde butonu render et
-window.addEventListener('load', () => {
-  if (typeof google === 'undefined') {
-    console.warn('Google Identity Services could not be loaded.');
-    return;
-  }
-
-  google.accounts.id.initialize({
-    client_id: GOOGLE_CLIENT_ID,
-    callback: handleGoogleCredential,
-  });
-
-  google.accounts.id.renderButton(
-    document.getElementById('google-btn'),
-    {
-      theme: 'outline',
-      size: 'large',
-      text: 'continue_with',
-      shape: 'rectangular',
-    }
-  );
 });

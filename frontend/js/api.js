@@ -1,35 +1,47 @@
 /**
- * Ortak API katmanı. Her sayfa bu dosyayı en başta yükler.
- * - Token'ı localStorage'dan yönetir
- * - Token yoksa giriş sayfasına atar (index.html hariç)
- * - Fetch wrapper'ı: her istekte Authorization header ekler
+ * Ortak API katmanı. Her korumalı sayfa bu dosyayı firebase.js'ten sonra yükler.
+ * - Kimlik doğrulama Firebase Auth ile yönetilir
+ * - Oturum yoksa giriş sayfasına atar
+ * - Fetch wrapper'ı: her istekte Firebase ID token'ını Authorization header'a ekler
  * - 401 dönerse otomatik çıkış yapar
  */
 
 const API = 'http://localhost:8080';
 
 // ── Token ────────────────────────────────────────────────
-function getToken() {
-  return localStorage.getItem('recipe_token');
-}
-
-function clearToken() {
-  localStorage.removeItem('recipe_token');
+// Firebase ID token'ı gerektiğinde otomatik yenilenir.
+async function getToken() {
+  // Firebase oturumu geri yükleyene kadar bekle — yoksa sayfa yüklenirken
+  // currentUser henüz null olabilir ve istek yanlışlıkla 401 alır.
+  await authReady;
+  const user = auth.currentUser;
+  if (!user) return null;
+  return await user.getIdToken();
 }
 
 function logout() {
-  clearToken();
-  window.location.href = 'index.html';
+  auth.signOut().then(() => {
+    window.location.href = 'index.html';
+  });
 }
 
-// Auth zorunlu — token yoksa index.html'e at
-if (!getToken()) {
-  window.location.href = 'index.html';
-}
+// ── Auth guard ───────────────────────────────────────────
+// Oturum durumu netleşince: giriş yoksa index'e at, varsa menüyü kur.
+authReady.then((user) => {
+  if (!user) {
+    window.location.href = 'index.html';
+    return;
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initUserMenu);
+  } else {
+    initUserMenu();
+  }
+});
 
 // ── Fetch wrapper ────────────────────────────────────────
 async function apiRequest(path, options = {}) {
-  const token = getToken();
+  const token = await getToken();
   const headers = {
     'Content-Type': 'application/json',
     'authorization': `Bearer ${token}`,
@@ -48,16 +60,47 @@ async function apiRequest(path, options = {}) {
 
 
 // ── Kullanıcı menüsü ─────────────────────────────────────
-async function loadUserEmail() {
+function loadUserEmail() {
   const emailEl = document.getElementById('user-email');
   if (!emailEl) return;
+  // E-posta zaten Firebase kullanıcısında mevcut — ekstra istek gerekmez.
+  emailEl.textContent = (auth.currentUser && auth.currentUser.email) || 'Account';
+}
 
-  try {
-    const data = await apiRequest('/api/auth/me');
-    emailEl.textContent = data.email;
-  } catch {
-    emailEl.textContent = 'Account';
-  }
+// ── Email doğrulama hatırlatması ─────────────────────────
+// Şifreyle kaydolup email'ini doğrulamamış kullanıcılara gösterilir. Doğrulama
+// önemli: doğrulanmamış email'le Google'a girilirse Firebase şifreyi siler.
+// (Google kullanıcılarında emailVerified zaten true — onlara görünmez.)
+function showVerifyBannerIfNeeded() {
+  const user = auth.currentUser;
+  if (!user || user.emailVerified) return;
+
+  const bar = document.createElement('div');
+  bar.style.cssText =
+    'background:#fdf3e3;border-bottom:1px solid #e8d5b0;color:#6b4f1d;' +
+    'padding:10px 16px;font-size:14px;display:flex;gap:12px;' +
+    'align-items:center;justify-content:center;flex-wrap:wrap;';
+  bar.innerHTML =
+    '<span>Verify your email to secure your account and enable Google sign-in.</span>';
+
+  const btn = document.createElement('button');
+  btn.textContent = 'Resend email';
+  btn.style.cssText =
+    'background:none;border:1px solid #b8873a;color:#6b4f1d;border-radius:4px;' +
+    'padding:4px 10px;cursor:pointer;font-size:13px;';
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try {
+      await user.sendEmailVerification();
+      btn.textContent = 'Sent — check your inbox';
+    } catch {
+      btn.textContent = 'Could not send';
+      btn.disabled = false;
+    }
+  });
+
+  bar.appendChild(btn);
+  document.body.prepend(bar);
 }
 
 function initUserMenu() {
@@ -81,11 +124,5 @@ function initUserMenu() {
   }
 
   loadUserEmail();
-}
-
-// DOM hazırsa hemen çalıştır, değilse bekle
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initUserMenu);
-} else {
-  initUserMenu();
+  showVerifyBannerIfNeeded();
 }
