@@ -10,9 +10,10 @@
 - **LLM:** Google Gemini API (`gemini-flash-latest` alias — her zaman en güncel flash modeline yönleniyor, model deprecation'lara karşı güvende), `google-genai` kütüphanesi kullanılıyor (eski `google-generativeai` deprecated olduğu için güncel kütüphaneye geçildi). Model adı `gemini-2.5-flash`'tan `gemini-flash-latest`'a geçildi çünkü ikinci bir API key alındığında yeni Google Cloud projesinde `gemini-2.5-flash`'a erişim kapalıydı.
 - **Frontend:** Sade HTML/CSS/JS (React/Next.js tercih edilmedi — React öğrenme eğrisi kalan sürede risk yaratıyordu, projenin asıl değeri backend RAG pipeline'ında). Sayfa başına ayrı HTML dosyaları, ortak CSS tek dosyada, her sayfanın kendi JS dosyası. Sayfa yönlendirme klasik `<a href>` ile — SPA değil, MPA. Vercel'e statik site olarak deploy edilebilir yapıda.
 - **Frontend tasarım:** Koyu zeytin yeşili (`#2D3B2D`) + krem (`#F5F0E8`) + sıcak turuncu aksan (`#E8824A`) paleti, Playfair Display (serif başlıklar, yemek dergisi hissi) + Inter (UI). Merkezi CSS tokens ile tutarlı stil.
-- **Kimlik doğrulama:** JWT (kayıt/giriş sistemi). Frontend token'ı `localStorage`'da tutuyor, `api.js` içinde ortak fetch wrapper her istekte `Authorization: Bearer` header'ı ekliyor. 401 dönerse otomatik logout + `index.html`'e yönlendirme.
+- **Kimlik doğrulama:** JWT (kayıt/giriş sistemi). Frontend token'ı `localStorage`'da tutuyor, `api.js` içinde ortak fetch wrapper her istekte `Authorization: Bearer` header'ı ekliyor. 401 dönerse otomatik logout + `index.html`'e yönlendirme. Ek olarak **Google OAuth** (Google Identity Services + `google-auth` kütüphanesi ile ID token doğrulama, `auth.py::verify_google_token`). Kullanıcılar `auth_provider` alanıyla (`password` / `google` / `both`) ChromaDB'de takip ediliyor — aynı email önce şifreyle kayıt olup sonra Google ile giriş yaparsa hesap otomatik `both`'a yükseltiliyor; sadece-Google hesap klasik giriş denerse anlamlı hata dönüyor.
 - **Kamera:** Tarayıcı `getUserMedia` API'si ile fotoğraf çekme, base64 olarak backend'e gönderilip Gemini vision ile malzeme tanıma (aynı Gemini modeli hem metin üretimi hem vision için kullanılıyor)
-- **Konteynerleştirme:** Docker + Docker Compose
+- **Sesli arama:** Web Speech API (`SpeechRecognition`/`webkitSpeechRecognition`), `search.js` içinde mikrofon butonuna bağlı. Tarayıcı desteklemiyorsa (polyfill yok) buton feature-detection ile gizleniyor. Tanınan metin doğrudan arama kutusuna yazılıyor (kamera akışındaki "asla otomatik yazma" kararından farklı — burada kullanıcı zaten sesle metin girmek istiyor).
+- **Konteynerleştirme:** Docker + Docker Compose — 3 servis: `chromadb` (resmi `chromadb/chroma` image, volume ile kalıcı veri), `api` (`python:3.13-slim`, `uvicorn`, `.env` dosyası `env_file` ile aktarılıyor, `CHROMA_HOST=chromadb` ile servis adı üzerinden bağlanıyor), `frontend` (`nginx:alpine`, statik dosyalar doğrudan kopyalanıyor, build adımı yok çünkü zaten sade HTML/CSS/JS).
 - **Dil:** Arayüz İngilizce (dataset de İngilizce, tutarlılık için)
 - **Git:** Conventional commits, İngilizce mesajlar, scope kullanımı (örn. `feat(data): ...`, `fix(auth): ...`)
 
@@ -25,7 +26,7 @@
 - HTML kaçış karakterleri temizleniyor (`&ldquo;` → `"`)
 - Malzeme listesi R format'tan (`c("a", "b")`) Python listesine çevriliyor
 - Süreler ISO 8601'den (`PT24H45M`) dakikaya çevriliyor
-- **Diyet etiketleri** (`gluten_free`, `dairy_free`, `nut_free`, `vegetarian`, `pescatarian`, `vegan`) malzeme listesinden VE kategori bilgisinden kural bazlı çıkarılıyor — kategori, malzeme eksikliğine karşı "güvenlik ağı" olarak kullanılıyor (örn. kategori "Poultry" ise malzemede "turkey" geçmese bile et var sayılıyor)
+- **Diyet etiketleri** (`gluten_free`, `dairy_free`, `nut_free`, `vegetarian`, `pescatarian`, `vegan`) malzeme listesinden, kategori bilgisinden VE tarif adından kural bazlı çıkarılıyor — kategori ve tarif adı, malzeme eksikliğine karşı "güvenlik ağı" olarak kullanılıyor (örn. kategori "Poultry" ise malzemede "turkey" geçmese bile et var sayılıyor; adı "Chicken Salad" olup malzemesinde chicken geçmeyen tarif de et sayılıyor). Tarif adı kontrolünde bir istisna var: ad içinde bitki bazlı bir sinyal (`vegan`, `vegetarian`, `plant-based`, `meatless`, `veggie` vb.) varsa addaki et kelimeleri taklit ürün sayılıp yok sayılıyor (örn. "Vegan Chicken Nuggets" yanlışlıkla et olarak işaretlenmiyor)
 - Bu etiketler %100 doğru değil, "otomatik tahmin" olarak sunum ve arayüzde belirtilecek
 - `validate_tags.py` scripti ile tutarlılık kontrolleri yapıldı (et-vejetaryen, süt-dairy_free, ekmek-gluten_free, kuruyemiş-nut_free çelişkileri, süre tutarlılığı, malzeme sayısı anomalisi) — şu an tüm kontroller 0 çelişki veriyor
 - 2'den az malzemeli tarifler filtreleniyor (embedding kalitesi için)
@@ -41,7 +42,7 @@
 - **Hafta 2:** FastAPI backend ✅ (filtre çıkarımı, LLM entegrasyonu, arama endpoint'i)
 - **Hafta 3:** JWT (kayıt/giriş) ✅, fotoğraftan malzeme tanıma endpoint'i ✅, favoriler sistemi ✅
 - **Hafta 4:** Frontend ✅ (tüm sayfalar, tüm akışlar, tutarlı tasarım)
-- **Hafta 5 (şu an buradayız):** Google OAuth, mikrofon (Web Speech API), Docker Compose'a frontend ekleme, README, sunum hazırlığı
+- **Hafta 5 (şu an buradayız):** Google OAuth ✅, mikrofon (Web Speech API) ✅, kullanıcı menüsü ✅, Docker Compose'a frontend ekleme ✅ — kalan: README, sunum hazırlığı, GitHub'a bağlama
 
 ## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
 ### Backend
@@ -55,24 +56,23 @@
 - `api/llm.py` — Gemini API ile LLM cevap üretimi + fotoğraftan malzeme tanıma (`gemini-flash-latest`)
 - `api/filters.py` — kullanıcı sorgusundan diyet/süre/kalori filtresi çıkarımı
 - `api/favorites.py` — favoriler sistemi (Repository Pattern'den esinlenmiş, kendi ChromaDB koleksiyonunu kendi yönetiyor; aynı desen auth.py'de de var)
-- `docker-compose.yml` — ChromaDB servisi
+- `api/Dockerfile` — `python:3.13-slim` tabanlı, `uvicorn` ile 8080 portunda çalıştırıyor
+- `docker-compose.yml` — 3 servis: `chromadb`, `api`, `frontend`
 
 ### Frontend
-- `frontend/index.html` — giriş/kayıt sayfası (Sign in / Create account sekmeleri)
-- `frontend/search.html` — ana arama sayfası (Text search / Camera search sekmeleri)
+- `frontend/index.html` — giriş/kayıt sayfası (Sign in / Create account sekmeleri, Google sign-in butonu)
+- `frontend/search.html` — ana arama sayfası (Text search / Camera search sekmeleri, mikrofon butonu)
 - `frontend/recipe.html` — tarif detay sayfası (instructions + kalp butonu ile favori toggle)
 - `frontend/favorites.html` — kayıtlı tariflerin listesi (boş durum ekranı ile)
-- `frontend/css/style.css` — tüm sayfalar için ortak CSS (design tokens, layout, components)
-- `frontend/js/api.js` — ortak API katmanı (token yönetimi, fetch wrapper, otomatik logout)
-- `frontend/js/auth.js` — giriş/kayıt formu mantığı
-- `frontend/js/search.js` — arama sayfası, mode tabs, kamera stream (`getUserMedia`), sonuç render
+- `frontend/css/style.css` — tüm sayfalar için ortak CSS (design tokens, layout, components, user menu dropdown)
+- `frontend/js/api.js` — ortak API katmanı (token yönetimi, fetch wrapper, otomatik logout, kullanıcı menüsü/email gösterimi + dropdown sign out)
+- `frontend/js/auth.js` — giriş/kayıt formu mantığı + Google OAuth flow (Google Identity Services callback → `/api/auth/google`)
+- `frontend/js/search.js` — arama sayfası, mode tabs, kamera stream (`getUserMedia`), sesli arama (`SpeechRecognition`), sonuç render
 - `frontend/js/recipe.js` — detay sayfası, `parseInstructions()` (R vector kalıntılarını filtreliyor)
 - `frontend/js/favorites.js` — favori listesini çekip her ID için detay endpoint'inden tarif bilgisi paralel çekiyor
+- `frontend/Dockerfile` — `nginx:alpine`, statik dosyaları doğrudan sunuyor
 
 ## Henüz Yapılmadı
-- Google OAuth (Faz 5)
-- Mikrofon / Web Speech API sesli arama (Faz 5)
-- Docker Compose'a frontend ekleme, tam containerize deployment (Faz 5)
 - README + sunum hazırlığı (Faz 5)
 - GitHub'a bağlama (Faz 5 sonunda toplu push planlanıyor — henüz sadece lokal Git kullanılıyor)
 
@@ -81,7 +81,20 @@
 - Instructions'daki bazı adımların sonundaki tekil `\` backslash temizliği (dataset veri kalitesi kalıntısı)
 - `filters.py` iyileştirmeleri (malzeme çıkarımı, sayısal ifadeler "under 30 minutes", olumsuz ifadeler)
 
-## Güncel Durum: Faz 4 TAMAMLANDI ✅
+## Şu An Üzerinde Çalışılıyor (commit edilmedi)
+- `api/main.py`: `generate_answer()` çağrıları try/except ile sarıldı — Gemini free tier kota limitine takılınca (günde 20 istek) veya başka bir LLM hatası olunca arama tamamen çökmek yerine `"AI commentary is temporarily unavailable. Here are the matching recipes."` fallback mesajıyla sonuçları göstermeye devam ediyor. Hem `/api/recipes/search` hem `/api/recipes/from-image` için uygulandı. Daha önce "Ertelenen küçük iyileştirmeler" altındaydı, şimdi hayata geçiriliyor.
+- `ingestion/clean_data.py`: `extract_diet_tags()` fonksiyonu artık tarif adını da (`name` parametresi) kontrol ediyor. Önceden malzeme listesi eksik olan tarifler (örn. "Chicken Salad" — malzemesinde chicken geçmiyordu) yanlışlıkla vegan/vegetarian etiketi alıyordu. Artık tarif adındaki et kelimeleri de sayılıyor; ancak ad içinde bitki bazlı sinyal (`vegan`, `plant-based` vb.) varsa istisna uygulanıp taklit ürünler (örn. "Vegan Chicken Nuggets") doğru şekilde vegan kalıyor. Düzeltme sonrası `clean_data.py` + `load_to_chromadb.py` yeniden çalıştırılıp ChromaDB güncellendi.
+
+## Güncel Durum: Faz 5 devam ediyor (Faz 4 TAMAMLANDI ✅)
+
+### Faz 5 (Google OAuth + Sesli Arama + Kullanıcı Menüsü + Docker) ✅
+- **Google OAuth**: `auth.py::verify_google_token()` Google Identity Services'ten gelen ID token'ı `google-auth` kütüphanesiyle doğruluyor, `create_or_get_google_user()` kullanıcıyı oluşturuyor ya da mevcut şifreli hesabı `both`'a yükseltiyor. Yeni endpoint: `POST /api/auth/google`. `GOOGLE_CLIENT_ID` şu an `auth.py` içinde hardcoded (gizli değil, Google client ID'ler zaten public).
+- **Google sign-in butonu**: `index.html` + `auth.js`, Google'ın kendi buton widget'ı kullanılıyor, callback JWT'ye çevrilip aynı `recipe_token` akışına giriyor (backend tarafında normal login ile ayrım yok, frontend tamamen aynı token mekanizmasını kullanıyor).
+- **Sesli arama**: `search.js`'de Web Speech API ile mikrofon butonu, `continuous: true` + `interimResults: true` ile konuşma bitene kadar canlı transkript arama kutusuna yazılıyor. Tarayıcı desteklemiyorsa buton otomatik gizleniyor.
+- **Kullanıcı menüsü**: `api.js` artık her sayfada kullanıcının emailini header'da gösteriyor (`/api/auth/me` çağrısı) ve dropdown içinde sign out seçeneği sunuyor — önceki "Sign out" butonu tek başına yerini bu menüye bıraktı.
+- **Docker Compose**: `chromadb` + `api` + `frontend` üç servis olarak tek `docker-compose.yml`'de. `api/Dockerfile` ve `frontend/Dockerfile` eklendi, `requirements.txt` container build'i için genişletildi.
+
+### Faz 4 TAMAMLANDI ✅ (önceki durum)
 
 ### Faz 3 (Backend + Auth + Favoriler) ✅
 - 3.1 Kayıt endpoint'i ✅
@@ -106,7 +119,7 @@
 ### Faz 4 sırasında karşılaşılan/çözülen konular
 - **CORS**: Frontend (Live Server, `127.0.0.1:XXXXX`) ile backend (FastAPI, `localhost:8080`) farklı origin'ler. `main.py`'ye `CORSMiddleware` eklendi, `allow_origins=["*"]` (geliştirme için, production'da kısıtlanacak).
 - **Gemini model deprecation**: İkinci Gemini API key alındığında yeni Google Cloud projesinde `gemini-2.5-flash` "no longer available to new users" hatası verdi. `llm.py`'de model adı `gemini-flash-latest` alias'ına çevrildi — Google bu alias'ı her zaman en güncel flash modeline yönlendiriyor, gelecek deprecation'lardan korumalı.
-- **Gemini free tier kota limiti**: Günde 20 istek limiti var. Yoğun test günlerinde takılıyor. `llm.py` çağrılarının try/except ile sarılması ertelendi (opsiyonel iyileştirme).
+- **Gemini free tier kota limiti**: Günde 20 istek limiti var. Yoğun test günlerinde takılıyor. `llm.py` çağrıları artık `main.py`'de try/except ile sarılı (bkz. "Şu An Üzerinde Çalışılıyor") — kota dolunca arama sonuçları LLM cevabı olmadan da gösteriliyor.
 - **Diyet tag sıralaması**: `search.js` ve `recipe.js`'de aktif diyet tag'leri `[vegan, vegetarian, pescatarian, gluten_free, dairy_free, nut_free]` sırasıyla gösteriliyor — yemek türü bilgisi allergen-free bilgisinden önce görünüyor.
 - **Instructions parse edge case**: Bazı tariflerin ham verisinde R vector'daki boş elementler `,` veya `\` gibi anlamsız karakterlere çevrilmiş, bu da 17 tane sahte adım oluşturuyordu. `recipe.js`'deki `parseInstructions()` fonksiyonu 3 karakterden kısa ve sadece noktalama içeren parçaları filtreliyor. Sağlıklı tarifleri etkilemiyor.
 - **Live Server + `file://` protokolü**: `getUserMedia` API'si `file://` üzerinde çalışmıyor, HTTP sunucusu şart. VS Code Live Server extension kullanılıyor.
