@@ -1,9 +1,18 @@
+import os
 import pandas as pd
 import ast
 import chromadb
 
+# Script'i hangi klasörden çalıştırırsan çalıştır dosyalar bulunsun
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CSV_PATH = os.path.join(BASE_DIR, "recipes_cleaned.csv")
+# Tarifler salt-okunur veri (bir kez yazılır, sonra sadece okunur) — ayrı bir
+# ChromaDB sunucusuna değil, API image'ına gömülecek klasöre yazılıyor.
+# Bkz. CLAUDE.md → "şekil sorunu".
+CHROMA_PATH = os.path.join(BASE_DIR, "..", "api", "chroma_data")
+
 print("Loading cleaned data...")
-df = pd.read_csv("recipes_cleaned.csv")
+df = pd.read_csv(CSV_PATH)
 
 # CSV'de string olarak saklanan liste kolonlarını tekrar Python listesine çevir
 df["ingredients_clean"] = df["ingredients_clean"].apply(ast.literal_eval)
@@ -11,9 +20,9 @@ df["diet_tags"] = df["diet_tags"].apply(ast.literal_eval)
 
 print(f"Total recipes to load: {len(df)}")
 
-# ChromaDB'ye bağlan (Docker'da çalışan sunucuya)
-print("Connecting to ChromaDB...")
-client = chromadb.HttpClient(host='localhost', port=8000)
+# Kalıcı ChromaDB klasörünü aç (sunucu gerekmiyor, dosyaya yazıyor)
+print(f"Writing to persistent ChromaDB: {os.path.normpath(CHROMA_PATH)}")
+client = chromadb.PersistentClient(path=CHROMA_PATH)
 
 # Koleksiyon oluştur (varsa üzerine yaz)
 try:
@@ -73,5 +82,5 @@ for start in range(0, total, batch_size):
 
     print(f"Loaded {end}/{total} recipes...")
 
-print(f"\n✓ Successfully loaded {total} recipes into ChromaDB!")
+print(f"\nSuccessfully loaded {total} recipes into ChromaDB!")
 print(f"Collection count: {collection.count()}")

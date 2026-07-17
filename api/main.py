@@ -17,12 +17,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-print("Connecting to ChromaDB...")
-CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
-chroma_client = chromadb.HttpClient(host=CHROMA_HOST, port=8000)
+# Tarifler salt-okunur veri: bir kez ingestion ile yazılır, sonra sadece okunur.
+# Bu yüzden ayrı bir ChromaDB sunucusuna değil, image'a gömülü klasöre bakıyor.
+# (favorites.py hâlâ sunucuya bağlı — çalışma anında yazılan tek veri o. Firestore'a
+# taşınınca chromadb servisi tamamen kalkacak; bkz. CLAUDE.md → "şekil sorunu".)
+CHROMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chroma_data")
+print(f"Opening recipes database: {CHROMA_PATH}")
+chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
 # Embedding'i ChromaDB'nin varsayılan fonksiyonu üretiyor: aynı all-MiniLM-L6-v2
-# modeli, torch yerine ONNX motoruyla. Ürettiği vektörler torch'unkiyle aynı
-# (ölçüldü: fark ~2e-07), bu yüzden mevcut koleksiyon yeniden yüklenmeden çalışır.
+# modeli, torch yerine ONNX motoruyla.
 collection = chroma_client.get_collection("recipes")
 
 print(f"Ready! Collection has {collection.count()} recipes.")
