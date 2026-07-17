@@ -6,14 +6,14 @@
 ## Teknoloji Kararları
 - **Backend:** Python, FastAPI
 - **Veritabanı:** Sadece ChromaDB (tek veritabanı kararı — hem semantic search hem metadata filtreleme aynı yerde yapılıyor, MongoDB kullanılmıyor)
-- **Embedding modeli:** sentence-transformers (İngilizce arayüz kararı verildiği için çok dilli model şart değil)
+- **Embedding modeli:** `all-MiniLM-L6-v2` (İngilizce arayüz kararı verildiği için çok dilli model şart değil). Model **ChromaDB'nin kendi varsayılan embedding fonksiyonu** (`DefaultEmbeddingFunction`) üzerinden, **ONNX** motoruyla çalışıyor — `sentence-transformers` + `torch` kurulumu kaldırıldı (bkz. Faz 7). Kod artık embedding'i elle üretmiyor: `collection.query(query_texts=[...])` ile metni doğrudan ChromaDB'ye veriyor, embedding'i o üretiyor.
 - **LLM:** Google Gemini API, model **`gemini-2.5-flash`**, `google-genai` kütüphanesi (eski `google-generativeai` deprecated olduğu için güncel kütüphaneye geçildi). Model seçimi iki kez değişti: önce `gemini-2.5-flash` → `gemini-flash-latest` (ikinci API key'in projesinde 2.5'e erişim kapalıydı + alias deprecation'a karşı güvenliydi), sonra **geri `gemini-2.5-flash`'a** — çünkü alias'ın işaret ettiği model free tier'da sürekli **503 (overloaded)** veriyordu, SDK retry'ları her aramayı ~20sn'ye çıkarıyordu. Ölçüm: alias 20.1sn, `gemini-2.5-flash` ort. 3.5sn (**~6x**). Ödünleşim kabul edildi: sabit sürüm ileride deprecate olabilir, o zaman güncel sürüme taşınır (hata mesajı net gelir).
 - **Frontend:** Sade HTML/CSS/JS (React/Next.js tercih edilmedi — React öğrenme eğrisi kalan sürede risk yaratıyordu, projenin asıl değeri backend RAG pipeline'ında). Sayfa başına ayrı HTML dosyaları, ortak CSS tek dosyada, her sayfanın kendi JS dosyası. Sayfa yönlendirme klasik `<a href>` ile — SPA değil, MPA. Vercel'e statik site olarak deploy edilebilir yapıda.
 - **Frontend tasarım:** Koyu zeytin yeşili (`#2D3B2D`) + krem (`#F5F0E8`) + sıcak turuncu aksan (`#E8824A`) paleti, Playfair Display (serif başlıklar, yemek dergisi hissi) + Inter (UI). Merkezi CSS tokens ile tutarlı stil.
 - **Kimlik doğrulama:** **Firebase Auth** (email/şifre + Google). Önceki custom JWT + bcrypt + manuel Google doğrulama kurulumundan tamamen geçildi (bkz. Faz 6). Şifre bizim sunucumuza hiç ulaşmıyor: tarayıcı doğrudan Firebase ile konuşuyor, `getIdToken()` ile alınan ID token her istekte `Authorization: Bearer` header'ına konuyor ve süresi dolunca SDK sessizce yeniliyor. Backend (`api/auth.py`) yalnızca Admin SDK ile `verify_id_token()` yapıp e-postayı çıkarıyor — başka hiçbir kimlik mantığı yok. Frontend Firebase JS SDK'nın **compat** build'ini kullanıyor (mevcut global-script/MPA mimarisini korumak için; modüler SDK sayfalar arası global paylaşımı bozardı). Kullanıcılar artık ChromaDB'de değil Firebase'de. Favoriler e-posta anahtarlı olduğu için migrasyondan hiç etkilenmedi.
 - **Kamera:** Tarayıcı `getUserMedia` API'si ile fotoğraf çekme, base64 olarak backend'e gönderilip Gemini vision ile malzeme tanıma (aynı Gemini modeli hem metin üretimi hem vision için kullanılıyor)
 - **Sesli arama:** Web Speech API (`SpeechRecognition`/`webkitSpeechRecognition`), `search.js` içinde mikrofon butonuna bağlı. Tarayıcı desteklemiyorsa (polyfill yok) buton feature-detection ile gizleniyor. Tanınan metin doğrudan arama kutusuna yazılıyor (kamera akışındaki "asla otomatik yazma" kararından farklı — burada kullanıcı zaten sesle metin girmek istiyor).
-- **Konteynerleştirme:** Docker + Docker Compose — 3 servis: `chromadb` (resmi `chromadb/chroma` image, volume ile kalıcı veri), `api` (`python:3.13-slim`, `uvicorn`, `.env` dosyası `env_file` ile aktarılıyor, `CHROMA_HOST=chromadb` ile servis adı üzerinden bağlanıyor), `frontend` (`nginx:alpine`, sade HTML/CSS/JS olduğu için build adımı yok). Firebase geçişiyle gelen eklemeler: `api` servisine service-account anahtarı salt-okunur mount ediliyor (`GOOGLE_APPLICATION_CREDENTIALS` ile gösteriliyor; anahtar hem `.gitignore` hem `api/.dockerignore` ile korunuyor, ne commit'e ne image katmanına girer), `frontend` klasörü bind-mount edildiği için JS/HTML değişikliği rebuild istemiyor (sadece `docker restart recipe_frontend` — nginx bu mount'ta dosyayı önbelleğe alabiliyor). `api/Dockerfile` torch'u **CPU-only** index'ten kuruyor: varsayılan torch ~2GB NVIDIA CUDA tekerleği çekiyordu, container'da GPU olmadığı için tamamen ölü yüktü ve dengesiz bağlantıda build'i patlatıyordu.
+- **Konteynerleştirme:** Docker + Docker Compose — 3 servis: `chromadb` (resmi `chromadb/chroma` image, volume ile kalıcı veri), `api` (`python:3.13-slim`, `uvicorn`, `.env` dosyası `env_file` ile aktarılıyor, `CHROMA_HOST=chromadb` ile servis adı üzerinden bağlanıyor), `frontend` (`nginx:alpine`, sade HTML/CSS/JS olduğu için build adımı yok). Firebase geçişiyle gelen eklemeler: `api` servisine service-account anahtarı salt-okunur mount ediliyor (`GOOGLE_APPLICATION_CREDENTIALS` ile gösteriliyor; anahtar hem `.gitignore` hem `api/.dockerignore` ile korunuyor, ne commit'e ne image katmanına girer), `frontend` klasörü bind-mount edildiği için JS/HTML değişikliği rebuild istemiyor (sadece `docker restart recipe_frontend` — nginx bu mount'ta dosyayı önbelleğe alabiliyor). Faz 7'de torch tamamen kaldırıldı: `api/Dockerfile` artık ne CPU-only torch kuruyor ne de `build-essential` istiyor; onun yerine ONNX embedding modelini **build sırasında** indirip image'a gömüyor (yoksa ChromaDB modeli ilk istekte indiriyor: ~79MB, ölçüldü ~70sn, yani her taze container başlangıcı o kadar gecikirdi).
 - **Dil:** Arayüz İngilizce (dataset de İngilizce, tutarlılık için)
 - **Git:** Conventional commits, İngilizce mesajlar, scope kullanımı (örn. `feat(data): ...`, `fix(auth): ...`)
 
@@ -43,21 +43,22 @@
 - **Hafta 3:** JWT (kayıt/giriş) ✅ *(Hafta 6'da Firebase Auth ile değiştirildi)*, fotoğraftan malzeme tanıma endpoint'i ✅, favoriler sistemi ✅
 - **Hafta 4:** Frontend ✅ (tüm sayfalar, tüm akışlar, tutarlı tasarım)
 - **Hafta 5:** Google OAuth ✅, mikrofon (Web Speech API) ✅, kullanıcı menüsü ✅, Docker Compose'a frontend ekleme ✅
-- **Hafta 6 (şu an buradayız):** Firebase Auth migrasyonu ✅ (`firebase-auth` branch'inde, 8 senaryo canlı doğrulandı) — kalan: `main`'e merge, README, sunum hazırlığı, GitHub'a bağlama
+- **Hafta 6:** Firebase Auth migrasyonu ✅ (`firebase-auth` branch'inde, 8 senaryo canlı doğrulandı)
+- **Hafta 7 (şu an buradayız) — deploy hazırlığı:** torch'un kaldırılması ✅ (Faz 7) — kalan: şekil sorunu (recipes'i image'a gömme + favorites → Firestore), 4 deploy blocker'ı, `main`'e merge, README, sunum hazırlığı, GitHub'a bağlama
 
 ## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
 ### Backend
 - `ingestion/explore_data.py` — dataset keşfi
 - `ingestion/clean_data.py` — temizleme pipeline'ı, recipes_cleaned.csv üretiyor (instructions_clean dahil)
 - `ingestion/validate_tags.py` — diyet etiketi ve veri kalitesi doğrulama scripti
-- `ingestion/load_to_chromadb.py` — embedding üretme ve ChromaDB'ye yükleme
+- `ingestion/load_to_chromadb.py` — ChromaDB'ye yükleme. Embedding'i artık elle üretmiyor: `collection.add()`'e sadece `documents` veriliyor, ChromaDB kendi varsayılan fonksiyonuyla (ONNX) embed ediyor.
 - `ingestion/test_search.py` — ChromaDB arama testleri
 - `api/main.py` — FastAPI backend + CORS middleware (tüm origin'lere açık, geliştirme için): /api/recipes/search, /api/recipes/from-image, /api/recipes/{recipe_id}, /api/favorites/* endpoint'leri
 - `api/auth.py` — tek iş: Firebase Admin SDK ile `verify_id_token()` → e-posta. `get_current_user_email` dependency'si korumalı endpoint'lerde kullanılıyor. (Eskiden JWT + bcrypt + kullanıcı kayıt/giriş vardı; Firebase geçişiyle ~140 satırdan ~30 satıra düştü.)
 - `api/llm.py` — Gemini API ile LLM cevap üretimi + fotoğraftan malzeme tanıma (`gemini-2.5-flash`)
 - `api/filters.py` — kullanıcı sorgusundan diyet/süre/kalori filtresi çıkarımı
 - `api/favorites.py` — favoriler sistemi (Repository Pattern'den esinlenmiş, kendi ChromaDB koleksiyonunu kendi yönetiyor). Firebase migrasyonunda **tek satır değişmedi** — favoriler e-posta anahtarlı ve e-posta her iki auth sisteminde de aynı kimlik.
-- `api/Dockerfile` — `python:3.13-slim` tabanlı, `uvicorn` ile 8080 portunda çalıştırıyor
+- `api/Dockerfile` — `python:3.13-slim` tabanlı, `uvicorn` ile 8080 portunda çalıştırıyor. ONNX embedding modelini build sırasında indirip image'a gömüyor. Faz 7'den sonra image **1.14GB** (önceden 2.83GB).
 - `docker-compose.yml` — 3 servis: `chromadb`, `api`, `frontend`
 
 ### Frontend
@@ -77,7 +78,12 @@
 ## Henüz Yapılmadı
 - README + sunum hazırlığı (Faz 5)
 - GitHub'a bağlama (Faz 5 sonunda toplu push planlanıyor — henüz sadece lokal Git kullanılıyor)
-- **Deploy** (planlanan: frontend → Vercel, API → Render/Railway/Fly.io). Vercel API'yi kaldıramaz: `sentence-transformers` + `torch` ~1GB+ ile serverless limitlerinin çok üstünde, ayrıca ChromaDB kalıcı disk istiyor. Docker zaten hazır olduğu için API tarafı container destekleyen bir platforma taşınabilir.
+- **Deploy** (planlanan: frontend → Vercel, API → Docker destekleyen bir platform). **Vercel API'yi hâlâ kaldıramaz**: Faz 7'den sonra image 1.14GB ve bu Vercel'in 250MB serverless limitinin çok üstünde — o kapı kapalı. Adaylar: **Hugging Face Spaces** (ücretsiz, kart istemiyor, 16GB RAM — staj/demo için en düşük sürtünmeli) ya da **Google Cloud Run** (ücretsiz kota yeterli, sıfıra ölçekleniyor, Firebase+Gemini ile aynı ekosistem, ama kart zorunlu). Railway/Fly.io'nun ücretsiz katmanı kalmadı.
+- **Deploy'un önündeki asıl mimari engel — "şekil sorunu" (henüz çözülmedi):** Bulut container'ları öldürülüp yeniden başlatılabilir olmalı; diske yazdığın her şey kaybolur, kalıcı disk kiralamak ücretsiz katmanların vermediği şeydir. Backend'in iki ChromaDB koleksiyonu var ve doğaları çok farklı:
+  - `recipes` — ingestion ile **bir kez** yazılıyor, sonra sadece okunuyor (`query`/`get`). Çalışma anında tek satır yazılmıyor, boyutu ~8MB. Yani kalıcı disk isteyen bir veritabanı değil, salt-okunur bir dosya. **Image'ın içine gömülebilir** (`PersistentClient` ile API'nin kendi içinde okunur) → ayrı `chromadb` servisi tamamen kalkar.
+  - `favorites` — gerçekten çalışma anında değişen tek veri; kalıcı disk ihtiyacının **tek** sebebi bu. **Firestore'a taşınmalı** (`firebase-admin` ve credential'lar zaten kurulu). Ek kanıt: `favorites.py` ChromaDB'ye sahte bir embedding (`[[0.0] * 384]`) yazıyor — vektör veritabanına vektörü olmayan veri konuyor, yani ChromaDB burada yanlış alet.
+
+  İkisi ayrılınca backend **tek, stateless container** olur (3 servis → 1, kalıcı disk → 0) ve barındırma sorunu kendiliğinden çözülür.
 
 ### ⚠️ Deploy'da MUTLAKA düzeltilecekler (canlıda patlar)
 - **`api.js`'deki `API` sabiti**: şu an `` `http://${window.location.hostname}:8080` `` — bilgisayarda localhost, telefonda LAN IP olarak çözülsün diye böyle. Production'da **bozulur**: frontend ve backend farklı domain'lerde olacak, HTTPS olacak ve `:8080` portu olmayacak (`http://app.vercel.app:8080` üretir → yanlış). Ortama göre ayarlanabilir bir config'e alınmalı (`config.js` ya da build-time değişken).
@@ -89,12 +95,35 @@
 - LLM cevabındaki `**bold**` markdown karakterlerinin HTML render'ı (şu an ham metin görünüyor)
 - Instructions'daki bazı adımların sonundaki tekil `\` backslash temizliği (dataset veri kalitesi kalıntısı)
 - `filters.py` iyileştirmeleri (malzeme çıkarımı, sayısal ifadeler "under 30 minutes", olumsuz ifadeler)
+- **`nut_free` etiketinde açık var** (Faz 7'de tesadüfen fark edildi): "nut free cookies for kids" araması `Pine Nut and Almond Cookies` ve `wheat free peanut butter cookies` döndürüyor — ikisi de `nut_free: True` etiketli, yani yanlış. `validate_tags.py` nut kontrolünde 0 çelişki verdiği için doğrulama scriptinin de gözden kaçırdığı bir durum var (muhtemelen "pine nut"/"peanut butter" gibi bileşik adlar kural listesine takılmıyor). Sunumda sorulabilecek türden; `clean_data.py` + `validate_tags.py` birlikte gözden geçirilmeli.
 
 ## Şu An Üzerinde Çalışılıyor
-- **`firebase-auth` branch'i** (4 commit, `main`'e henüz merge edilmedi). Firebase Auth migrasyonu tamamlandı ve 8 senaryonun tamamı canlı doğrulandı. `main` el değmemiş durumda — sorun çıkarsa `git checkout main` + `docker compose up -d --build` ile eski sisteme dönülebilir (rebuild şart: frontend bind-mount olduğu için dosyalar anında eskiye döner ama API image'ı yeni kalır, yoksa karışım oluşur).
+- **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Firebase Auth migrasyonu (Faz 6) + torch'un kaldırılması (Faz 7) bu branch'te. `main` el değmemiş durumda — sorun çıkarsa `git checkout main` + `docker compose up -d --build` ile eski sisteme dönülebilir (rebuild şart: frontend bind-mount olduğu için dosyalar anında eskiye döner ama API image'ı yeni kalır, yoksa karışım oluşur).
 - Repo **hâlâ tamamen lokal** — remote yok, commit'ler hiçbir yere push edilmedi.
 
-## Güncel Durum: Faz 6 (Faz 5 TAMAMLANDI ✅)
+## Güncel Durum: Faz 7 (Faz 6 TAMAMLANDI ✅)
+
+### Faz 7 (Deploy hazırlığı — torch'un kaldırılması) ✅
+- **Neden:** Deploy için yer aranırken image'ın **2.83GB** olduğu görüldü; `site-packages` tek başına 1.7GB, bunun 750MB'ı `torch`. Ücretsiz platformların çoğuna sığmıyordu (Vercel serverless 250MB, Render free 512MB RAM → torch açılışta OOM).
+- **Bulgu:** `pip show torch` → `Required-by: sentence-transformers`. Torch'u **tek** isteyen paket `sentence-transformers`'dı, o da tek bir satır içindi (`SentenceTransformer('all-MiniLM-L6-v2')`). `transformers`, `scipy`, `scikit-learn`, `sympy` de aynı kuyruktan geliyordu. Bu sırada fark edildi ki `onnxruntime` **zaten kurulu** (ChromaDB bağımlılığı) ve ChromaDB'nin varsayılan embedding fonksiyonu **birebir aynı modeli** (`all-MiniLM-L6-v2`) ONNX motoruyla çalıştırıyor. Yani aynı model image'da iki kez, iki farklı motorla taşınıyordu.
+- **Kalite kanıtı (değişiklikten ÖNCE ölçüldü):** 12 sorguda torch ve ONNX'in döndürdüğü **top-5 tarif ve sıralama birebir aynı (12/12)**; iki vektör arasındaki en büyük sayısal fark **2.35e-07** (float32 yuvarlama gürültüsü, model farkı değil). Ayrıca `query_texts` ile elle embed etmenin aynı sonucu verdiği doğrulandı (4/4) — `get_collection()` sonrası aktif EF `DefaultEmbeddingFunction`.
+- **Sonuç:** `sentence-transformers` requirements'tan çıktı, `main.py` ve `load_to_chromadb.py` embedding'i elle üretmeyi bıraktı (`query_texts` / sadece `documents`), Dockerfile'dan CPU-only torch kurulumu **ve** `build-essential` kalktı (build onlarsız test edildi, geçiyor). Net: 4 dosya, 27 satır silindi / 14 eklendi.
+
+| | Önce | Sonra |
+|---|---|---|
+| Image | 2.83 GB | **1.14 GB** |
+| site-packages | 1.7 GB | 522 MB |
+| RAM (açılışta) | 568 MB | **123 MB** |
+| Embedding modeli hazır | 5.2 sn | **0.70 sn** |
+| Bir sorguyu encode | 175 ms | 244 ms |
+| Arama sonuçları | — | **birebir aynı** |
+
+- **RAM nüansı:** 123MB açılış değeri. Torch `main.py` import edilirken **eager** yükleniyordu; ONNX ise ilk aramada **tembel** yükleniyor, sonrasında ~310MB'a çıkıyor. Yine de eskisinin yarısı ve ilk yükleme 0.70sn.
+- **Encode 70ms yavaşladı** — bilinçli kabul: aramanın ~3.5 saniyesini Gemini yiyor, bu fark ölçüm gürültüsü. Karşılığında model yükleme 5.2sn → 0.70sn, ki bu doğrudan soğuk başlangıç süresi.
+- **Yeniden ingestion GEREKMEDİ:** vektörler aynı olduğu için mevcut 4886 embedding geçerli kaldı; koleksiyon yeniden yüklenmeden çalıştığı doğrulandı.
+- **Tuzak (çözüldü):** ChromaDB ONNX modelini çalışma anında indiriyor (~79MB, ölçüldü **~70sn**). Dockerfile'a build zamanında indiren `RUN` adımı eklendi; image'da 167MB olarak duruyor, çalışma anında indirme olmadığı doğrulandı. Atlanırsa kazanılan 5sn, 70sn olarak geri verilir.
+- **Beklenti düzeltmesi:** 1.14GB hâlâ Vercel'in 250MB limitinin üstünde — **API Vercel'e taşınamaz**, o kapı kapalı. Kazanç: ücretsiz Docker platformlarına rahat sığan bir boyut.
+- **Doğrulama:** gerçek `search_recipes` endpoint fonksiyonu çağrıldı (testler değil, asıl kod yolu) — filtre çıkarımı, ChromaDB araması ve Gemini cevabı çalışıyor, koleksiyon 4886 tarifle ayakta. Not: korumalı endpoint'e HTTP üzerinden Firebase token'ı olmadan girilemediği için fonksiyon doğrudan çağrılarak test edildi; tarayıcıdan uçtan uca doğrulama ayrıca yapılmalı.
 
 ### Faz 6 (Firebase Auth Migrasyonu) ✅ — `firebase-auth` branch'inde
 - **Neden:** Kendi JWT'mizi imzalamak, bcrypt ile şifre hash'lemek ve Google ID token'ını elle doğrulamak bakım yükü ve güvenlik sorumluluğu getiriyordu. Firebase bunların hepsini üstleniyor.
