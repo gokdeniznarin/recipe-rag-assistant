@@ -6,7 +6,9 @@
  * - 401 dönerse otomatik çıkış yapar
  */
 
-const API = 'http://localhost:8080';
+// Sayfa hangi host'tan açıldıysa API'yi de oradan çağır: bilgisayarda
+// localhost, telefondan LAN IP'si (örn. 10.240.100.10) olarak çözülür.
+const API = `http://${window.location.hostname}:8080`;
 
 // ── Token ────────────────────────────────────────────────
 // Firebase ID token'ı gerektiğinde otomatik yenilenir.

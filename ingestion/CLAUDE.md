@@ -77,6 +77,13 @@
 ## Henüz Yapılmadı
 - README + sunum hazırlığı (Faz 5)
 - GitHub'a bağlama (Faz 5 sonunda toplu push planlanıyor — henüz sadece lokal Git kullanılıyor)
+- **Deploy** (planlanan: frontend → Vercel, API → Render/Railway/Fly.io). Vercel API'yi kaldıramaz: `sentence-transformers` + `torch` ~1GB+ ile serverless limitlerinin çok üstünde, ayrıca ChromaDB kalıcı disk istiyor. Docker zaten hazır olduğu için API tarafı container destekleyen bir platforma taşınabilir.
+
+### ⚠️ Deploy'da MUTLAKA düzeltilecekler (canlıda patlar)
+- **`api.js`'deki `API` sabiti**: şu an `` `http://${window.location.hostname}:8080` `` — bilgisayarda localhost, telefonda LAN IP olarak çözülsün diye böyle. Production'da **bozulur**: frontend ve backend farklı domain'lerde olacak, HTTPS olacak ve `:8080` portu olmayacak (`http://app.vercel.app:8080` üretir → yanlış). Ortama göre ayarlanabilir bir config'e alınmalı (`config.js` ya da build-time değişken).
+- **Google girişinde `signInWithPopup` → mobilde sorunlu**: mobil tarayıcılar popup'ları agresif engelliyor; Instagram/Facebook gibi uygulamaların **in-app tarayıcılarında** popup çoğu zaman hiç açılmıyor, iOS Safari'de third-party cookie davranışı ekstra sorun çıkarıyor. Firebase'in mobil önerisi **`signInWithRedirect`**. Yaygın çözüm: cihaza göre seçim (masaüstü popup, mobil redirect) ya da her yerde redirect. Localhost'ta popup çalıştığı için şu an görünmüyor, gerçek kullanıcı telefondan girmeye çalışınca çıkacak.
+- **Firebase Authorized domains**: production domain'i Firebase Console → Authentication → Settings → Authorized domains listesine eklenmeli, yoksa Google girişi `auth/unauthorized-domain` verir (şu an listede sadece `localhost` var).
+- **CORS**: `main.py`'de `allow_origins=["*"]` (geliştirme için). Production'da gerçek frontend domain'iyle sınırlanmalı.
 
 ### Ertelenen küçük iyileştirmeler
 - LLM cevabındaki `**bold**` markdown karakterlerinin HTML render'ı (şu an ham metin görünüyor)
