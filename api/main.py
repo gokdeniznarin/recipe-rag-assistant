@@ -2,7 +2,6 @@ from fastapi import FastAPI, Depends
 import os
 from pydantic import BaseModel
 import chromadb
-from sentence_transformers import SentenceTransformer
 from filters import extract_filters
 from llm import generate_answer, detect_ingredients_from_image
 from auth import get_current_user_email
@@ -18,12 +17,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-print("Loading embedding model...")
-model = SentenceTransformer('all-MiniLM-L6-v2')
-
 print("Connecting to ChromaDB...")
 CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
 chroma_client = chromadb.HttpClient(host=CHROMA_HOST, port=8000)
+# Embedding'i ChromaDB'nin varsayılan fonksiyonu üretiyor: aynı all-MiniLM-L6-v2
+# modeli, torch yerine ONNX motoruyla. Ürettiği vektörler torch'unkiyle aynı
+# (ölçüldü: fark ~2e-07), bu yüzden mevcut koleksiyon yeniden yüklenmeden çalışır.
 collection = chroma_client.get_collection("recipes")
 
 print(f"Ready! Collection has {collection.count()} recipes.")
@@ -41,14 +40,12 @@ def root():
 
 @app.post("/api/recipes/search")
 def search_recipes(request: SearchRequest, user_email: str = Depends(get_current_user_email)):
-    query_embedding = model.encode(request.query).tolist()
-
     # 1. Kullanıcı sorgusundan filtre çıkar
     where_filter = extract_filters(request.query)
 
     # 2. ChromaDB'de semantic + metadata arama yap
     results = collection.query(
-        query_embeddings=[query_embedding],
+        query_texts=[request.query],
         n_results=request.n_results,
         where=where_filter
     )
@@ -125,11 +122,10 @@ def search_recipes_from_image(
         combined_query = ingredients_text
 
     # 3. Aynı arama akışını kullan (filtre + embedding + ChromaDB + LLM)
-    query_embedding = model.encode(combined_query).tolist()
     where_filter = extract_filters(combined_query)
 
     results = collection.query(
-        query_embeddings=[query_embedding],
+        query_texts=[combined_query],
         n_results=request.n_results,
         where=where_filter
     )

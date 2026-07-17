@@ -1,7 +1,6 @@
 import pandas as pd
 import ast
 import chromadb
-from sentence_transformers import SentenceTransformer
 
 print("Loading cleaned data...")
 df = pd.read_csv("recipes_cleaned.csv")
@@ -11,10 +10,6 @@ df["ingredients_clean"] = df["ingredients_clean"].apply(ast.literal_eval)
 df["diet_tags"] = df["diet_tags"].apply(ast.literal_eval)
 
 print(f"Total recipes to load: {len(df)}")
-
-# Embedding modelini yükle (ilk çalıştırmada internetten indirir, ~90MB)
-print("Loading embedding model...")
-model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # ChromaDB'ye bağlan (Docker'da çalışan sunucuya)
 print("Connecting to ChromaDB...")
@@ -30,7 +25,9 @@ except Exception:
 collection = client.create_collection("recipes")
 print("Created new collection: recipes")
 
-# Embedding üretme ve yükleme (toplu / batch halinde, performans için)
+# Embedding üretme ve yükleme (toplu / batch halinde, performans için).
+# Embedding'i ChromaDB kendi varsayılan fonksiyonuyla üretiyor (all-MiniLM-L6-v2,
+# ONNX) — ayrıca sentence-transformers/torch kurmaya gerek yok.
 batch_size = 100
 total = len(df)
 
@@ -39,7 +36,6 @@ for start in range(0, total, batch_size):
     batch = df.iloc[start:end]
 
     documents = batch["description_for_embedding"].tolist()
-    embeddings = model.encode(documents).tolist()
 
     ids = batch["RecipeId"].astype(str).tolist()
 
@@ -71,7 +67,6 @@ for start in range(0, total, batch_size):
 
     collection.add(
         ids=ids,
-        embeddings=embeddings,
         documents=documents,
         metadatas=metadatas
     )

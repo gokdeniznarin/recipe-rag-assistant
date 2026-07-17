@@ -2,17 +2,14 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
 COPY requirements.txt .
-# torch'u önce CPU-only kur — aksi halde sentence-transformers ~2GB'lık gereksiz
-# NVIDIA/CUDA tekerleklerini çeker (container'da GPU yok). --timeout/--retries
-# dengesiz bağlantıda kopan indirmeleri toparlar.
-RUN pip install --no-cache-dir --timeout 120 --retries 10 \
-    torch --index-url https://download.pytorch.org/whl/cpu
+# --timeout/--retries dengesiz bağlantıda kopan indirmeleri toparlar.
 RUN pip install --no-cache-dir --timeout 120 --retries 10 -r requirements.txt
+
+# Embedding modelini (all-MiniLM-L6-v2, ONNX) build sırasında indirip image'a göm.
+# Yoksa ChromaDB bunu ilk istekte indiriyor (~79MB, ölçüldü: ~70sn) ve canlıda
+# her taze container başlangıcı o kadar gecikir.
+RUN python -c "import chromadb.utils.embedding_functions as ef; ef.DefaultEmbeddingFunction()(['warmup'])"
 
 COPY . .
 
