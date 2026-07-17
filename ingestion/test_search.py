@@ -1,21 +1,38 @@
-import chromadb
-from sentence_transformers import SentenceTransformer
+"""
+Gömülü tarif veritabanına karşı arama testleri.
 
-# Bağlan
-model = SentenceTransformer('all-MiniLM-L6-v2')
-client = chromadb.HttpClient(host='localhost', port=8000)
+Image'a gömülü veriye karşı çalıştır — repodaki `api/chroma_data/` klasörünü
+hedefleme:
+
+    docker run --rm -v "$PWD/ingestion:/ingestion:ro" \
+      -e CHROMA_PATH=/app/chroma_data recipe-rag-assistant-api \
+      python /ingestion/test_search.py
+
+Sebep: `PersistentClient` bir klasörü **açarken bile** `chroma.sqlite3`'e yazıyor
+(işletim sisteminden bağımsız; salt-okunur mount'ta doğrudan hata veriyor). Repodaki
+klasöre yöneltirsen commit edilmiş 28MB'lık dosya kirlenir ve git'te sahte bir
+değişiklik çıkar (veri bozulmaz, `git checkout` ile geri alınır). Image'ın içindeki
+kopya ise container'ın yazılabilir katmanında olduğu için güvenle kullanılır.
+"""
+import os
+import chromadb
+
+# Gömülü tarif veritabanını aç (ChromaDB sunucusu yok — Faz 8).
+# Embedding'i ChromaDB kendi varsayılan fonksiyonuyla üretiyor (ONNX — Faz 7).
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CHROMA_PATH = os.getenv("CHROMA_PATH", os.path.join(BASE_DIR, "..", "api", "chroma_data"))
+
+client = chromadb.PersistentClient(path=CHROMA_PATH)
 collection = client.get_collection("recipes")
 
 print(f"Total recipes in collection: {collection.count()}\n")
 
 def search(query_text, n_results=5, where=None):
-    query_embedding = model.encode(query_text).tolist()
-    results = collection.query(
-        query_embeddings=[query_embedding],
+    return collection.query(
+        query_texts=[query_text],
         n_results=n_results,
         where=where
     )
-    return results
 
 # --- TEST 1: Basit semantic arama ---
 print("=" * 60)
