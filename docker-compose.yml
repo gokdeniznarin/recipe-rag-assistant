@@ -1,15 +1,7 @@
 services:
-  chromadb:
-    image: chromadb/chroma:latest
-    container_name: recipe_chromadb
-    ports:
-      - "8000:8000"
-    volumes:
-      - chroma_data:/data
-    environment:
-      - IS_PERSISTENT=TRUE
-      - ANONYMIZED_TELEMETRY=FALSE
-
+  # ChromaDB servisi kaldırıldı (Faz 9): tarifler image'a gömülü (Faz 8), favoriler
+  # Firestore'a taşındı. Çalışma anında yazılan veri kalmadığı için ayrı bir veritabanı
+  # servisine ve kalıcı disk'e gerek yok. Bkz. CLAUDE.md → "şekil sorunu".
   api:
     build: ./api
     container_name: recipe_api
@@ -18,13 +10,10 @@ services:
     env_file:
       - .env
     environment:
-      - CHROMA_HOST=chromadb
       - GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/firebase-key.json
     volumes:
       # Firebase service-account anahtarı — repo'ya girmez (.gitignore), salt-okunur mount
       - ./api/firebase-key.json:/run/secrets/firebase-key.json:ro
-    depends_on:
-      - chromadb
 
   frontend:
     build: ./frontend
@@ -37,6 +26,3 @@ services:
       - ./frontend:/usr/share/nginx/html:ro
     depends_on:
       - api
-
-volumes:
-  chroma_data:
