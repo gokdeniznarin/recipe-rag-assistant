@@ -123,7 +123,7 @@
 - **Yeniden ingestion GEREKMEDİ:** vektörler aynı olduğu için mevcut 4886 embedding geçerli kaldı; koleksiyon yeniden yüklenmeden çalıştığı doğrulandı.
 - **Tuzak (çözüldü):** ChromaDB ONNX modelini çalışma anında indiriyor (~79MB, ölçüldü **~70sn**). Dockerfile'a build zamanında indiren `RUN` adımı eklendi; image'da 167MB olarak duruyor, çalışma anında indirme olmadığı doğrulandı. Atlanırsa kazanılan 5sn, 70sn olarak geri verilir.
 - **Beklenti düzeltmesi:** 1.14GB hâlâ Vercel'in 250MB limitinin üstünde — **API Vercel'e taşınamaz**, o kapı kapalı. Kazanç: ücretsiz Docker platformlarına rahat sığan bir boyut.
-- **Doğrulama:** gerçek `search_recipes` endpoint fonksiyonu çağrıldı (testler değil, asıl kod yolu) — filtre çıkarımı, ChromaDB araması ve Gemini cevabı çalışıyor, koleksiyon 4886 tarifle ayakta. Not: korumalı endpoint'e HTTP üzerinden Firebase token'ı olmadan girilemediği için fonksiyon doğrudan çağrılarak test edildi; tarayıcıdan uçtan uca doğrulama ayrıca yapılmalı.
+- **Doğrulama:** gerçek `search_recipes` endpoint fonksiyonu çağrıldı (testler değil, asıl kod yolu) — filtre çıkarımı, ChromaDB araması ve Gemini cevabı çalışıyor, koleksiyon 4886 tarifle ayakta. Ardından **tarayıcıdan uçtan uca doğrulandı**: gizli sekmede (önbelleğe takılmamak için) yapılan arama, değişiklik öncesiyle **aynı tarifleri** döndürdü. Faz 7 kapandı.
 
 ### Faz 6 (Firebase Auth Migrasyonu) ✅ — `firebase-auth` branch'inde
 - **Neden:** Kendi JWT'mizi imzalamak, bcrypt ile şifre hash'lemek ve Google ID token'ını elle doğrulamak bakım yükü ve güvenlik sorumluluğu getiriyordu. Firebase bunların hepsini üstleniyor.
