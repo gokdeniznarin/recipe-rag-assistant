@@ -5,7 +5,7 @@
 
 ## Teknoloji Kararları
 - **Backend:** Python, FastAPI
-- **Veritabanı:** Sadece ChromaDB (tek veritabanı kararı — hem semantic search hem metadata filtreleme aynı yerde yapılıyor, MongoDB kullanılmıyor)
+- **Veritabanı:** İki yer, ama **rolleri kesin ayrı** (Faz 8–9'da netleşti): **ChromaDB** yalnızca tarifler için — semantic search + metadata filtreleme aynı yerde yapılıyor (MongoDB kullanılmadı), veri salt-okunur ve image'a gömülü, ortada sunucu yok. **Firestore** ise çalışma anında değişen tek veri olan favoriler için. Eski "sadece ChromaDB" kararı favorileri de oraya koyuyordu; bu yanlıştı — her favori kaydına sahte bir `[[0.0] * 384]` embedding yazılıyordu, yani vektör veritabanı anahtar-değer deposu gibi kullanılıyordu. Ayrıca kalıcı disk ihtiyacının tek sebebi buydu ve deploy'u kilitliyordu.
 - **Embedding modeli:** `all-MiniLM-L6-v2` (İngilizce arayüz kararı verildiği için çok dilli model şart değil). Model **ChromaDB'nin kendi varsayılan embedding fonksiyonu** (`DefaultEmbeddingFunction`) üzerinden, **ONNX** motoruyla çalışıyor — `sentence-transformers` + `torch` kurulumu kaldırıldı (bkz. Faz 7). Kod artık embedding'i elle üretmiyor: `collection.query(query_texts=[...])` ile metni doğrudan ChromaDB'ye veriyor, embedding'i o üretiyor.
 - **LLM:** Google Gemini API, model **`gemini-2.5-flash`**, `google-genai` kütüphanesi (eski `google-generativeai` deprecated olduğu için güncel kütüphaneye geçildi). Model seçimi iki kez değişti: önce `gemini-2.5-flash` → `gemini-flash-latest` (ikinci API key'in projesinde 2.5'e erişim kapalıydı + alias deprecation'a karşı güvenliydi), sonra **geri `gemini-2.5-flash`'a** — çünkü alias'ın işaret ettiği model free tier'da sürekli **503 (overloaded)** veriyordu, SDK retry'ları her aramayı ~20sn'ye çıkarıyordu. Ölçüm: alias 20.1sn, `gemini-2.5-flash` ort. 3.5sn (**~6x**). Ödünleşim kabul edildi: sabit sürüm ileride deprecate olabilir, o zaman güncel sürüme taşınır (hata mesajı net gelir).
 - **Frontend:** Sade HTML/CSS/JS (React/Next.js tercih edilmedi — React öğrenme eğrisi kalan sürede risk yaratıyordu, projenin asıl değeri backend RAG pipeline'ında). Sayfa başına ayrı HTML dosyaları, ortak CSS tek dosyada, her sayfanın kendi JS dosyası. Sayfa yönlendirme klasik `<a href>` ile — SPA değil, MPA. Vercel'e statik site olarak deploy edilebilir yapıda.
@@ -13,7 +13,7 @@
 - **Kimlik doğrulama:** **Firebase Auth** (email/şifre + Google). Önceki custom JWT + bcrypt + manuel Google doğrulama kurulumundan tamamen geçildi (bkz. Faz 6). Şifre bizim sunucumuza hiç ulaşmıyor: tarayıcı doğrudan Firebase ile konuşuyor, `getIdToken()` ile alınan ID token her istekte `Authorization: Bearer` header'ına konuyor ve süresi dolunca SDK sessizce yeniliyor. Backend (`api/auth.py`) yalnızca Admin SDK ile `verify_id_token()` yapıp e-postayı çıkarıyor — başka hiçbir kimlik mantığı yok. Frontend Firebase JS SDK'nın **compat** build'ini kullanıyor (mevcut global-script/MPA mimarisini korumak için; modüler SDK sayfalar arası global paylaşımı bozardı). Kullanıcılar artık ChromaDB'de değil Firebase'de. Favoriler e-posta anahtarlı olduğu için migrasyondan hiç etkilenmedi.
 - **Kamera:** Tarayıcı `getUserMedia` API'si ile fotoğraf çekme, base64 olarak backend'e gönderilip Gemini vision ile malzeme tanıma (aynı Gemini modeli hem metin üretimi hem vision için kullanılıyor)
 - **Sesli arama:** Web Speech API (`SpeechRecognition`/`webkitSpeechRecognition`), `search.js` içinde mikrofon butonuna bağlı. Tarayıcı desteklemiyorsa (polyfill yok) buton feature-detection ile gizleniyor. Tanınan metin doğrudan arama kutusuna yazılıyor (kamera akışındaki "asla otomatik yazma" kararından farklı — burada kullanıcı zaten sesle metin girmek istiyor).
-- **Konteynerleştirme:** Docker + Docker Compose — 3 servis: `chromadb` (resmi `chromadb/chroma` image, volume ile kalıcı veri), `api` (`python:3.13-slim`, `uvicorn`, `.env` dosyası `env_file` ile aktarılıyor, `CHROMA_HOST=chromadb` ile servis adı üzerinden bağlanıyor), `frontend` (`nginx:alpine`, sade HTML/CSS/JS olduğu için build adımı yok). Firebase geçişiyle gelen eklemeler: `api` servisine service-account anahtarı salt-okunur mount ediliyor (`GOOGLE_APPLICATION_CREDENTIALS` ile gösteriliyor; anahtar hem `.gitignore` hem `api/.dockerignore` ile korunuyor, ne commit'e ne image katmanına girer), `frontend` klasörü bind-mount edildiği için JS/HTML değişikliği rebuild istemiyor (sadece `docker restart recipe_frontend` — nginx bu mount'ta dosyayı önbelleğe alabiliyor). Faz 7'de torch tamamen kaldırıldı: `api/Dockerfile` artık ne CPU-only torch kuruyor ne de `build-essential` istiyor; onun yerine ONNX embedding modelini **build sırasında** indirip image'a gömüyor (yoksa ChromaDB modeli ilk istekte indiriyor: ~79MB, ölçüldü ~70sn, yani her taze container başlangıcı o kadar gecikirdi).
+- **Konteynerleştirme:** Docker + Docker Compose — **2 servis** (Faz 9'a kadar 3'tü, `chromadb` kalktı): `api` (`python:3.13-slim`, `uvicorn`, `.env` dosyası `env_file` ile aktarılıyor, tarifleri image'a gömülü `chroma_data/`'dan okuyor, favoriler Firestore'da — **stateless**), `frontend` (`nginx:alpine`, sade HTML/CSS/JS olduğu için build adımı yok). Firebase geçişiyle gelen eklemeler: `api` servisine service-account anahtarı salt-okunur mount ediliyor (`GOOGLE_APPLICATION_CREDENTIALS` ile gösteriliyor; anahtar hem `.gitignore` hem `api/.dockerignore` ile korunuyor, ne commit'e ne image katmanına girer), `frontend` klasörü bind-mount edildiği için JS/HTML değişikliği rebuild istemiyor (sadece `docker restart recipe_frontend` — nginx bu mount'ta dosyayı önbelleğe alabiliyor). Faz 7'de torch tamamen kaldırıldı: `api/Dockerfile` artık ne CPU-only torch kuruyor ne de `build-essential` istiyor; onun yerine ONNX embedding modelini **build sırasında** indirip image'a gömüyor (yoksa ChromaDB modeli ilk istekte indiriyor: ~79MB, ölçüldü ~70sn, yani her taze container başlangıcı o kadar gecikirdi).
 - **Dil:** Arayüz İngilizce (dataset de İngilizce, tutarlılık için)
 - **Git:** Conventional commits, İngilizce mesajlar, scope kullanımı (örn. `feat(data): ...`, `fix(auth): ...`)
 
@@ -44,7 +44,7 @@
 - **Hafta 4:** Frontend ✅ (tüm sayfalar, tüm akışlar, tutarlı tasarım)
 - **Hafta 5:** Google OAuth ✅, mikrofon (Web Speech API) ✅, kullanıcı menüsü ✅, Docker Compose'a frontend ekleme ✅
 - **Hafta 6:** Firebase Auth migrasyonu ✅ (`firebase-auth` branch'inde, 8 senaryo canlı doğrulandı)
-- **Hafta 7 (şu an buradayız) — deploy hazırlığı:** torch'un kaldırılması ✅ (Faz 7), `recipes`'in image'a gömülmesi ✅ (Faz 8) — kalan: **favorites → Firestore** (şekil sorununun kalan yarısı, `chromadb` servisini kaldıracak olan adım), 4 deploy blocker'ı, `main`'e merge, README, sunum hazırlığı, GitHub'a bağlama
+- **Hafta 7 (şu an buradayız) — deploy hazırlığı:** torch'un kaldırılması ✅ (Faz 7), `recipes`'in image'a gömülmesi ✅ (Faz 8), favorites → Firestore + `chromadb` servisinin kaldırılması ✅ (Faz 9). Backend artık **stateless**, şekil sorunu bitti. Kalan: **4 deploy blocker'ı**, platform seçimi (HF Spaces / Cloud Run), `main`'e merge, README, sunum hazırlığı, GitHub'a bağlama
 
 ## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
 ### Backend
@@ -58,9 +58,9 @@
 - `api/auth.py` — tek iş: Firebase Admin SDK ile `verify_id_token()` → e-posta. `get_current_user_email` dependency'si korumalı endpoint'lerde kullanılıyor. (Eskiden JWT + bcrypt + kullanıcı kayıt/giriş vardı; Firebase geçişiyle ~140 satırdan ~30 satıra düştü.)
 - `api/llm.py` — Gemini API ile LLM cevap üretimi + fotoğraftan malzeme tanıma (`gemini-2.5-flash`)
 - `api/filters.py` — kullanıcı sorgusundan diyet/süre/kalori filtresi çıkarımı
-- `api/favorites.py` — favoriler sistemi (Repository Pattern'den esinlenmiş, kendi ChromaDB koleksiyonunu kendi yönetiyor). Firebase migrasyonunda **tek satır değişmedi** — favoriler e-posta anahtarlı ve e-posta her iki auth sisteminde de aynı kimlik.
+- `api/favorites.py` — favoriler sistemi (Repository Pattern'den esinlenmiş, kendi veri deposunu kendi yönetiyor). **Firestore** kullanıyor (Faz 9; öncesinde ChromaDB'ydi). Faz 6'daki Firebase Auth migrasyonunda **tek satır değişmemişti** — favoriler e-posta anahtarlı ve e-posta her iki auth sisteminde de aynı kimlik. Faz 9'da bunun tersi oldu: favoriler baştan yazıldı ama `main.py` hiç değişmedi (aynı fonksiyon imzaları, aynı `ValueError`'lar).
 - `api/Dockerfile` — `python:3.13-slim` tabanlı, `uvicorn` ile 8080 portunda çalıştırıyor. ONNX embedding modelini build sırasında indirip image'a gömüyor. Image **1.2GB** (Faz 7 öncesi 2.83GB → Faz 7 sonrası 1.14GB → Faz 8'de +35MB tarif verisi).
-- `docker-compose.yml` — 3 servis: `chromadb`, `api`, `frontend`
+- `docker-compose.yml` — **2 servis**: `api`, `frontend` (Faz 9'da `chromadb` kaldırıldı)
 
 ### Frontend
 - `frontend/index.html` — giriş/kayıt sayfası (Sign in / Create account sekmeleri, "Continue with Google" butonu). Firebase compat SDK script'leri + `firebase.js`, diğer JS'lerden önce yükleniyor (sıra önemli).
@@ -79,12 +79,12 @@
 ## Henüz Yapılmadı
 - README + sunum hazırlığı (Faz 5)
 - GitHub'a bağlama (Faz 5 sonunda toplu push planlanıyor — henüz sadece lokal Git kullanılıyor)
-- **Deploy** (planlanan: frontend → Vercel, API → Docker destekleyen bir platform). **Vercel API'yi hâlâ kaldıramaz**: Faz 7'den sonra image 1.14GB ve bu Vercel'in 250MB serverless limitinin çok üstünde — o kapı kapalı. Adaylar: **Hugging Face Spaces** (ücretsiz, kart istemiyor, 16GB RAM — staj/demo için en düşük sürtünmeli) ya da **Google Cloud Run** (ücretsiz kota yeterli, sıfıra ölçekleniyor, Firebase+Gemini ile aynı ekosistem, ama kart zorunlu). Railway/Fly.io'nun ücretsiz katmanı kalmadı.
-- **Deploy'un önündeki asıl mimari engel — "şekil sorunu" (yarısı çözüldü):** Bulut container'ları öldürülüp yeniden başlatılabilir olmalı; diske yazdığın her şey kaybolur, kalıcı disk kiralamak ücretsiz katmanların vermediği şeydir. Backend'in iki ChromaDB koleksiyonu var ve doğaları çok farklı:
-  - `recipes` — ✅ **ÇÖZÜLDÜ (Faz 8)**. Ingestion ile **bir kez** yazılıyor, sonra sadece okunuyor (`query`/`get`); kalıcı disk isteyen bir veritabanı değil, salt-okunur bir dosya. Artık `api/chroma_data/` klasöründe duruyor ve image'a gömülüyor, `main.py` `PersistentClient` ile doğrudan okuyor. Arama için ChromaDB sunucusuna ihtiyaç kalmadı.
-  - `favorites` — ❌ **KALAN İŞ**. Çalışma anında değişen tek veri; kalıcı disk ihtiyacının ve `chromadb` servisinin **tek** sebebi artık bu. **Firestore'a taşınmalı** (`firebase-admin` ve credential'lar zaten kurulu). Ek kanıt: `favorites.py` ChromaDB'ye sahte bir embedding (`[[0.0] * 384]`) yazıyor — vektör veritabanına vektörü olmayan veri konuyor, yani ChromaDB burada yanlış alet.
+- **Deploy** (planlanan: frontend → Vercel, API → Docker destekleyen bir platform). Backend Faz 9'dan beri **stateless tek container**, yani mimari engel yok; ihtiyaç sadece "1-2GB RAM veren bir Docker platformu". **Vercel API'yi yine de kaldıramaz**: image 1.2GB, Vercel'in 250MB serverless limitinin çok üstünde — o kapı kapalı. Adaylar: **Hugging Face Spaces** (ücretsiz, kart istemiyor, 16GB RAM — staj/demo için en düşük sürtünmeli; repodan build aldığı için gömülü verinin git'te olması şart, ki öyle) ya da **Google Cloud Run** (ücretsiz kota yeterli, sıfıra ölçekleniyor, Firebase+Gemini ile aynı ekosistem, ama kart zorunlu). Railway/Fly.io'nun ücretsiz katmanı kalmadı.
+- **"Şekil sorunu" — ✅ ÇÖZÜLDÜ (Faz 8–9).** *Bulut container'ları öldürülüp yeniden başlatılabilir olmalı; diske yazdığın her şey kaybolur, kalıcı disk kiralamak ücretsiz katmanların vermediği şeydir. Backend'in iki ChromaDB koleksiyonu vardı ve doğaları çok farklıydı:*
+  - `recipes` — ✅ **Faz 8**. Ingestion ile **bir kez** yazılıyor, sonra sadece okunuyor (`query`/`get`); kalıcı disk isteyen bir veritabanı değil, salt-okunur bir dosya. Artık `api/chroma_data/` klasöründe duruyor ve image'a gömülüyor, `main.py` `PersistentClient` ile doğrudan okuyor.
+  - `favorites` — ✅ **Faz 9**. Çalışma anında değişen tek veriydi; kalıcı disk ihtiyacının ve `chromadb` servisinin tek sebebi buydu. **Firestore'a taşındı.**
 
-  `favorites` de taşınınca backend **tek, stateless container** olur (3 servis → 2 → 1, kalıcı disk → 0) ve barındırma sorunu kendiliğinden çözülür.
+  **Sonuç: backend artık tek, stateless container.** 3 servis → 2 (`api` + `frontend`), kalıcı disk → 0. Barındırmanın önündeki mimari engel kalktı; geriye sadece 4 deploy blocker'ı ve platform seçimi kaldı.
 
 ### ⚠️ Deploy'da MUTLAKA düzeltilecekler (canlıda patlar)
 - **`api.js`'deki `API` sabiti**: şu an `` `http://${window.location.hostname}:8080` `` — bilgisayarda localhost, telefonda LAN IP olarak çözülsün diye böyle. Production'da **bozulur**: frontend ve backend farklı domain'lerde olacak, HTTPS olacak ve `:8080` portu olmayacak (`http://app.vercel.app:8080` üretir → yanlış). Ortama göre ayarlanabilir bir config'e alınmalı (`config.js` ya da build-time değişken).
@@ -99,10 +99,23 @@
 - **`nut_free` etiketinde açık var** (Faz 7'de tesadüfen fark edildi): "nut free cookies for kids" araması `Pine Nut and Almond Cookies` ve `wheat free peanut butter cookies` döndürüyor — ikisi de `nut_free: True` etiketli, yani yanlış. `validate_tags.py` nut kontrolünde 0 çelişki verdiği için doğrulama scriptinin de gözden kaçırdığı bir durum var (muhtemelen "pine nut"/"peanut butter" gibi bileşik adlar kural listesine takılmıyor). Sunumda sorulabilecek türden; `clean_data.py` + `validate_tags.py` birlikte gözden geçirilmeli.
 
 ## Şu An Üzerinde Çalışılıyor
-- **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Firebase Auth migrasyonu (Faz 6) + torch'un kaldırılması (Faz 7) + `recipes`'in image'a gömülmesi (Faz 8) bu branch'te. `main` el değmemiş durumda — sorun çıkarsa `git checkout main` + `docker compose up -d --build` ile eski sisteme dönülebilir (rebuild şart: frontend bind-mount olduğu için dosyalar anında eskiye döner ama API image'ı yeni kalır, yoksa karışım oluşur).
+- **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Firebase Auth migrasyonu (Faz 6) + torch'un kaldırılması (Faz 7) + `recipes`'in image'a gömülmesi (Faz 8) + favorites → Firestore (Faz 9) bu branch'te. `main` el değmemiş durumda — sorun çıkarsa `git checkout main` + `docker compose up -d --build` ile eski sisteme dönülebilir (rebuild şart: frontend bind-mount olduğu için dosyalar anında eskiye döner ama API image'ı yeni kalır, yoksa karışım oluşur).
 - Repo **hâlâ tamamen lokal** — remote yok, commit'ler hiçbir yere push edilmedi.
 
-## Güncel Durum: Faz 8 (Faz 7 TAMAMLANDI ✅)
+## Güncel Durum: Faz 9 (Faz 8 TAMAMLANDI ✅)
+
+### Faz 9 (favorites → Firestore, `chromadb` servisinin kaldırılması) ✅
+- **Neden:** Favoriler çalışma anında değişen tek veriydi, dolayısıyla kalıcı disk ve ayrı veritabanı servisi ihtiyacının **tek** sebebiydi. Ayrıca ChromaDB bu iş için yanlış aletti: her kayda sahte bir `[[0.0] * 384]` embedding yazılıyordu — vektör veritabanı anahtar-değer deposu gibi kullanılıyordu. Firestore zaten "ödenmiş" bir maliyetti: `firebase-admin` ve service-account anahtarı Faz 6'da Auth için kurulmuştu.
+- **Ne yapıldı:** `favorites.py` Firestore'a geçti (`firestore.client()`, `favorites` koleksiyonu, doküman ID'si yine bileşik: `{email}_{recipe_id}` — duplike engelleme aynı şekilde çalışıyor). `docker-compose.yml`'den `chromadb` servisi ve `chroma_data` volume tanımı kaldırıldı, `CHROMA_HOST` ve `depends_on` çıktı.
+- **`main.py` HİÇ DEĞİŞMEDİ:** `favorites.py` aynı üç fonksiyonu aynı imzalarla ve aynı `ValueError`'larla veriyor. Faz 6'nın aynadaki görüntüsü — orada favoriler auth değişiminden etkilenmemişti, burada da main favoriler değişiminden etkilenmedi.
+- **Doğrulama (chromadb container'ı tamamen kaldırılmış hâlde):** arama aynı sonuçları döndürüyor (17450/37913/306021), tarif detayı çalışıyor, favorilerde ekleme / listeleme / duplike reddi / silme / olmayanı silme reddi — hepsi eskisiyle aynı davranıyor, hata mesajları dahil.
+- **Yan kazanç:** `firestore.client()` **tembel**, ağ bağlantısını import anında kurmuyor. ChromaDB `HttpClient` kuruyordu ve bu yüzden servis kapalıyken API hiç açılmıyordu (Faz 8'de canlı görüldü). Artık veri deposu erişilemese bile API açılır, sadece favori istekleri hata verir.
+- **Firestore kurulumu:** Native mode, konum kalıcı olarak seçildi. Güvenlik kuralları "production mode" (kilitli) — doğrusu bu, çünkü backend **Admin SDK** ile bağlanıyor ve Admin SDK güvenlik kurallarını atlıyor; frontend Firestore'a hiç doğrudan dokunmuyor, her şey API'den geçiyor.
+- **Eski favoriler taşınmadı** (bilinçli karar, Faz 6'daki `users` kararıyla tutarlı). `recipe-rag-assistant_chroma_data` volume'ü **silinmedi** — eski kayıtlar geri dönüş için duruyor.
+
+**Son durum:** 2 container (`api` ~180MB RAM + `frontend`), image 1.2GB, kalıcı disk yok, yazılan hiçbir yerel veri yok.
+
+## Faz 8 (Faz 7 TAMAMLANDI ✅)
 
 ### Faz 8 (`recipes` koleksiyonunun image'a gömülmesi) ✅
 - **Ne yapıldı:** `load_to_chromadb.py` artık `HttpClient` yerine `PersistentClient` ile `api/chroma_data/` klasörüne yazıyor; `main.py` bu klasörü doğrudan açıyor (`PersistentClient(path=.../chroma_data)`). Yol `__file__`'a göre hesaplanıyor — lokalde `api/chroma_data`, container'da `/app/chroma_data`, aynı kod ikisinde de çalışıyor. Arama artık ChromaDB sunucusuna bağlı değil.
@@ -111,13 +124,16 @@
 
 ### Faz 8 sırasında karşılaşılan/çözülen konular
 - **⚠️ ChromaDB `PersistentClient` Windows'ta HNSW indeksini diske YAZMIYOR** (en önemli bulgu, canlı doğrulandı): chromadb 1.5.9 ile Windows'ta ingestion çalışıyor, script kendi içinde `count: 4886` diyor, ama **yeni bir process** aynı klasörü açtığında `count`/`query`/`get` hepsi patlıyor: `InternalError: ... Error loading hnsw index`. Sebep: indeks klasörüne sadece `index_metadata.pickle` yazılıyor, asıl vektör dosyaları (`data_level0.bin`, `header.bin`, `length.bin`, `link_lists.bin`) hiç oluşmuyor. Aynı script **Linux container'da** çalıştırıldığında dosyaların hepsi yazılıyor ve yeni process sorunsuz okuyor (minimal repro ile ayrıca doğrulandı). Sqlite'ta 4886 embedding duruyor, yani veri kaybı değil — sadece indeks materyalize olmuyor.
+  **Sınır düzeltmesi (Faz 9'da öğrenildi):** sorun **yazmada**, okumada değil — Windows, Linux'un ürettiği indeksi sorunsuz **okuyabiliyor** (`count: 4886` döndüğü görüldü). Yani kural "ingestion Linux'ta çalışmalı"; okuma her yerde çalışır.
   **Sonuç: ingestion artık Linux'ta çalıştırılmalı** (hedef ortam zaten Linux, dolayısıyla doğru olan da bu):
   ```
   docker run --rm -v "$PWD:/work" recipe-rag-assistant-api \
     sh -c "pip install pandas && python /work/ingestion/load_to_chromadb.py"
   ```
   (`pandas` API image'ında yok — ingestion'ın bağımlılığı, API'nin değil.)
-- **`PersistentClient` salt-okunur klasör açamıyor:** `-v ...:/data:ro` ile denendi → `attempt to write a readonly database`. Chroma sqlite'a yazmak istiyor (WAL vb.). Image'a `COPY` edilen veri container'ın **yazılabilir katmanında** olduğu için sorun çıkmıyor; ama ileride veri read-only bir volume'dan mount edilmek istenirse bu duvara çarpılır.
+- **`PersistentClient` bir klasörü AÇARKEN BİLE `chroma.sqlite3`'e yazıyor** (işletim sisteminden bağımsız): `-v ...:/data:ro` ile denendiğinde doğrudan `attempt to write a readonly database` veriyor. İki sonucu var:
+  - Image'a `COPY` edilen veri container'ın **yazılabilir katmanında** olduğu için sorun çıkmıyor. Ama veri ileride read-only bir volume'dan mount edilmek istenirse bu duvara çarpılır.
+  - **Repodaki `api/chroma_data`'ya script yöneltmek, commit edilmiş 28MB'lık dosyayı kirletiyor** — git'te sahte bir değişiklik çıkıyor (veri bozulmuyor, `git checkout api/chroma_data/chroma.sqlite3` ile geri alınıyor). Bu yüzden `test_search.py` `CHROMA_PATH` env değişkeniyle image'daki kopyaya yöneltilebiliyor; doğru kullanım o.
 - **`load_to_chromadb.py`'deki `✓` karakteri Windows'ta script'i çöktürüyordu** (`UnicodeEncodeError`, cp1254 konsol kodlaması). Veri yüklendikten sonraki son `print`'te patlıyordu; düz metne çevrildi. İlk teşhiste bu çökmenin indeks sorununun sebebi sanıldı — değilmiş, iki ayrı sorun.
 - **35MB veri git'e commit edildi:** `recipes_cleaned.csv` `.gitignore`'da (`*.csv`), dolayısıyla repodan build alan bir platform (HF Spaces gibi) veriyi yeniden üretemez — gömülü verinin repoda olması şart. Repo 831KB → `.git` 19MB. **Not:** ileride her yeniden ingestion git geçmişine ~35MB'lık yeni bir blob ekler.
 
@@ -201,16 +217,20 @@
 - **Instructions parse edge case**: Bazı tariflerin ham verisinde R vector'daki boş elementler `,` veya `\` gibi anlamsız karakterlere çevrilmiş, bu da 17 tane sahte adım oluşturuyordu. `recipe.js`'deki `parseInstructions()` fonksiyonu 3 karakterden kısa ve sadece noktalama içeren parçaları filtreliyor. Sağlıklı tarifleri etkilemiyor.
 - **Live Server + `file://` protokolü**: `getUserMedia` API'si `file://` üzerinde çalışmıyor, HTTP sunucusu şart. VS Code Live Server extension kullanılıyor.
 
-## ChromaDB Koleksiyonları (güncel)
-Faz 8'den beri koleksiyonlar **iki ayrı yerde**:
+## Veri Nerede Duruyor (güncel — Faz 9 sonrası)
 
-**Image'a gömülü (`api/chroma_data/`, sunucu gerekmiyor):**
+**Image'a gömülü ChromaDB (`api/chroma_data/`, sunucu yok):**
 - `recipes` — 4886 tarif (bkz. yukarıdaki alanlar). Salt-okunur; `main.py` `PersistentClient` ile okuyor.
 
-**`chromadb` servisinde (Docker volume, `recipe_chromadb`):**
-- `favorites` — kullanıcı favorileri (user_email, recipe_id, added_at), bileşik ID ile. **Servisin var olma sebebi artık sadece bu** — Firestore'a taşınınca servis kalkacak.
-- `users` — **artık kullanılmıyor** (email, hashed_password, auth_provider, created_at). Faz 6'da kimlik Firebase'e taşındı; bu koleksiyon okunmuyor ama geri dönüş için bilerek silinmedi. Kullanıcılar artık Firebase Auth'ta.
-- `recipes` — servisteki kopya da duruyor ama **artık okunmuyor** (Faz 8'den beri gömülü kopya kullanılıyor). Geri dönüş için silinmedi.
+**Firestore (`favorites` koleksiyonu):**
+- Kullanıcı favorileri (user_email, recipe_id, added_at). Doküman ID'si bileşik: `{email}_{recipe_id}`.
+
+**Firebase Auth:** kullanıcılar (Faz 6'dan beri).
+
+**Ölü veri — `recipe-rag-assistant_chroma_data` volume'ünde (servis kaldırıldı, volume geri dönüş için duruyor):**
+- `favorites` — Faz 9 öncesi favoriler. Taşınmadı (bilinçli karar).
+- `users` — Faz 6 öncesi kullanıcılar (email, hashed_password, auth_provider, created_at).
+- `recipes` — servisteki eski kopya; Faz 8'den beri okunmuyor.
 
 ## Arama Akışı Kararı (Faz 3/4)
 Üç bağımsız kullanım senaryosu:
