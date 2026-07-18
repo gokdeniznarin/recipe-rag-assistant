@@ -6,9 +6,9 @@
  * - 401 dönerse otomatik çıkış yapar
  */
 
-// Sayfa hangi host'tan açıldıysa API'yi de oradan çağır: bilgisayarda
-// localhost, telefondan LAN IP'si (örn. 10.240.100.10) olarak çözülür.
-const API = `http://${window.location.hostname}:8080`;
+// API adresi ortama göre config.js'te belirlenir (bu dosyadan önce yüklenir):
+// yerelde/LAN'da localhost:8080, canlıda Render. Bkz. frontend/js/config.js.
+const API = window.API_BASE;
 
 // ── Token ────────────────────────────────────────────────
 // Firebase ID token'ı gerektiğinde otomatik yenilenir.
