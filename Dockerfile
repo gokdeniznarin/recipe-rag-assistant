@@ -28,4 +28,7 @@ COPY api/ .
 
 EXPOSE 8080
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Portu ortamdan al: Render (ve çoğu PaaS) dinlenecek portu $PORT ile bildiriyor.
+# Yerelde $PORT tanımlı değil → 8080'e düşüyor, docker-compose eskisi gibi çalışıyor.
+# sh -c + exec: değişken genişlesin ama uvicorn PID 1 kalsın (düzgün kapanma/sinyal).
+CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"]
