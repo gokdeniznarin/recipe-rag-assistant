@@ -9,9 +9,16 @@ from favorites import add_favorite, get_favorites, remove_favorite
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Recipe RAG Assistant API")
+# CORS: hangi sitelerin bu API'yi tarayıcıdan çağırabileceği. Geliştirmede "*"'dı;
+# production'da kendi origin'lerimizle sınırlı.
+#   - allow_origins: canlı frontend (Vercel production domain'i)
+#   - allow_origin_regex ile ek olarak izin verilenler:
+#       * Vercel'in bu projeye ait preview deploy'ları (her deploy'da host değişiyor)
+#       * yerel geliştirme: localhost / 127.0.0.1 / LAN IP (herhangi bir port)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://recipe-rag-assistant.vercel.app"],
+    allow_origin_regex=r"https://recipe-rag-assistant[a-z0-9-]*\.vercel\.app|http://(localhost|127\.0\.0\.1|(\d{1,3}\.){3}\d{1,3})(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
