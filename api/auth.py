@@ -1,17 +1,26 @@
 import os
+import json
 import firebase_admin
 from firebase_admin import credentials, auth as firebase_auth
 from fastapi import Header, HTTPException
 
 
 # ── Firebase Admin SDK ────────────────────────────────────
-# GOOGLE_APPLICATION_CREDENTIALS env değişkeni, service-account JSON dosyasının
-# yolunu göstermeli (docker-compose'da salt-okunur olarak mount edilir).
+# Service-account kimliğini üç kaynaktan biriyle bulur (öncelik sırasıyla):
+#   1. GOOGLE_APPLICATION_CREDENTIALS → JSON dosyasının yolu. Lokal Docker bunu
+#      kullanıyor (docker-compose salt-okunur mount ediyor).
+#   2. FIREBASE_CREDENTIALS_JSON → JSON'ın kendisi (dosya değil). Anahtarı dosya
+#      olarak koyamadığın platformlar için, örn. HF Spaces Secrets. Dosya bir
+#      yerde diske düşmediği için bu daha güvenli.
+#   3. Hiçbiri yoksa Application Default Credentials (GCP/Cloud Run ortamı).
 # Uygulama içinde tek sefer başlatılır.
 if not firebase_admin._apps:
     cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    cred_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
     if cred_path and os.path.exists(cred_path):
         firebase_admin.initialize_app(credentials.Certificate(cred_path))
+    elif cred_json:
+        firebase_admin.initialize_app(credentials.Certificate(json.loads(cred_json)))
     else:
         # GCP ortamında Application Default Credentials'a düş
         firebase_admin.initialize_app()
