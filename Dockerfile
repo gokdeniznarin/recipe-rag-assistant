@@ -12,7 +12,14 @@ RUN pip install --no-cache-dir --timeout 120 --retries 10 -r requirements.txt
 # Embedding modelini (all-MiniLM-L6-v2, ONNX) build sırasında indirip image'a göm.
 # Yoksa ChromaDB bunu ilk istekte indiriyor (~79MB, ölçüldü: ~70sn) ve canlıda
 # her taze container başlangıcı o kadar gecikir.
-RUN python -c "import chromadb.utils.embedding_functions as ef; ef.DefaultEmbeddingFunction()(['warmup'])"
+# ~79MB'lık indirme ara sıra takılıyor (ölçüldü: aynı adım bir denemede çöktü,
+# diğerinde geçti). Tek deneme HF gibi bir build sunucusunda build'i kırabilir —
+# 5 kez deneyip hepsi başarısız olursa build'i bilerek fail ettir.
+RUN for i in 1 2 3 4 5; do \
+      if python -c "import chromadb.utils.embedding_functions as ef; ef.DefaultEmbeddingFunction()(['warmup'])"; then exit 0; fi; \
+      echo "ONNX model indirme denemesi $i basarisiz, 5sn sonra tekrar..." >&2; sleep 5; \
+    done; \
+    echo "ONNX model 5 denemede de inmedi" >&2; exit 1
 
 # Sadece api/ image'a giriyor (frontend Vercel'e, ingestion dev-only). Gizli anahtar
 # ve gereksiz dosyalar .dockerignore ile dışarıda tutuluyor — özellikle
