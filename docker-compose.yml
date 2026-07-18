@@ -3,7 +3,12 @@ services:
   # Firestore'a taşındı. Çalışma anında yazılan veri kalmadığı için ayrı bir veritabanı
   # servisine ve kalıcı disk'e gerek yok. Bkz. CLAUDE.md → "şekil sorunu".
   api:
-    build: ./api
+    # Tek Dockerfile repo kökünde (HF Spaces de onu kullanıyor). Context kök,
+    # çünkü Dockerfile api/ dışına referans vermiyor ama build'in kökten
+    # çalışması HF ile birebir aynı image'ı üretiyor.
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: recipe_api
     ports:
       - "8080:8080"

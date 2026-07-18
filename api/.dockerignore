@@ -1,7 +1,0 @@
-# Firebase service-account anahtarı image'a gömülmesin — runtime'da volume ile mount edilir
-firebase-key.json
-*-firebase-adminsdk-*.json
-
-__pycache__/
-*.pyc
-.env

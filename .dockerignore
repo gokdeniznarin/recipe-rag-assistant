@@ -1,0 +1,19 @@
+# ── Gizli anahtarlar — ASLA image'a girmesin ──────────────
+api/firebase-key.json
+*-firebase-adminsdk-*.json
+.env
+
+# ── API image'ına gerekmeyenler ───────────────────────────
+frontend/
+ingestion/
+.git/
+.claude/
+**/__pycache__/
+*.pyc
+
+# Dataset ve dev dosyaları (build context'i şişirmesin)
+*.csv
+*.parquet
+*.jpg
+*.jpeg
+*.png
