@@ -44,7 +44,8 @@
 - **Hafta 4:** Frontend ✅ (tüm sayfalar, tüm akışlar, tutarlı tasarım)
 - **Hafta 5:** Google OAuth ✅, mikrofon (Web Speech API) ✅, kullanıcı menüsü ✅, Docker Compose'a frontend ekleme ✅
 - **Hafta 6:** Firebase Auth migrasyonu ✅ (`firebase-auth` branch'inde, 8 senaryo canlı doğrulandı)
-- **Hafta 7 (şu an buradayız) — deploy hazırlığı:** torch'un kaldırılması ✅ (Faz 7), `recipes`'in image'a gömülmesi ✅ (Faz 8), favorites → Firestore + `chromadb` servisinin kaldırılması ✅ (Faz 9). Backend artık **stateless**, şekil sorunu bitti. Kalan: **4 deploy blocker'ı**, platform seçimi (HF Spaces / Cloud Run), `main`'e merge, README, sunum hazırlığı, GitHub'a bağlama
+- **Hafta 7 — deploy hazırlığı:** torch'un kaldırılması ✅ (Faz 7), `recipes`'in image'a gömülmesi ✅ (Faz 8), favorites → Firestore + `chromadb` servisinin kaldırılması ✅ (Faz 9). Backend **stateless** hâle geldi.
+- **Hafta 8 (şu an buradayız) — CANLI:** Backend → Render, frontend → Vercel ✅ (Faz 10). 4 blocker'ın 3'ü çözüldü, mobil Google girişi (④) bilinçli ertelendi. Kalan: `main`'e merge, README/sunum hazırlığı, (opsiyonel) mobil giriş.
 
 ## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
 ### Backend
@@ -69,7 +70,8 @@
 - `frontend/favorites.html` — kayıtlı tariflerin listesi (boş durum ekranı ile)
 - `frontend/css/style.css` — tüm sayfalar için ortak CSS (design tokens, layout, components, user menu dropdown)
 - `frontend/js/firebase.js` — Firebase init + `authReady` promise'i (oturum durumu **kesinleşene** kadar bekler). Her sayfada compat SDK script'lerinden sonra, diğer JS'lerden önce yüklenir.
-- `frontend/js/api.js` — ortak API katmanı (Firebase ID token'ı header'a ekleyen fetch wrapper, `authReady` tabanlı auth guard, 401'de otomatik logout, kullanıcı menüsü/email + dropdown sign out, doğrulanmamış e-posta için hatırlatma bandı)
+- `frontend/js/config.js` — `window.API_BASE`'i ortama göre kuruyor (yerel/LAN → `localhost:8080`, canlı → Render). `api.js`'ten önce yüklenir (Faz 10).
+- `frontend/js/api.js` — ortak API katmanı (backend adresini `window.API_BASE`'den alır; Firebase ID token'ı header'a ekleyen fetch wrapper, `authReady` tabanlı auth guard, 401'de otomatik logout, kullanıcı menüsü/email + dropdown sign out, doğrulanmamış e-posta için hatırlatma bandı)
 - `frontend/js/auth.js` — giriş/kayıt formu mantığı + Google girişi (Firebase `signInWithPopup`), hesap bağlama (`linkWithCredential`), kayıtta `sendEmailVerification()`
 - `frontend/js/search.js` — arama sayfası, mode tabs, kamera stream (`getUserMedia`), sesli arama (`SpeechRecognition`), sonuç render
 - `frontend/js/recipe.js` — detay sayfası, `parseInstructions()` (R vector kalıntılarını filtreliyor)
@@ -84,13 +86,13 @@
   - `recipes` — ✅ **Faz 8**. Ingestion ile **bir kez** yazılıyor, sonra sadece okunuyor (`query`/`get`); kalıcı disk isteyen bir veritabanı değil, salt-okunur bir dosya. Artık `api/chroma_data/` klasöründe duruyor ve image'a gömülüyor, `main.py` `PersistentClient` ile doğrudan okuyor.
   - `favorites` — ✅ **Faz 9**. Çalışma anında değişen tek veriydi; kalıcı disk ihtiyacının ve `chromadb` servisinin tek sebebi buydu. **Firestore'a taşındı.**
 
-  **Sonuç: backend artık tek, stateless container.** 3 servis → 2 (`api` + `frontend`), kalıcı disk → 0. Barındırmanın önündeki mimari engel kalktı; geriye sadece 4 deploy blocker'ı ve platform seçimi kaldı.
+  **Sonuç: backend artık tek, stateless container.** 3 servis → 2 (`api` + `frontend`), kalıcı disk → 0. Bu sayede **Faz 10'da canlıya çıktı** (backend → Render, frontend → Vercel).
 
-### ⚠️ Deploy'da MUTLAKA düzeltilecekler (canlıda patlar)
-- **`api.js`'deki `API` sabiti**: şu an `` `http://${window.location.hostname}:8080` `` — bilgisayarda localhost, telefonda LAN IP olarak çözülsün diye böyle. Production'da **bozulur**: frontend ve backend farklı domain'lerde olacak, HTTPS olacak ve `:8080` portu olmayacak (`http://app.vercel.app:8080` üretir → yanlış). Ortama göre ayarlanabilir bir config'e alınmalı (`config.js` ya da build-time değişken).
-- **Google girişinde `signInWithPopup` → mobilde sorunlu**: mobil tarayıcılar popup'ları agresif engelliyor; Instagram/Facebook gibi uygulamaların **in-app tarayıcılarında** popup çoğu zaman hiç açılmıyor, iOS Safari'de third-party cookie davranışı ekstra sorun çıkarıyor. Firebase'in mobil önerisi **`signInWithRedirect`**. Yaygın çözüm: cihaza göre seçim (masaüstü popup, mobil redirect) ya da her yerde redirect. Localhost'ta popup çalıştığı için şu an görünmüyor, gerçek kullanıcı telefondan girmeye çalışınca çıkacak.
-- **Firebase Authorized domains**: production domain'i Firebase Console → Authentication → Settings → Authorized domains listesine eklenmeli, yoksa Google girişi `auth/unauthorized-domain` verir (şu an listede sadece `localhost` var).
-- **CORS**: `main.py`'de `allow_origins=["*"]` (geliştirme için). Production'da gerçek frontend domain'iyle sınırlanmalı.
+### Deploy blocker'ları (Faz 10'da çözüldü)
+- ✅ **`api.js`'deki `API` sabiti** — `frontend/js/config.js`'e taşındı; ortama göre seçiyor (yerel/LAN → `localhost:8080`, canlı → Render). Bkz. Faz 10.
+- ✅ **Firebase Authorized domains** — `recipe-rag-assistant.vercel.app` Firebase Console'a eklendi (kullanıcı adımı). `localhost` da listede kaldı.
+- ✅ **CORS** — `main.py`'de artık `allow_origins=["*"]` değil: Vercel production domain'i + `allow_origin_regex` (Vercel preview'ları + localhost/127/LAN, herhangi port). Canlıda doğrulandı (izinli origin yansıyor, `evil.com` ve suffix-spoof reddediliyor).
+- ⏳ **Google girişinde `signInWithPopup` → mobilde sorunlu** (BİLİNÇLİ ERTELENDİ): mobil tarayıcılar popup'ları engelliyor (Instagram/Facebook in-app tarayıcıları, iOS Safari third-party cookie). Firebase önerisi **`signInWithRedirect`** (cihaza göre seçim). **Ertelendi** çünkü: (1) çalışan masaüstü girişini + hesap bağlama akışını (`auth.js:137`) yeniden kurmayı gerektiriyor, (2) gerçek telefon + gerçek Google hesabıyla test edilmeli. Masaüstünde popup çalışıyor; mobilde e-posta/şifre girişi yedek olarak çalışıyor, sadece mobil *Google butonu* sorunlu. Sunum masaüstündeyse yeterli.
 
 ### Ertelenen küçük iyileştirmeler
 - LLM cevabındaki `**bold**` markdown karakterlerinin HTML render'ı (şu an ham metin görünüyor)
@@ -99,10 +101,25 @@
 - **`nut_free` etiketinde açık var** (Faz 7'de tesadüfen fark edildi): "nut free cookies for kids" araması `Pine Nut and Almond Cookies` ve `wheat free peanut butter cookies` döndürüyor — ikisi de `nut_free: True` etiketli, yani yanlış. `validate_tags.py` nut kontrolünde 0 çelişki verdiği için doğrulama scriptinin de gözden kaçırdığı bir durum var (muhtemelen "pine nut"/"peanut butter" gibi bileşik adlar kural listesine takılmıyor). Sunumda sorulabilecek türden; `clean_data.py` + `validate_tags.py` birlikte gözden geçirilmeli.
 
 ## Şu An Üzerinde Çalışılıyor
-- **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Firebase Auth migrasyonu (Faz 6) + torch'un kaldırılması (Faz 7) + `recipes`'in image'a gömülmesi (Faz 8) + favorites → Firestore (Faz 9) bu branch'te. `main` el değmemiş durumda — sorun çıkarsa `git checkout main` + `docker compose up -d --build` ile eski sisteme dönülebilir (rebuild şart: frontend bind-mount olduğu için dosyalar anında eskiye döner ama API image'ı yeni kalır, yoksa karışım oluşur).
-- Repo **hâlâ tamamen lokal** — remote yok, commit'ler hiçbir yere push edilmedi.
+- **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Faz 6–10'un tamamı bu branch'te. `main` el değmemiş durumda. **Canlı deploy `firebase-auth` dalından yapılıyor** (hem Render hem Vercel bu dalı izliyor), dolayısıyla merge sonrası deploy dalını `main`'e çevirmek gerekecek.
+- Repo **GitHub'da**: `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private). Sırlar (`firebase-key.json`, `.env`) gitignored, repoda yok — Render'da env var olarak duruyor.
 
-## Güncel Durum: Faz 9 (Faz 8 TAMAMLANDI ✅)
+## Güncel Durum: Faz 10 (Faz 9 TAMAMLANDI ✅)
+
+### Faz 10 (Canlıya çıkış — Render + Vercel) ✅
+- **Backend → Render** (`https://recipe-rag-assistant-api-7g6a.onrender.com`). Ücretsiz katman (512 MB / 0.1 vCPU, kartsız), Frankfurt. Docker'ı kökteki `Dockerfile`'dan build ediyor. Sırlar env var olarak: `GEMINI_API_KEY`, `FIREBASE_CREDENTIALS_JSON`. Her push'ta otomatik yeniden deploy.
+- **Frontend → Vercel** (`https://recipe-rag-assistant.vercel.app`). Root Directory = `frontend`, statik site (build yok). `firebase-auth` dalını izliyor.
+- **Platform seçim hikâyesi:** Önce HF Spaces seçildi ve kod ona göre hazırlandı — ama HF, **Docker SDK'sını ücretli-only yaptı** (2026 Temmuz ortası, duyurusuz; WebSearch ile doğrulandı). Kod HF'e özel değildi (kök Dockerfile, env-var sırlar, stateless), o yüzden Render'a geçiş sorunsuz oldu; tek HF izi README metadata'sıydı, o da temizlendi. Cloud Run (kart gerekli) ve Oracle (kart + ham VM + ARM) elendi; Render kartsız + yönetilen olduğu için seçildi.
+- **Faz 10'da yapılan kod değişiklikleri:**
+  - `frontend/js/config.js` (yeni) — `window.API_BASE`'i ortama göre kuruyor; `api.js` bunu kullanıyor. `config.js`, `api.js`'ten önce yükleniyor (3 sayfada: search/recipe/favorites).
+  - `Dockerfile` `CMD` artık `$PORT`'u dinliyor (`${PORT:-8080}`, `sh -c exec` ile) — Render portu kendi veriyor. Yerelde 8080'e düşüyor.
+  - `main.py` CORS: `["*"]` → Vercel domain + `allow_origin_regex` (preview + localhost/LAN).
+  - `auth.py` (Faz 9'da eklenmişti): `FIREBASE_CREDENTIALS_JSON` env var'ından kimlik okuyabiliyor — Render'da dosya yok, JSON metni env var olarak veriliyor.
+- **Deploy döngüsü:** yerelde değiştir → `docker compose` ile test → `git push origin firebase-auth` → Render (backend) ve Vercel (frontend) otomatik yeniden deploy. Yerel image = canlı image (tek Dockerfile), o yüzden "yerelde çalışıyor" güçlü garanti.
+- **Render uykusu:** ücretsiz katman 15 dk sessizlikten sonra uyur, ilk istek ~30-60 sn. Sunum öncesi bir kez uyandır. (Cloud Run'da bu ~1 sn olurdu — kartsızlığın bedeli.)
+- **Doğrulama:** canlı backend 200/422/401, CORS canlıda doğru (Vercel izinli, evil.com red), Vercel sitesi 200 ve doğru `config.js`'i sunuyor (Render'ı gösteriyor). Giriş + arama masaüstünde uçtan uca çalışıyor (kullanıcı doğruladı).
+
+## Faz 9 (Faz 8 TAMAMLANDI ✅)
 
 ### Faz 9 (favorites → Firestore, `chromadb` servisinin kaldırılması) ✅
 - **Neden:** Favoriler çalışma anında değişen tek veriydi, dolayısıyla kalıcı disk ve ayrı veritabanı servisi ihtiyacının **tek** sebebiydi. Ayrıca ChromaDB bu iş için yanlış aletti: her kayda sahte bir `[[0.0] * 384]` embedding yazılıyordu — vektör veritabanı anahtar-değer deposu gibi kullanılıyordu. Firestore zaten "ödenmiş" bir maliyetti: `firebase-admin` ve service-account anahtarı Faz 6'da Auth için kurulmuştu.
