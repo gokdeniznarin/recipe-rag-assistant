@@ -119,6 +119,44 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
   }
 });
 
+// ── Şifre sıfırlama ──────────────────────────────────────
+// Firebase maili ve şifre değiştirme sayfasını kendisi sunuyor; bizim tarafta
+// tek iş e-postayı vermek.
+document.getElementById('forgot-btn').addEventListener('click', async () => {
+  const email   = document.getElementById('login-email').value.trim();
+  const errorEl = document.getElementById('login-error');
+  const infoEl  = document.getElementById('login-info');
+  const btn     = document.getElementById('forgot-btn');
+
+  errorEl.textContent = '';
+  infoEl.classList.add('hidden');
+
+  if (!email) {
+    errorEl.textContent = 'Enter your email above first, then click again.';
+    document.getElementById('login-email').focus();
+    return;
+  }
+
+  btn.disabled = true;
+  try {
+    await auth.sendPasswordResetEmail(email);
+    // Hesabın var olup olmadığını AÇIKLAMIYORUZ: "bu email kayıtlı değil" demek,
+    // saldırgana hangi adreslerin sistemde olduğunu tek tek sorgulatır.
+    // Firebase de aynı sebeple varsayılan olarak user-not-found döndürmüyor.
+    infoEl.textContent =
+      'If an account exists for ' + email + ', a reset link is on its way. ' +
+      'Check your spam folder too.';
+    infoEl.classList.remove('hidden');
+  } catch (err) {
+    errorEl.textContent =
+      err.code === 'auth/invalid-email'
+        ? 'Please enter a valid email address.'
+        : 'Could not send the reset email. Please try again.';
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 // ── Google Sign-In ───────────────────────────────────────
 const googleProvider = new firebase.auth.GoogleAuthProvider();
 // Her girişte hesap seçme ekranını zorla — yoksa tek oturumu otomatik seçer

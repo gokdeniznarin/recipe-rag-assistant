@@ -83,13 +83,16 @@ function showVerifyBannerIfNeeded() {
     'padding:10px 16px;font-size:14px;display:flex;gap:12px;' +
     'align-items:center;justify-content:center;flex-wrap:wrap;';
   bar.innerHTML =
-    '<span>Verify your email to secure your account and enable Google sign-in.</span>';
+    '<span>Verify your email to secure your account and enable Google sign-in. ' +
+    'The message may land in your spam folder.</span>';
+
+  const btnStyle =
+    'background:none;border:1px solid #b8873a;color:#6b4f1d;border-radius:4px;' +
+    'padding:4px 10px;cursor:pointer;font-size:13px;';
 
   const btn = document.createElement('button');
   btn.textContent = 'Resend email';
-  btn.style.cssText =
-    'background:none;border:1px solid #b8873a;color:#6b4f1d;border-radius:4px;' +
-    'padding:4px 10px;cursor:pointer;font-size:13px;';
+  btn.style.cssText = btnStyle;
   btn.addEventListener('click', async () => {
     btn.disabled = true;
     try {
@@ -101,7 +104,33 @@ function showVerifyBannerIfNeeded() {
     }
   });
 
+  // Doğrulama başka bir sekmede yapılıyor; bu sekmedeki kullanıcı nesnesi
+  // eskimiş kalıyor. reload() sunucudan taze durumu çekiyor — yoksa kullanıcı
+  // maildeki linke tıklasa bile banner sayfayı elle yenileyene kadar duruyor.
+  const doneBtn = document.createElement('button');
+  doneBtn.textContent = "I've verified";
+  doneBtn.style.cssText = btnStyle;
+  doneBtn.addEventListener('click', async () => {
+    doneBtn.disabled = true;
+    doneBtn.textContent = 'Checking…';
+    try {
+      await user.reload();
+      if (auth.currentUser && auth.currentUser.emailVerified) {
+        bar.remove();
+        return;
+      }
+      doneBtn.textContent = 'Not verified yet';
+    } catch {
+      doneBtn.textContent = 'Check failed';
+    }
+    setTimeout(() => {
+      doneBtn.textContent = "I've verified";
+      doneBtn.disabled = false;
+    }, 2500);
+  });
+
   bar.appendChild(btn);
+  bar.appendChild(doneBtn);
   document.body.prepend(bar);
 }
 

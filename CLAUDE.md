@@ -78,7 +78,7 @@
 - `frontend/js/firebase.js` — Firebase init + `authReady` promise'i (oturum durumu **kesinleşene** kadar bekler). Her sayfada compat SDK script'lerinden sonra, diğer JS'lerden önce yüklenir.
 - `frontend/js/config.js` — `window.API_BASE`'i ortama göre kuruyor (yerel/LAN → `localhost:8080`, canlı → Render). `api.js`'ten önce yüklenir (Faz 10).
 - `frontend/js/api.js` — ortak API katmanı (backend adresini `window.API_BASE`'den alır; Firebase ID token'ı header'a ekleyen fetch wrapper, `authReady` tabanlı auth guard, 401'de otomatik logout, kullanıcı menüsü/email + dropdown sign out, doğrulanmamış e-posta için hatırlatma bandı)
-- `frontend/js/auth.js` — giriş/kayıt formu mantığı + Google girişi (Firebase `signInWithPopup`), hesap bağlama (`linkWithCredential`), kayıtta `sendEmailVerification()`
+- `frontend/js/auth.js` — giriş/kayıt formu mantığı + Google girişi (Firebase `signInWithPopup`), hesap bağlama (`linkWithCredential`), kayıtta `sendEmailVerification()`, şifre sıfırlama (`sendPasswordResetEmail`; Faz 12)
 - `frontend/js/search.js` — arama sayfası, mode tabs, kamera stream (`getUserMedia`), sesli arama (`SpeechRecognition`), sonuç render. AI yorumunu ayrı istekle çekiyor (`loadCommentary`, iskelet animasyonu + `commentarySeq` yarış koruması; Faz 11)
 - `frontend/js/recipe.js` — detay sayfası, `parseInstructions()` (R vector kalıntılarını filtreliyor)
 - `frontend/js/favorites.js` — favorileri tarif bilgileriyle **tek istekte** çekiyor (`?include_details=true`; Faz 11 öncesi her ID için ayrı istek atıyordu)
@@ -127,7 +127,26 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 - **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Faz 6–11'in tamamı bu branch'te. `main` el değmemiş durumda. **Canlı deploy `firebase-auth` dalından yapılıyor** (hem Render hem Vercel bu dalı izliyor), dolayısıyla merge sonrası deploy dalını `main`'e çevirmek gerekecek.
 - Repo **GitHub'da**: `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private). Sırlar (`firebase-key.json`, `.env`) gitignored, repoda yok — Render'da env var olarak duruyor.
 
-## Güncel Durum: Faz 11 (Faz 10 TAMAMLANDI ✅)
+## Güncel Durum: Faz 12 (Faz 11 TAMAMLANDI ✅)
+
+### Faz 12 (Giriş/kayıt akışının olgunlaştırılması) ✅
+**Soru neydi:** "E-posta doğrulamayı zorunlu kılsak Google girişi işlevsiz kalır mı?"
+
+**Cevap: hayır, tam tersi.** Google ile giren kullanıcılar Firebase'e **doğrulanmış olarak** geliyor (`emailVerified: true`) — Google e-postanın sahipliğini zaten kanıtlamış. Projedeki gerçek kullanıcılarla doğrulandı: `google.com` sağlayıcılı hesapların hepsi `emailVerified: true`. Yani doğrulama zorunluluğu yalnızca şifreyle kayıt olanları etkiler; Google girişi "mail beklemeden gir" kısayolu hâline gelir. `api.js` bunu zaten biliyor, banner'ı Google kullanıcılarına hiç göstermiyor.
+
+**Zorunlu doğrulama (sert kapı) BİLEREK YAPILMADI:** doğrulama mailleri spam'e düşüyor (gönderen `noreply@<proje>.firebaseapp.com`, SPF/DKIM yok — Faz 6'da tespit edildi, kendi domain'imiz olmadan çözümü yok). Sunum sırasında yeni bir hesap açılıp mail spam'e düşerse giriş kilitlenir; bu risk, zorunlu doğrulamanın kazandıracağından pahalı. Sunumdan sonra düşünülebilir.
+
+**Yapılanlar:**
+- **Şifre sıfırlama (yeni — gerçek bir eksikti).** `sendPasswordResetEmail` hiçbir yerde yoktu, yani şifresini unutan kullanıcının hesabına dönüş yolu yoktu. Giriş formuna "Forgot your password?" eklendi (`.link-btn` — `<a>` değil `<button>`, çünkü bir yere gitmiyor eylem tetikliyor). Maili ve şifre değiştirme sayfasını Firebase sunuyor.
+  - **Hesap varlığı açıklanmıyor:** "bu e-posta kayıtlı değil" demek, saldırgana sistemdeki adresleri tek tek sorgulatır. Mesaj her durumda aynı: *"If an account exists for X, a reset link is on its way."*
+  - Firebase tarafında etkin olduğu Admin SDK ile doğrulandı (üç hesap için de `generate_password_reset_link` çalıştı).
+- **Doğrulama banner'ı tamamlandı.** "Resend email" zaten vardı; eklenen **"I've verified"** butonu `user.reload()` ile sunucudan taze durumu çekip banner'ı kaldırıyor. Bu olmadan kullanıcı maildeki linke tıklasa bile banner sayfa elle yenilenene kadar duruyordu — doğrulama başka sekmede yapılıyor, bu sekmedeki kullanıcı nesnesi eskimiş kalıyor. Mesaja spam klasörü uyarısı da eklendi.
+
+**Doğrulama:** tarayıcıda kullanıcı test etti, şifre sıfırlama çalışıyor.
+
+**Değerlendirilip yapılmayanlar:** yumuşak kapı (doğrulanmadan favori eklenememesi) — savunulabilir bir tasarım kararı, sunumda anlatılabilir; Google butonunu görsel olarak öne çıkarma — zorunlu doğrulama gelirse şart olur.
+
+## Faz 11 (Faz 10 TAMAMLANDI ✅)
 
 ### Faz 11 (Performans — algılanan hız) ✅
 Canlıya çıktıktan sonra kullanıcı üç yavaşlık bildirdi: arama bazen 10sn, favoriler yavaş, AI bazen hiç cevap vermiyor. Üçü de ayrı sebeplerdi.
