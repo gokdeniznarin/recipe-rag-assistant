@@ -7,12 +7,45 @@ from google import genai
 load_dotenv()
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-# `gemini-flash-latest` alias'ından sabit sürüme dönüldü: alias'ın işaret ettiği
-# model free tier'da sürekli 503 (overloaded) veriyordu ve SDK retry'ları her
-# çağrıyı ~20sn'ye çıkarıyordu. `gemini-2.5-flash` aynı istekte ~2.3sn.
-# Ödünleşim: sabit sürüm ileride deprecate olabilir (alias'a geçme sebebi buydu).
-# Deprecate olursa hata mesajı net gelir; o noktada güncel sürüme taşınır.
-MODEL_NAME = "gemini-2.5-flash"
+# Free tier kotası MODEL BAŞINA veriliyor — 429 hatasının kendisi söylüyor:
+#   quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier, quotaValue: 20
+# Tek bir modele bağlı kalmak, o modelin günlük 20 isteği bitince tüm LLM
+# özelliklerinin ölmesi demekti (kamera araması dahil). Bunun yerine sırayla
+# denenen bir liste tutuyoruz: baştaki model kotasını doldurursa bir sonrakine
+# geçiliyor, yani pratikte 3 ayrı kota havuzu.
+#
+# İki akış farklı sırayla gidiyor ki biri diğerinin kotasını tüketmesin:
+# yorum hafif bir iş (2-4 cümle), en hızlı modelle başlıyor; malzeme tanıma
+# ise asıl işi yapan görsel analiz, daha güçlü modelle başlıyor.
+#
+# Ölçüm (aynı yorum promptu): gemini-3.1-flash-lite 0.65sn, gemini-3.5-flash
+# 5.17sn, gemini-2.5-flash ~8.5sn. gemini-2.5-flash-lite ve 2.0-flash-lite
+# elendi (sırasıyla "no longer available to new users" ve kota paylaşımı).
+COMMENTARY_MODELS = ("gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash")
+VISION_MODELS = ("gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash")
+
+
+def _generate(models: tuple[str, ...], contents):
+    """
+    Modelleri sırayla dener. Yalnızca "bu model şu an kullanılamıyor" anlamına
+    gelen hatalarda (kota dolu / model yok) sonrakine geçer — bozuk istek ya da
+    ağ hatası gibi durumlarda denemeye devam etmek yanıltıcı olurdu, o yüzden
+    onlar olduğu gibi yukarı fırlatılır.
+    """
+    last_error = None
+    for model in models:
+        try:
+            return client.models.generate_content(model=model, contents=contents)
+        except Exception as e:
+            text = str(e)
+            unavailable = any(
+                s in text for s in ("429", "RESOURCE_EXHAUSTED", "404", "NOT_FOUND")
+            )
+            if not unavailable:
+                raise
+            print(f"Model {model} unavailable, falling back: {text[:120]}")
+            last_error = e
+    raise last_error
 
 
 def generate_answer(user_query: str, recipes: list) -> str:
@@ -34,10 +67,7 @@ Pick the best matching recipe(s) and explain briefly why they fit the user's req
 Keep your answer concise (2-4 sentences). Respond in English.
 """
 
-    response = client.models.generate_content(
-        model=MODEL_NAME,
-        contents=prompt
-    )
+    response = _generate(COMMENTARY_MODELS, prompt)
     return response.text
 
 
@@ -57,20 +87,17 @@ nothing else. Example: "chicken, bell pepper, onion, garlic"
 If no food ingredients are visible, respond with "no ingredients detected".
 """
 
-    response = client.models.generate_content(
-        model=MODEL_NAME,
-        contents=[
-            {
-                "inline_data": {
-                    "mime_type": "image/jpeg",
-                    "data": image_bytes
-                }
-            },
-            prompt
-        ]
-    )
+    response = _generate(VISION_MODELS, [
+        {
+            "inline_data": {
+                "mime_type": "image/jpeg",
+                "data": image_bytes
+            }
+        },
+        prompt
+    ])
 
-    raw_text = response.text.strip()
+    raw_text = (response.text or "").strip()
 
     if "no ingredients" in raw_text.lower():
         return []

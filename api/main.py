@@ -159,8 +159,24 @@ def search_recipes_from_image(
     request: ImageSearchRequest,
     user_email: str = Depends(get_current_user_email)
 ):
-    # 1. Fotoğraftan malzemeleri tanı
-    detected_ingredients = detect_ingredients_from_image(request.image_base64)
+    # 1. Fotoğraftan malzemeleri tanı.
+    #    Metin aramasının aksine bu Gemini çağrısı ZORUNLU — malzeme listesi
+    #    olmadan arama yapılamaz. Hata yakalanmazsa endpoint 500 döner ve o 500,
+    #    CORS middleware'ine uğramadan çıktığı için tarayıcıda gerçek sebep yerine
+    #    yanıltıcı bir "blocked by CORS policy" hatası görünür.
+    try:
+        detected_ingredients = detect_ingredients_from_image(request.image_base64)
+    except Exception as e:
+        print(f"Vision error: {e}")
+        quota_exhausted = "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)
+        return {
+            "error": (
+                "Daily AI quota reached, so photo search is unavailable right now. "
+                "Text search still works."
+                if quota_exhausted
+                else "Could not read the photo. Please try again or use text search."
+            )
+        }
 
     if len(detected_ingredients) == 0:
         return {"error": "No ingredients detected in the image"}
