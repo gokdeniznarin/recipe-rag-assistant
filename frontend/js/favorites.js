@@ -42,8 +42,11 @@ function renderRecipeCard(recipe) {
 // ── Yükleme ──────────────────────────────────────────────
 (async () => {
   try {
-    // 1. Favori ID listesini al
-    const favData = await apiRequest('/api/favorites');
+    // 1. Favorileri tarif bilgileriyle birlikte TEK istekte al.
+    //    Önceden: liste için 1 istek + her favori için ayrı bir detay isteği
+    //    (N favori = N+1 istek). Backend artık hepsini tek ChromaDB çağrısında
+    //    okuyup döndürüyor.
+    const favData = await apiRequest('/api/favorites?include_details=true');
     const favorites = favData.favorites || [];
 
     if (favorites.length === 0) {
@@ -52,13 +55,8 @@ function renderRecipeCard(recipe) {
       return;
     }
 
-    // 2. Her ID için detay endpoint'inden tarif bilgisi çek (paralel)
-    const detailPromises = favorites.map(f =>
-      apiRequest(`/api/recipes/${encodeURIComponent(f.recipe_id)}`)
-        .catch(() => null)  // hata olan tarifleri sessizce atla
-    );
-    const recipes = (await Promise.all(detailPromises))
-      .filter(r => r && !r.error);
+    // 2. Tarifi bulunamayan favorileri atla (veri setinden kalkmış olabilir)
+    const recipes = favorites.map(f => f.recipe).filter(Boolean);
 
     // 3. Render
     recipes.forEach(recipe => {

@@ -36,6 +36,7 @@ def add_favorite(user_email: str, recipe_id: str):
 
 
 def get_favorites(user_email: str) -> list[dict]:
+    """En son eklenen favori en üstte döner."""
     docs = _favorites.where(filter=FieldFilter("user_email", "==", user_email)).stream()
 
     favorites = []
@@ -45,6 +46,16 @@ def get_favorites(user_email: str) -> list[dict]:
             "recipe_id": data["recipe_id"],
             "added_at": data["added_at"],
         })
+
+    # Sıralama Firestore'da değil burada yapılıyor: where + order_by birlikte
+    # kullanılınca Firestore bileşik indeks (composite index) istiyor, yani elle
+    # kurulması gereken bir altyapı adımı. Bir kullanıcının favori sayısı küçük
+    # olduğu için bellekte sıralamak bu bağımlılığa değmez.
+    #
+    # added_at ISO benzeri sabit formatta yazılıyor ("2026-07-19 09:16:46.695222+00:00")
+    # ve hepsi UTC; alanlar sıfır dolgulu olduğu için metin sıralaması kronolojik
+    # sıralamayla aynı sonucu veriyor.
+    favorites.sort(key=lambda f: f["added_at"], reverse=True)
     return favorites
 
 

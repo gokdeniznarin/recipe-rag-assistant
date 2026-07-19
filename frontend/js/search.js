@@ -6,6 +6,8 @@ const textQuery      = document.getElementById('text-query');
 const loading        = document.getElementById('loading');
 const results        = document.getElementById('results');
 const llmText        = document.getElementById('llm-text');
+const llmBox         = document.getElementById('llm-box');
+const llmSkeleton    = document.getElementById('llm-skeleton');
 const recipeList     = document.getElementById('recipe-list');
 const resultsCount   = document.getElementById('results-count');
 const searchError    = document.getElementById('search-error');
@@ -57,8 +59,47 @@ function showError(msg) {
   searchError.classList.remove('hidden');
 }
 
+// AI yorumunu arama sonuçlarından SONRA, ayrı bir istekle çeker.
+// Sonuçlar zaten ekranda olduğu için bu isteğin süresi kullanıcıyı bekletmiyor;
+// gelmezse (kota dolmuş olabilir) kutu hiç görünmez.
+// Yorum isteği yavaş (Gemini). Kullanıcı arka arkaya arama yaparsa öncekinin
+// cevabı sonrakinin üstüne düşebilir; her aramaya bir sıra numarası verip
+// yalnızca en son aramanın cevabını ekrana yazıyoruz.
+let commentarySeq = 0;
+
+async function loadCommentary(query, recipes) {
+  if (recipes.length === 0) return;
+
+  const seq = ++commentarySeq;
+
+  llmText.textContent = '';
+  llmSkeleton.classList.remove('hidden');
+  llmBox.classList.remove('hidden');
+
+  try {
+    const data = await apiRequest('/api/recipes/commentary', {
+      method: 'POST',
+      body: JSON.stringify({
+        query,
+        recipe_ids: recipes.map(r => r.id),
+      }),
+    });
+
+    if (seq !== commentarySeq) return;   // daha yeni bir arama var, bunu yoksay
+
+    if (data.answer) {
+      llmSkeleton.classList.add('hidden');
+      llmText.textContent = data.answer;
+    } else {
+      llmBox.classList.add('hidden');   // yorum yok — kutuyu hiç gösterme
+    }
+  } catch {
+    if (seq === commentarySeq) llmBox.classList.add('hidden');
+  }
+}
+
 function renderResults(data) {
-  llmText.textContent = data.answer || 'No suggestion available.';
+  llmBox.classList.add('hidden');   // önceki aramanın yorumu kalmasın
   recipeList.innerHTML = '';
   resultsCount.textContent = `${data.results.length} matches`;
 
@@ -121,6 +162,7 @@ textForm.addEventListener('submit', async (e) => {
       showError(data.error);
     } else {
       renderResults(data);
+      loadCommentary(query, data.results);   // bilerek await edilmiyor
     }
   } catch (err) {
     showError('Could not reach the server.');
@@ -212,6 +254,7 @@ cameraForm.addEventListener('submit', async (e) => {
       detectedList.textContent = data.detected_ingredients.join(', ');
       detectedBox.classList.remove('hidden');
       renderResults(data);
+      loadCommentary(data.combined_query, data.results);   // bilerek await edilmiyor
     }
   } catch (err) {
     showError('Could not reach the server.');

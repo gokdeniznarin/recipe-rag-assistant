@@ -108,9 +108,15 @@
 
     <!-- Sonuçlar -->
     <section id="results" class="results hidden">
-      <div class="llm-answer">
+      <!-- AI yorumu aramadan ayrı bir istekle gelir; o gelene kadar iskelet gösterilir -->
+      <div class="llm-answer hidden" id="llm-box">
         <p class="llm-eyebrow">Assistant</p>
         <p id="llm-text" class="llm-text"></p>
+        <div id="llm-skeleton" class="llm-skeleton" aria-hidden="true">
+          <span class="skeleton-line"></span>
+          <span class="skeleton-line"></span>
+          <span class="skeleton-line short"></span>
+        </div>
       </div>
 
       <div class="results-header">

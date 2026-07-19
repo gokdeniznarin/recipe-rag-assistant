@@ -492,6 +492,41 @@ body {
   font-size: 1rem;
 }
 
+/* ── AI yorumu iskeleti ────────────────────────────────── */
+/* Yorum aramadan ayrı bir istekle geldiği için sonuçlar ekrandayken bu görünür.
+   Yükseklik gerçek metne yakın tutuldu ki cevap gelince sayfa zıplamasın. */
+.llm-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.skeleton-line {
+  display: block;
+  height: 0.75rem;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    rgba(45, 59, 45, 0.07) 25%,
+    rgba(45, 59, 45, 0.14) 50%,
+    rgba(45, 59, 45, 0.07) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton-line.short { width: 55%; }
+
+@keyframes skeleton-shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+/* Hareketi azaltma tercihine saygı: parlama yerine sabit ton */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-line { animation: none; background: rgba(45, 59, 45, 0.1); }
+}
+
 .results-header {
   display: flex;
   align-items: baseline;

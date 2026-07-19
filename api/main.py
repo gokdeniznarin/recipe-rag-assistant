@@ -26,8 +26,7 @@ app.add_middleware(
 
 # Tarifler salt-okunur veri: bir kez ingestion ile yazılır, sonra sadece okunur.
 # Bu yüzden ayrı bir ChromaDB sunucusuna değil, image'a gömülü klasöre bakıyor.
-# (favorites.py hâlâ sunucuya bağlı — çalışma anında yazılan tek veri o. Firestore'a
-# taşınınca chromadb servisi tamamen kalkacak; bkz. CLAUDE.md → "şekil sorunu".)
+# (Favoriler Faz 9'da Firestore'a taşındı; chromadb servisi tamamen kalktı.)
 CHROMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chroma_data")
 print(f"Opening recipes database: {CHROMA_PATH}")
 chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
@@ -41,6 +40,36 @@ print(f"Ready! Collection has {collection.count()} recipes.")
 class SearchRequest(BaseModel):
     query: str
     n_results: int = 5
+
+
+def _recipe_card(recipe_id: str, meta: dict, doc: str) -> dict:
+    """Liste kartlarının ihtiyaç duyduğu alanlar (detay sayfasınınkinden dar)."""
+    return {
+        "id": recipe_id,
+        "name": meta["name"],
+        "category": meta["category"],
+        "total_time_min": meta["total_time_min"],
+        "calories": meta["calories"],
+        "diet_tags": {
+            "gluten_free": meta["gluten_free"],
+            "dairy_free": meta["dairy_free"],
+            "nut_free": meta["nut_free"],
+            "vegetarian": meta["vegetarian"],
+            "pescatarian": meta["pescatarian"],
+            "vegan": meta["vegan"],
+        },
+        "description": doc,
+    }
+
+
+def _cards_from_query(results: dict) -> list[dict]:
+    """collection.query() sonucunu kart listesine çevirir (tek sorgu varsayımı)."""
+    return [
+        _recipe_card(recipe_id, meta, doc)
+        for doc, meta, recipe_id in zip(
+            results["documents"][0], results["metadatas"][0], results["ids"][0]
+        )
+    ]
 
 
 @app.get("/")
@@ -60,46 +89,58 @@ def search_recipes(request: SearchRequest, user_email: str = Depends(get_current
         where=where_filter
     )
 
-    recipes = []
-    for doc, meta, recipe_id in zip(
-        results["documents"][0],
-        results["metadatas"][0],
-        results["ids"][0]
-    ):
-        recipes.append({
-            "id": recipe_id,
-            "name": meta["name"],
-            "category": meta["category"],
-            "total_time_min": meta["total_time_min"],
-            "calories": meta["calories"],
-            "diet_tags": {
-                "gluten_free": meta["gluten_free"],
-                "dairy_free": meta["dairy_free"],
-                "nut_free": meta["nut_free"],
-                "vegetarian": meta["vegetarian"],
-                "pescatarian": meta["pescatarian"],
-                "vegan": meta["vegan"],
-            },
-            "description": doc
-        })
+    recipes = _cards_from_query(results)
 
-    # 3. LLM'e bulunan tarifleri ver, doğal cevap üret
-    llm_answer = None
-    if len(recipes) > 0:
-        try:
-            llm_answer = generate_answer(request.query, recipes)
-        except Exception as e:
-            print(f"LLM error (skipping): {e}")
-            llm_answer = "AI commentary is temporarily unavailable. Here are the matching recipes."
-   
-        
-
+    # LLM burada BEKLENMİYOR. Tarifler ~0.3sn'de hazır oluyordu ama endpoint
+    # Gemini'yi bekliyordu; Gemini yavaşladığında (503 + SDK retry) toplam süre
+    # 10sn'yi buluyor ve kullanıcı elde hazır duran sonuçları göremiyordu.
+    # AI yorumu artık ayrı bir istekle geliyor: /api/recipes/commentary.
     return {
         "query": request.query,
         "applied_filters": where_filter,
-        "answer": llm_answer,
         "results": recipes
     }
+
+
+class CommentaryRequest(BaseModel):
+    query: str
+    recipe_ids: list[str]
+
+
+@app.post("/api/recipes/commentary")
+def recipe_commentary(
+    request: CommentaryRequest,
+    user_email: str = Depends(get_current_user_email),
+):
+    """
+    Arama sonuçları için AI yorumu. Aramadan AYRI tutuluyor: tarifler ChromaDB'den
+    ~0.3sn'de geliyor, Gemini ise 3.5sn (yavaş günlerde 10sn+). Aynı istekte
+    olduklarında kullanıcı hazır sonuçları LLM bitene kadar göremiyordu.
+
+    Tarif bilgisi istemciden DEĞİL, ID'lerden okunuyor — istemcinin gönderdiği
+    metne göre prompt kurmak, LLM'e keyfi içerik enjekte etmeye açık kapı bırakır.
+    """
+    if not request.recipe_ids:
+        return {"answer": None}
+
+    results = collection.get(ids=request.recipe_ids[:10])
+    recipes = [
+        _recipe_card(recipe_id, meta, doc)
+        for recipe_id, meta, doc in zip(
+            results["ids"], results["metadatas"], results["documents"]
+        )
+    ]
+
+    if not recipes:
+        return {"answer": None}
+
+    try:
+        return {"answer": generate_answer(request.query, recipes)}
+    except Exception as e:
+        # Kota dolması buraya düşüyor. Arama zaten tamamlandı; yorumun gelmemesi
+        # sayfayı bozmuyor, frontend kutuyu gizliyor.
+        print(f"LLM error (commentary skipped): {e}")
+        return {"answer": None, "error": "commentary_unavailable"}
 
 
 @app.get("/api/auth/me")
@@ -140,45 +181,15 @@ def search_recipes_from_image(
         where=where_filter
     )
 
-    recipes = []
-    for doc, meta, recipe_id in zip(
-        results["documents"][0],
-        results["metadatas"][0],
-        results["ids"][0]
-    ):
-        recipes.append({
-            "id": recipe_id,
-            "name": meta["name"],
-            "category": meta["category"],
-            "total_time_min": meta["total_time_min"],
-            "calories": meta["calories"],
-            "diet_tags": {
-                "gluten_free": meta["gluten_free"],
-                "dairy_free": meta["dairy_free"],
-                "nut_free": meta["nut_free"],
-                "vegetarian": meta["vegetarian"],
-                "pescatarian": meta["pescatarian"],
-                "vegan": meta["vegan"],
-            },
-            "description": doc
-        })
+    recipes = _cards_from_query(results)
 
-    llm_answer = None
-    if len(recipes) > 0:
-        try:
-            llm_answer = generate_answer(combined_query, recipes)
-        except Exception as e:
-            print(f"LLM error (skipping): {e}")
-            llm_answer = "AI commentary is temporarily unavailable. Here are the matching recipes."
-    
-        
-
+    # Metin aramasındaki gibi: LLM yorumu beklenmiyor, ayrı istekle geliyor.
+    # (Buradaki Gemini vision çağrısı zorunlu — malzemeler olmadan arama yapılamaz.)
     return {
         "detected_ingredients": detected_ingredients,
         "additional_text": request.additional_text,
         "combined_query": combined_query,
         "applied_filters": where_filter,
-        "answer": llm_answer,
         "results": recipes
     }
 
@@ -232,9 +243,44 @@ def add_favorite_endpoint(request: FavoriteRequest, user_email: str = Depends(ge
 
 
 @app.get("/api/favorites")
-def list_favorites_endpoint(user_email: str = Depends(get_current_user_email)):
+def list_favorites_endpoint(
+    include_details: bool = False,
+    user_email: str = Depends(get_current_user_email),
+):
+    """
+    Varsayılan olarak sadece {recipe_id, added_at} döner — favori sayfası dışındaki
+    çağıranlar (recipe.js'in "bu tarif favoride mi" kontrolü) tarif detayını
+    gereksiz yere indirmesin diye.
+
+    `include_details=true` ile her favorinin tarif bilgisi de gelir. Favoriler
+    sayfası bunu kullanıyor: önceden her ID için AYRI bir /api/recipes/{id} isteği
+    atıyordu (N favori = N+1 istek, her biri ayrıca token doğrulaması yapıyordu ve
+    Render'ın 0.1 vCPU'sunda sıraya giriyordu). ChromaDB `get` zaten ID listesi
+    aldığı için hepsi tek çağrıda okunuyor.
+    """
     favorites = get_favorites(user_email)
-    return {"favorites": favorites}
+
+    if not include_details or not favorites:
+        return {"favorites": favorites}
+
+    ids = [f["recipe_id"] for f in favorites]
+    results = collection.get(ids=ids)
+
+    # ChromaDB dönüş sırasını garanti etmiyor ve olmayan ID'leri sessizce atlıyor;
+    # id -> kart eşlemesi kurup favori sırasını koruyoruz.
+    cards = {
+        recipe_id: _recipe_card(recipe_id, meta, doc)
+        for recipe_id, meta, doc in zip(
+            results["ids"], results["metadatas"], results["documents"]
+        )
+    }
+
+    return {
+        "favorites": [
+            {**f, "recipe": cards.get(f["recipe_id"])}  # silinmiş tarif → None
+            for f in favorites
+        ]
+    }
 
 
 @app.delete("/api/favorites/{recipe_id}")

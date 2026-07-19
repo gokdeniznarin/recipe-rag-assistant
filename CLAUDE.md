@@ -48,7 +48,8 @@
 - **Hafta 5:** Google OAuth ✅, mikrofon (Web Speech API) ✅, kullanıcı menüsü ✅, Docker Compose'a frontend ekleme ✅
 - **Hafta 6:** Firebase Auth migrasyonu ✅ (`firebase-auth` branch'inde, 8 senaryo canlı doğrulandı)
 - **Hafta 7 — deploy hazırlığı:** torch'un kaldırılması ✅ (Faz 7), `recipes`'in image'a gömülmesi ✅ (Faz 8), favorites → Firestore + `chromadb` servisinin kaldırılması ✅ (Faz 9). Backend **stateless** hâle geldi.
-- **Hafta 8 (şu an buradayız) — CANLI:** Backend → Render, frontend → Vercel ✅ (Faz 10). 4 blocker'ın 3'ü çözüldü, mobil Google girişi (④) bilinçli ertelendi. Kalan: `main`'e merge, README/sunum hazırlığı, (opsiyonel) mobil giriş.
+- **Hafta 8 — CANLI:** Backend → Render, frontend → Vercel ✅ (Faz 10). 4 blocker'ın 3'ü çözüldü, in-app tarayıcı Google girişi (④) bilinçli ertelendi.
+- **Hafta 9 (şu an buradayız) — performans:** Faz 11 ✅ — arama LLM'i beklemiyor (8.87sn → 0.32sn), favoriler N+1 kalktı, favori sırası düzeldi. Kalan: `main`'e merge, README/sunum hazırlığı.
 
 ## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
 ### Backend
@@ -57,12 +58,12 @@
 - `ingestion/validate_tags.py` — diyet etiketi ve veri kalitesi doğrulama scripti
 - `ingestion/load_to_chromadb.py` — ChromaDB'ye yükleme. Embedding'i artık elle üretmiyor: `collection.add()`'e sadece `documents` veriliyor, ChromaDB kendi varsayılan fonksiyonuyla (ONNX) embed ediyor. `PersistentClient` ile `api/chroma_data/` klasörüne yazıyor (sunucuya değil). **Linux'ta çalıştırılmalı** — bkz. Faz 8'deki Windows/HNSW bulgusu.
 - `ingestion/test_search.py` — arama testleri. Gömülü veritabanını okuyor (sunucu yok). `CHROMA_PATH` env var'ıyla image'daki kopyaya yöneltilebilir — **repodaki `api/chroma_data`'ya yöneltirsen commit'li dosyayı kirletir** (bkz. Faz 8 notları).
-- `api/main.py` — FastAPI backend + CORS middleware (tüm origin'lere açık, geliştirme için): /api/recipes/search, /api/recipes/from-image, /api/recipes/{recipe_id}, /api/favorites/* endpoint'leri. Tarifleri image'a gömülü `chroma_data/` klasöründen `PersistentClient` ile okuyor (Faz 8).
+- `api/main.py` — FastAPI backend + CORS middleware (Faz 10'dan beri kendi origin'lerimizle sınırlı): /api/recipes/search, /api/recipes/from-image, **/api/recipes/commentary** (Faz 11), /api/recipes/{recipe_id}, /api/favorites/* endpoint'leri. Tarifleri image'a gömülü `chroma_data/` klasöründen `PersistentClient` ile okuyor (Faz 8). Arama endpoint'leri LLM'i beklemiyor (Faz 11).
 - `api/chroma_data/` — **git'e commit edilmiş** gömülü tarif veritabanı (35MB: `chroma.sqlite3` + HNSW indeks dosyaları). `load_to_chromadb.py` üretiyor, Dockerfile `COPY . .` ile image'a alıyor.
 - `api/auth.py` — tek iş: Firebase Admin SDK ile `verify_id_token()` → e-posta. `get_current_user_email` dependency'si korumalı endpoint'lerde kullanılıyor. (Eskiden JWT + bcrypt + kullanıcı kayıt/giriş vardı; Firebase geçişiyle ~140 satırdan ~30 satıra düştü.)
 - `api/llm.py` — Gemini API ile LLM cevap üretimi + fotoğraftan malzeme tanıma (`gemini-2.5-flash`)
 - `api/filters.py` — kullanıcı sorgusundan diyet/süre/kalori filtresi çıkarımı
-- `api/favorites.py` — favoriler sistemi (Repository Pattern'den esinlenmiş, kendi veri deposunu kendi yönetiyor). **Firestore** kullanıyor (Faz 9; öncesinde ChromaDB'ydi). Faz 6'daki Firebase Auth migrasyonunda **tek satır değişmemişti** — favoriler e-posta anahtarlı ve e-posta her iki auth sisteminde de aynı kimlik. Faz 9'da bunun tersi oldu: favoriler baştan yazıldı ama `main.py` hiç değişmedi (aynı fonksiyon imzaları, aynı `ValueError`'lar).
+- `api/favorites.py` — favoriler sistemi (Repository Pattern'den esinlenmiş, kendi veri deposunu kendi yönetiyor). **Firestore** kullanıyor (Faz 9; öncesinde ChromaDB'ydi). `get_favorites` en son ekleneni üstte döner (Faz 11; sıralama bellekte — bkz. Faz 11 notu). Faz 6'daki Firebase Auth migrasyonunda **tek satır değişmemişti** — favoriler e-posta anahtarlı ve e-posta her iki auth sisteminde de aynı kimlik. Faz 9'da bunun tersi oldu: favoriler baştan yazıldı ama `main.py` hiç değişmedi (aynı fonksiyon imzaları, aynı `ValueError`'lar).
 - `Dockerfile` (**repo kökünde**, Faz 10'da `api/`'den taşındı) — `python:3.13-slim`, `uvicorn` `$PORT`'u (yoksa 8080) dinliyor. ONNX modelini build sırasında retry'lı indirip gömüyor, image'a sadece `api/` kopyalanıyor. Hem `docker-compose` hem Render bunu kullanıyor. Image **1.2GB** (Faz 7 öncesi 2.83GB → Faz 7 sonrası 1.14GB → Faz 8'de +35MB tarif verisi).
 - `.dockerignore` (**repo kökünde**) — `api/firebase-key.json` ve `.env`'i image dışında tutuyor (güvenlik), ayrıca `frontend/`, `ingestion/`, `*.csv`.
 - `docker-compose.yml` — **2 servis**: `api`, `frontend` (Faz 9'da `chromadb` kaldırıldı). `api` kökteki Dockerfile'ı context=kök ile build ediyor.
@@ -78,9 +79,9 @@
 - `frontend/js/config.js` — `window.API_BASE`'i ortama göre kuruyor (yerel/LAN → `localhost:8080`, canlı → Render). `api.js`'ten önce yüklenir (Faz 10).
 - `frontend/js/api.js` — ortak API katmanı (backend adresini `window.API_BASE`'den alır; Firebase ID token'ı header'a ekleyen fetch wrapper, `authReady` tabanlı auth guard, 401'de otomatik logout, kullanıcı menüsü/email + dropdown sign out, doğrulanmamış e-posta için hatırlatma bandı)
 - `frontend/js/auth.js` — giriş/kayıt formu mantığı + Google girişi (Firebase `signInWithPopup`), hesap bağlama (`linkWithCredential`), kayıtta `sendEmailVerification()`
-- `frontend/js/search.js` — arama sayfası, mode tabs, kamera stream (`getUserMedia`), sesli arama (`SpeechRecognition`), sonuç render
+- `frontend/js/search.js` — arama sayfası, mode tabs, kamera stream (`getUserMedia`), sesli arama (`SpeechRecognition`), sonuç render. AI yorumunu ayrı istekle çekiyor (`loadCommentary`, iskelet animasyonu + `commentarySeq` yarış koruması; Faz 11)
 - `frontend/js/recipe.js` — detay sayfası, `parseInstructions()` (R vector kalıntılarını filtreliyor)
-- `frontend/js/favorites.js` — favori listesini çekip her ID için detay endpoint'inden tarif bilgisi paralel çekiyor
+- `frontend/js/favorites.js` — favorileri tarif bilgileriyle **tek istekte** çekiyor (`?include_details=true`; Faz 11 öncesi her ID için ayrı istek atıyordu)
 - `frontend/Dockerfile` — `nginx:alpine`, statik dosyaları doğrudan sunuyor
 
 ## Henüz Yapılmadı (güncel — Faz 10 sonrası kalanların TAMAMI, hepsi opsiyonel)
@@ -92,6 +93,7 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 3. **④ In-app tarayıcılarda Google girişi** (`signInWithRedirect`) — bilinçli ertelendi, gerekçe "Deploy blocker'ları" bölümünde. **Not: normal mobil tarayıcıda (Chrome/Safari) giriş çalışıyor — kullanıcı gerçek telefonda doğruladı (2026-07-19).** Kalan risk yalnızca uygulama içi tarayıcılar.
 4. **`nut_free` etiket açığı** — aşağıdaki "Ertelenen küçük iyileştirmeler"e bakınız; sunumda sorulabilecek türden gerçek bir veri hatası.
 5. **Diğer küçük iyileştirmeler** — LLM cevabındaki `**bold**` render'ı, instructions'daki `\` kalıntıları, `filters.py` geliştirmeleri.
+6. **Render uykusu** — ücretsiz katmanda 15dk sessizlikten sonra ilk istek 30-60sn. Faz 11 bunu ÇÖZMEZ (uygulama kodu değil, platform). Sunum öncesi bir kez uyandır.
 
 ### ✅ Artık YAPILDI (eski "yapılmadı" maddeleri)
 - ~~GitHub'a bağlama~~ → `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private), `firebase-auth` dalı push'lu.
@@ -122,10 +124,30 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 - **`nut_free` etiketinde açık var** (Faz 7'de tesadüfen fark edildi): "nut free cookies for kids" araması `Pine Nut and Almond Cookies` ve `wheat free peanut butter cookies` döndürüyor — ikisi de `nut_free: True` etiketli, yani yanlış. `validate_tags.py` nut kontrolünde 0 çelişki verdiği için doğrulama scriptinin de gözden kaçırdığı bir durum var (muhtemelen "pine nut"/"peanut butter" gibi bileşik adlar kural listesine takılmıyor). Sunumda sorulabilecek türden; `clean_data.py` + `validate_tags.py` birlikte gözden geçirilmeli.
 
 ## Şu An Üzerinde Çalışılıyor
-- **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Faz 6–10'un tamamı bu branch'te. `main` el değmemiş durumda. **Canlı deploy `firebase-auth` dalından yapılıyor** (hem Render hem Vercel bu dalı izliyor), dolayısıyla merge sonrası deploy dalını `main`'e çevirmek gerekecek.
+- **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Faz 6–11'in tamamı bu branch'te. `main` el değmemiş durumda. **Canlı deploy `firebase-auth` dalından yapılıyor** (hem Render hem Vercel bu dalı izliyor), dolayısıyla merge sonrası deploy dalını `main`'e çevirmek gerekecek.
 - Repo **GitHub'da**: `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private). Sırlar (`firebase-key.json`, `.env`) gitignored, repoda yok — Render'da env var olarak duruyor.
 
-## Güncel Durum: Faz 10 (Faz 9 TAMAMLANDI ✅)
+## Güncel Durum: Faz 11 (Faz 10 TAMAMLANDI ✅)
+
+### Faz 11 (Performans — algılanan hız) ✅
+Canlıya çıktıktan sonra kullanıcı üç yavaşlık bildirdi: arama bazen 10sn, favoriler yavaş, AI bazen hiç cevap vermiyor. Üçü de ayrı sebeplerdi.
+
+- **Arama artık LLM'i BEKLEMİYOR (en büyük kazanç).** `search_recipes` ve `search_recipes_from_image` `generate_answer`'ı senkron çağırıyordu; tarifler ChromaDB'den ~0.3sn'de hazır oluyor ama endpoint Gemini bitene kadar dönmüyordu. Ölçüm (yerel Docker, gerçek endpoint fonksiyonları): **arama 0.32sn, Gemini 8.55sn, eski toplam 8.87sn**. Yani kullanıcı elde hazır duran sonuçları 8.5sn boyunca göremiyordu. Faz 6'da "asıl iyileştirme" diye ertelenen iş buydu.
+  - Yeni endpoint: **`POST /api/recipes/commentary`** (`{query, recipe_ids}` → `{answer}`). Arama yanıtından **`answer` alanı kaldırıldı**.
+  - **Tarif bilgisi istemciden değil ID'lerden okunuyor.** İstemcinin gönderdiği metinle prompt kurmak LLM'e keyfi içerik enjekte etmeye kapı açardı; `recipe_ids` ile ChromaDB'den okunuyor, 10 ID ile sınırlı.
+  - Frontend: sonuçlar anında basılıyor, AI kutusu **iskelet + shimmer** animasyonuyla bekliyor (`.llm-skeleton`, `prefers-reduced-motion` destekli), cevap gelince yerini alıyor. **Cevap gelmezse kutu sessizce gizleniyor** — kota dolduğunda sayfa çalışmaya devam ediyor, eskiden "AI commentary is temporarily unavailable" metni basılıyordu.
+  - Arka arkaya aramada eski yorumun yenisinin üstüne düşmemesi için `commentarySeq` sıra koruması var (yorum isteği yavaş olduğu için gerçek bir yarış).
+- **Favoriler N+1 → tek istek.** `favorites.js` önce listeyi çekip **her favori için ayrı** `/api/recipes/{id}` isteği atıyordu (N favori = N+1 istek), her biri ayrıca `verify_id_token()` çalıştırıyordu ve Render'ın **0.1 vCPU**'sunda sıraya giriyordu. `/api/favorites` artık **`include_details=true`** parametresiyle tarif bilgilerini de dönüyor; ChromaDB `get` zaten ID listesi aldığı için hepsi tek çağrıda okunuyor. Varsayılan (`false`) eski şekli koruyor — `recipe.js`'in "bu tarif favoride mi" kontrolü tarif detayını gereksiz indirmesin diye.
+- **Favoriler sırası: en son eklenen üstte.** Öncesinde `get_favorites` hiç sıralamıyordu, Firestore doküman ID sırasıyla dönüyordu — ID `{email}_{recipe_id}` olduğu için favoriler *tarif ID'sine göre* diziliyordu, kullanıcı açısından rastgele. Sıralama **Firestore'da değil bellekte** yapılıyor: `where` + `order_by` birlikte kullanılınca Firestore bileşik indeks istiyor (elle kurulacak altyapı adımı), favori sayısı küçük olduğu için buna değmez.
+- **Tekrar eden kart kodu birleşti:** aynı 15 satırlık sözlük 3 yerde kopyaydı → `_recipe_card()` + `_cards_from_query()`.
+
+**Gemini kota limiti — Google artık YAYINLAMIYOR.** Resmi rate-limits sayfası somut RPM/RPD vermiyor, "AI Studio'da bakın" diyor. Üçüncü taraf kaynaklar çelişiyor (1.500/gün, 250/gün, 20/gün hepsi geçiyor) — **hiçbirine güvenilmemeli**. Tek doğru kaynak: <https://aistudio.google.com/rate-limit> (kendi API key'iyle). Async LLM değişikliği bu belirsizliği zararsız hâle getirdi: kota dolsa bile arama çalışıyor, sadece yorum kutusu gelmiyor.
+
+**Doğrulama (yerel Docker, gerçek endpoint fonksiyonları):** boş sonuç yolu (`ids: [[]]`) patlamıyor; yorum boş/olmayan ID'de Gemini'yi hiç çağırmadan `None` dönüyor; favorilerde silinmiş tarif `recipe: None` oluyor, diğerleri sağlam; kart↔favori eşleşmesi doğru (ChromaDB sıra garantisi vermediği için map kullanıldı); `include_details=false` eski şekli koruyor; arama sonuçları referansla birebir aynı (17450/37913/306021). **Tarayıcıda kullanıcı doğruladı:** arama sonuçları anında geliyor, AI yorumu animasyonla yükleniyor, kamera aramasında da aynı, kalp butonu ekleme/çıkarma doğru çalışıyor.
+
+**Bilinen sınır:** Render ve Vercel ayrı ayrı deploy oluyor, atomik değil. Push sonrası kısa bir pencerede eski/yeni karışabilir; iki yön de zarif bozuluyor (eski frontend → "No suggestion available."; eski backend → `/commentary` 404 → kutu gizlenir), çökme yok. Deploy sonrası `Ctrl+Shift+R` iyi olur.
+
+## Faz 10 (Faz 9 TAMAMLANDI ✅)
 
 ### Faz 10 (Canlıya çıkış — Render + Vercel) ✅
 - **Backend → Render** (`https://recipe-rag-assistant-api-7g6a.onrender.com`). Ücretsiz katman (512 MB / 0.1 vCPU, kartsız), Frankfurt. Docker'ı kökteki `Dockerfile`'dan build ediyor. Sırlar env var olarak: `GEMINI_API_KEY`, `FIREBASE_CREDENTIALS_JSON`. Her push'ta otomatik yeniden deploy.
@@ -249,8 +271,8 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 ### Faz 4 sırasında karşılaşılan/çözülen konular
 - **CORS**: Frontend (Live Server, `127.0.0.1:XXXXX`) ile backend (FastAPI, `localhost:8080`) farklı origin'ler. `main.py`'ye `CORSMiddleware` eklendi, `allow_origins=["*"]` (geliştirme için, production'da kısıtlanacak).
 - **Gemini model deprecation**: İkinci Gemini API key alındığında yeni Google Cloud projesinde `gemini-2.5-flash` "no longer available to new users" hatası verdi. `llm.py`'de model adı `gemini-flash-latest` alias'ına çevrildi — Google bu alias'ı her zaman en güncel flash modeline yönlendiriyor, gelecek deprecation'lardan korumalı. **Sonrası (Faz 6):** bu karar geri alındı, alias'ın işaret ettiği model 503 verdiği için `gemini-2.5-flash`'a dönüldü (bkz. aşağıdaki "Arama yavaşlığı" maddesi). 2.5'e erişim bu arada açılmış.
-- **Arama yavaşlığı — suçlu LLM değil, alias'tı** (Faz 6'da ölçüldü): Arama ~20sn sürüyordu. Adım adım ölçüm: embedding 0.04sn, filtre 0.00sn, ChromaDB 0.27sn, **Gemini 20.14sn** (toplamın %98.5'i). Yani **tarifler 0.3sn'de hazırdı**, kod sadece LLM'i bekliyordu. Sebep araştırması: thinking kapatmak fayda etmedi (21.8sn), 5 token'lık "say hi" bile 20.3sn sürdü, TCP+TLS el sıkışma 0.16sn (ağ sağlam). Ham HTTP isteği **503 UNAVAILABLE** döndürdü → `gemini-flash-latest`'in işaret ettiği model free tier'da aşırı yüklü, SDK 503'ü görüp retry ediyor ve süre 20sn'ye çıkıyordu. `gemini-2.5-flash` aynı istekte ort. **3.5sn** (~6x). **Hâlâ açık olan asıl iyileştirme:** tarifleri LLM'i beklemeden döndürüp AI yorumunu asenkron çekmek — algılanan süre 0.3sn'ye iner. Bilinçli olarak ertelendi.
-- **Gemini free tier kota limiti**: Günde 20 istek limiti var. Yoğun test günlerinde takılıyor. `llm.py` çağrıları artık `main.py`'de try/except ile sarılı (bkz. "Şu An Üzerinde Çalışılıyor") — kota dolunca arama sonuçları LLM cevabı olmadan da gösteriliyor.
+- **Arama yavaşlığı — suçlu LLM değil, alias'tı** (Faz 6'da ölçüldü): Arama ~20sn sürüyordu. Adım adım ölçüm: embedding 0.04sn, filtre 0.00sn, ChromaDB 0.27sn, **Gemini 20.14sn** (toplamın %98.5'i). Yani **tarifler 0.3sn'de hazırdı**, kod sadece LLM'i bekliyordu. Sebep araştırması: thinking kapatmak fayda etmedi (21.8sn), 5 token'lık "say hi" bile 20.3sn sürdü, TCP+TLS el sıkışma 0.16sn (ağ sağlam). Ham HTTP isteği **503 UNAVAILABLE** döndürdü → `gemini-flash-latest`'in işaret ettiği model free tier'da aşırı yüklü, SDK 503'ü görüp retry ediyor ve süre 20sn'ye çıkıyordu. `gemini-2.5-flash` aynı istekte ort. **3.5sn** (~6x). **"Asıl iyileştirme" olarak not edilen iş Faz 11'de YAPILDI:** tarifler artık LLM beklenmeden dönüyor, AI yorumu ayrı istekle geliyor (8.87sn → 0.32sn).
+- **Gemini free tier kota limiti**: Yoğun test günlerinde takılıyor. **Kesin rakam bilinmiyor — Google artık yayınlamıyor** (Faz 11'de araştırıldı: resmi rate-limits sayfası "AI Studio'da bakın" diyor, üçüncü taraf kaynaklar 1.500/250/20 gibi çelişen rakamlar veriyor). Kendi limitini görmek için: <https://aistudio.google.com/rate-limit>. Faz 11'den beri kota dolması zararsız: arama LLM'den bağımsız çalışıyor, sadece yorum kutusu gelmiyor.
 - **Diyet tag sıralaması**: `search.js` ve `recipe.js`'de aktif diyet tag'leri `[vegan, vegetarian, pescatarian, gluten_free, dairy_free, nut_free]` sırasıyla gösteriliyor — yemek türü bilgisi allergen-free bilgisinden önce görünüyor.
 - **Instructions parse edge case**: Bazı tariflerin ham verisinde R vector'daki boş elementler `,` veya `\` gibi anlamsız karakterlere çevrilmiş, bu da 17 tane sahte adım oluşturuyordu. `recipe.js`'deki `parseInstructions()` fonksiyonu 3 karakterden kısa ve sadece noktalama içeren parçaları filtreliyor. Sağlıklı tarifleri etkilemiyor.
 - **Live Server + `file://` protokolü**: `getUserMedia` API'si `file://` üzerinde çalışmıyor, HTTP sunucusu şart. VS Code Live Server extension kullanılıyor.
