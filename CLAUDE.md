@@ -89,7 +89,7 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 
 1. **`firebase-auth` → `main` merge** — Faz 6–10'un tamamı `firebase-auth`'ta, `main` el değmemiş. Deploy şu an **feature branch'inden** yapılıyor (hem Render hem Vercel bu dalı izliyor). Merge edilirse **Render ve Vercel'in izlediği dalı `main`'e çevirmek gerekir**, yoksa canlı eski dalda kalır.
 2. **README + sunum hazırlığı** — kökte bir `README.md` var (deploy odaklı); sunum/anlatım materyali yok.
-3. **④ Mobilde Google girişi** (`signInWithRedirect`) — bilinçli ertelendi, gerekçe "Deploy blocker'ları" bölümünde.
+3. **④ In-app tarayıcılarda Google girişi** (`signInWithRedirect`) — bilinçli ertelendi, gerekçe "Deploy blocker'ları" bölümünde. **Not: normal mobil tarayıcıda (Chrome/Safari) giriş çalışıyor — kullanıcı gerçek telefonda doğruladı (2026-07-19).** Kalan risk yalnızca uygulama içi tarayıcılar.
 4. **`nut_free` etiket açığı** — aşağıdaki "Ertelenen küçük iyileştirmeler"e bakınız; sunumda sorulabilecek türden gerçek bir veri hatası.
 5. **Diğer küçük iyileştirmeler** — LLM cevabındaki `**bold**` render'ı, instructions'daki `\` kalıntıları, `filters.py` geliştirmeleri.
 
@@ -107,7 +107,13 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 - ✅ **`api.js`'deki `API` sabiti** — `frontend/js/config.js`'e taşındı; ortama göre seçiyor (yerel/LAN → `localhost:8080`, canlı → Render). Bkz. Faz 10.
 - ✅ **Firebase Authorized domains** — `recipe-rag-assistant.vercel.app` Firebase Console'a eklendi (kullanıcı adımı). `localhost` da listede kaldı.
 - ✅ **CORS** — `main.py`'de artık `allow_origins=["*"]` değil: Vercel production domain'i + `allow_origin_regex` (Vercel preview'ları + localhost/127/LAN, herhangi port). Canlıda doğrulandı (izinli origin yansıyor, `evil.com` ve suffix-spoof reddediliyor).
-- ⏳ **Google girişinde `signInWithPopup` → mobilde sorunlu** (BİLİNÇLİ ERTELENDİ): mobil tarayıcılar popup'ları engelliyor (Instagram/Facebook in-app tarayıcıları, iOS Safari third-party cookie). Firebase önerisi **`signInWithRedirect`** (cihaza göre seçim). **Ertelendi** çünkü: (1) çalışan masaüstü girişini + hesap bağlama akışını (`auth.js:137`) yeniden kurmayı gerektiriyor, (2) gerçek telefon + gerçek Google hesabıyla test edilmeli. Masaüstünde popup çalışıyor; mobilde e-posta/şifre girişi yedek olarak çalışıyor, sadece mobil *Google butonu* sorunlu. Sunum masaüstündeyse yeterli.
+- ⏳ **Google girişinde `signInWithPopup` → in-app tarayıcılarda sorunlu** (BİLİNÇLİ ERTELENDİ). **Kapsam düzeltmesi (2026-07-19, gerçek telefonda doğrulandı): mobilde giriş ÇALIŞIYOR.** Bu madde önceden "mobilde Google girişi bozuk" gibi okunuyordu; doğrusu değil:
+  - **Masaüstü tarayıcı** → popup çalışıyor.
+  - **Normal mobil tarayıcı (Chrome/Safari)** → ✅ çalışıyor, kullanıcı doğruladı. Firebase popup'ı yeni sekmede açıyor.
+  - **In-app tarayıcılar** (Instagram, Facebook, LinkedIn vb. içinden açılan link) → kalan gerçek risk. Popup engelleniyor ya da açılıyor ama `window.opener` köprüsü kurulamadığı için giriş sonucu ana sayfaya dönmüyor; kullanıcı giriş sayfasında kalıyor.
+  - **iOS Safari + "Cross-Site Tracking'i Engelle"** → sınırda; popup akışı `firebaseapp.com` üzerinden third-party storage'a dayandığı için bazı sürümlerde sessizce başarısız olabilir (bu senaryo test EDİLMEDİ).
+
+  Firebase'in bu durum için önerisi **`signInWithRedirect`** (cihaza göre seçim). **Ertelendi** çünkü: (1) çalışan masaüstü girişini + hesap bağlama akışını (`auth.js:137`) yeniden kurmayı gerektiriyor — redirect'te hata `catch` bloğuna değil, sayfa yeniden yüklendikten sonra `getRedirectResult()`'a düşer, dolayısıyla `pendingGoogleCredential` sayfa yenilendiği için sıfırlanır ve mantık olduğu gibi çalışmaz; (2) `firebase.js`'teki `authReady` ile `getRedirectResult()`'ın sırası doğru kurulmazsa Faz 6'da çözülen **giriş↔search sonsuz yönlendirme döngüsü** geri gelebilir. Mevcut kapsam (masaüstü + normal mobil tarayıcı çalışıyor) sunum için fazlasıyla yeterli.
 
 ### Ertelenen küçük iyileştirmeler
 - LLM cevabındaki `**bold**` markdown karakterlerinin HTML render'ı (şu an ham metin görünüyor)
