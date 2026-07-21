@@ -13,6 +13,23 @@ const API = window.API_BASE;
 // logger.js bu dosyadan önce yüklenir (bkz. HTML'lerdeki script sırası).
 const apiLog = Logger.get('api');
 
+// "Yavaş" eşiği uç noktaya göre değişiyor — backend'de de öyle. Bu iki uç
+// Gemini'yi bekliyor, saniyeler sürmesi normal; tek bir genel eşik (1 sn)
+// kullanılırsa normal çalışan her istek sarı yanar ve uyarı anlamını yitirir.
+// Ayrıca aynı istek backend'de yeşil, frontend'de sarı görünürdü.
+//
+// from-image backend'inkinden (5 sn) daha yüksek: fotoğrafın base64 olarak
+// yüklenmesi buraya dahil, backend ölçümü ise istek geldikten sonra başlıyor.
+const SLOW_THRESHOLDS = [
+  [/\/api\/recipes\/commentary/, 5000],
+  [/\/api\/recipes\/from-image/, 8000],
+];
+
+function thresholdFor(path) {
+  const match = SLOW_THRESHOLDS.find(([pattern]) => pattern.test(path));
+  return match ? match[1] : undefined;   // undefined -> Logger'ın varsayılanı
+}
+
 // ── Token ────────────────────────────────────────────────
 // Firebase ID token'ı gerektiğinde otomatik yenilenir.
 async function getToken() {
@@ -116,7 +133,12 @@ async function apiRequest(path, options = {}) {
     throw err;
   }
 
-  Logger.duration('api', `${method} ${path} -> ${res.status}`, performance.now() - start);
+  Logger.duration(
+    'api',
+    `${method} ${path} -> ${res.status}`,
+    performance.now() - start,
+    thresholdFor(path)
+  );
   return data;
 }
 
