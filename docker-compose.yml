@@ -23,6 +23,10 @@ services:
     volumes:
       # Firebase service-account anahtarı — repo'ya girmez (.gitignore), salt-okunur mount
       - ./api/firebase-key.json:/run/secrets/firebase-key.json:ro
+      # Geliştirici araçları (ölçüm script'i). Image'a girmiyor — sadece yerelde
+      # mount ediliyor ki `docker compose exec api python /scripts/...` ile
+      # kopyalamadan çalıştırılabilsin.
+      - ./scripts:/scripts:ro
 
   frontend:
     build: ./frontend
