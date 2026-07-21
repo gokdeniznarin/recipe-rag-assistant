@@ -43,7 +43,16 @@ async function getToken() {
   const t0 = performance.now();
   await authReady;
   const waited = performance.now() - t0;
-  if (waited > 50) apiLog.debug(`waited ${Logger.fmt(waited)} for auth state to settle`);
+  // Kayda değer olduğunda INFO: bu bekleme her sayfanın İLK isteğinde ~450 ms
+  // olabiliyor (Firebase oturumu geri yüklüyor) ve isteğin toplam süresine
+  // dahil. Loglanmazsa konsolda "451 ms sürdü" yazan bir istek görünüyor ama
+  // backend "3 ms" diyor — aradaki fark açıklamasız kalıyor.
+  // MPA olduğumuz için bu bedel HER sayfa geçişinde yeniden ödeniyor.
+  if (waited > 100) {
+    apiLog.info(`waited ${Logger.fmt(waited)} for Firebase auth state (first request on this page)`);
+  } else if (waited > 5) {
+    apiLog.debug(`waited ${Logger.fmt(waited)} for auth state to settle`);
+  }
 
   const user = auth.currentUser;
   if (!user) return null;
