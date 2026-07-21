@@ -16,6 +16,10 @@ services:
       - .env
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/firebase-key.json
+      # Container varsayılan olarak UTC kullanıyor; log saatleri kendi saatimizden
+      # 3 saat geride görünüyor ve "yeni log gelmemiş" izlenimi veriyordu.
+      # Sadece yerel geliştirme kolaylığı — canlıda (Render) UTC kalması normal.
+      - TZ=Europe/Istanbul
     volumes:
       # Firebase service-account anahtarı — repo'ya girmez (.gitignore), salt-okunur mount
       - ./api/firebase-key.json:/run/secrets/firebase-key.json:ro

@@ -6,6 +6,8 @@ import auth  # noqa: F401
 from firebase_admin import firestore
 from google.cloud.firestore_v1 import FieldFilter
 
+from logger import timed
+
 # Favoriler çalışma anında değişen tek veri. ChromaDB'den Firestore'a taşındı:
 # vektör veritabanına vektörü olmayan veri konuyordu (eskiden her kayda sahte bir
 # [[0.0] * 384] embedding yazılıyordu) ve API'nin kalıcı disk istemesinin tek
@@ -35,6 +37,7 @@ def add_favorite(user_email: str, recipe_id: str):
     })
 
 
+@timed  # Firestore ağ üzerinden konuşuyor; aramanın aksine süresi değişken
 def get_favorites(user_email: str) -> list[dict]:
     """En son eklenen favori en üstte döner."""
     docs = _favorites.where(filter=FieldFilter("user_email", "==", user_email)).stream()

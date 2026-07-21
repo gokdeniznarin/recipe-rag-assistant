@@ -10,19 +10,43 @@
 // yerelde/LAN'da localhost:8080, canlıda Render. Bkz. frontend/js/config.js.
 const API = window.API_BASE;
 
+// logger.js bu dosyadan önce yüklenir (bkz. HTML'lerdeki script sırası).
+const apiLog = Logger.get('api');
+
 // ── Token ────────────────────────────────────────────────
 // Firebase ID token'ı gerektiğinde otomatik yenilenir.
 async function getToken() {
   // Firebase oturumu geri yükleyene kadar bekle — yoksa sayfa yüklenirken
   // currentUser henüz null olabilir ve istek yanlışlıkla 401 alır.
+  //
+  // İki bekleme AYRI ölçülüyor, çünkü sebepleri farklı: buradaki bekleme
+  // sayfa ilk açılırken oturumun geri yüklenmesi (normal, bir kez olur),
+  // aşağıdaki ise token'ın gerçekten yenilenmesi. İkisi tek sayı olarak
+  // ölçülseydi her sayfa açılışında sahte bir "yavaş" uyarısı çıkardı.
+  const t0 = performance.now();
   await authReady;
+  const waited = performance.now() - t0;
+  if (waited > 50) apiLog.debug(`waited ${Logger.fmt(waited)} for auth state to settle`);
+
   const user = auth.currentUser;
   if (!user) return null;
-  return await user.getIdToken();
+
+  const t1 = performance.now();
+  const token = await user.getIdToken();
+  const refreshed = performance.now() - t1;
+  // Normalde SDK önbellekteki token'ı anında verir. Uzun sürdüyse token'ın
+  // süresi dolmuş ve Firebase'e gidilmiş demektir — bilmek isteriz.
+  if (refreshed > 100) apiLog.info(`getIdToken took ${Logger.fmt(refreshed)} (token refreshed)`);
+
+  return token;
 }
 
 function logout() {
+  const start = performance.now();
   auth.signOut().then(() => {
+    // Çıkış da giriş gibi tamamen istemci tarafında: Firebase yerel oturumu
+    // siliyor, sunucumuza istek gitmiyor. Genelde milisaniyeler sürer.
+    Logger.duration('auth', 'sign out', performance.now() - start);
     window.location.href = 'index.html';
   });
 }
@@ -42,7 +66,17 @@ authReady.then((user) => {
 });
 
 // ── Fetch wrapper ────────────────────────────────────────
+// Ölçüm burada duruyor çünkü BÜTÜN istekler buradan geçiyor: tek yere yazılan
+// ölçüm, çağıran hiçbir dosyayı değiştirmeden hepsini kapsıyor (backend'de aynı
+// işi @timed decorator'ı yapıyordu — fikir aynı, sözdizimi farklı).
+//
+// Ölçülen süre backend'in ölçtüğünden FAZLA: token alma, ağ gecikmesi ve JSON
+// parse de içinde. Aradaki fark ağ + istemci maliyeti; Render uykudaysa o
+// 30-60 saniye de yalnızca burada görünür (backend henüz çalışmıyor).
 async function apiRequest(path, options = {}) {
+  const method = (options.method || 'GET').toUpperCase();
+  const start = performance.now();
+
   const token = await getToken();
   const headers = {
     'Content-Type': 'application/json',
@@ -50,14 +84,40 @@ async function apiRequest(path, options = {}) {
     ...(options.headers || {}),
   };
 
-  const res = await fetch(`${API}${path}`, { ...options, headers });
+  let res;
+  try {
+    res = await fetch(`${API}${path}`, { ...options, headers });
+  } catch (err) {
+    // Ağ hatası: sunucuya hiç ulaşılamadı (kapalı, DNS, CORS reddi...).
+    // Bu durumun backend logunda hiçbir izi olmaz — yalnızca burada görünür.
+    apiLog.error(
+      `${method} ${path} failed after ${Logger.fmt(performance.now() - start)}: ${err.message}`
+    );
+    throw err;
+  }
 
   if (res.status === 401) {
+    apiLog.warn(`${method} ${path} -> 401, signing out`);
     logout();
     throw new Error('Session expired');
   }
 
-  return res.json();
+  // Gövde JSON değilse (beklenmedik bir sunucu/proxy hata sayfası) json() patlar.
+  // Sarmalanmazsa istek ölçümü hiç loglanmadan kaybolur ve elde sadece anlamsız
+  // bir "Unexpected token <" hatası kalır.
+  let data;
+  try {
+    data = await res.json();
+  } catch (err) {
+    apiLog.error(
+      `${method} ${path} -> ${res.status} but body is not JSON ` +
+      `(after ${Logger.fmt(performance.now() - start)}): ${err.message}`
+    );
+    throw err;
+  }
+
+  Logger.duration('api', `${method} ${path} -> ${res.status}`, performance.now() - start);
+  return data;
 }
 
 

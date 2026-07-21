@@ -6,7 +6,10 @@ from filters import extract_filters
 from llm import generate_answer, detect_ingredients_from_image
 from auth import get_current_user_email
 from favorites import add_favorite, get_favorites, remove_favorite
+from logger import get_logger, timed, timed_block
 from fastapi.middleware.cors import CORSMiddleware
+
+log = get_logger("main")
 
 app = FastAPI(title="Recipe RAG Assistant API")
 # CORS: hangi sitelerin bu API'yi tarayıcıdan çağırabileceği. Geliştirmede "*"'dı;
@@ -28,13 +31,14 @@ app.add_middleware(
 # Bu yüzden ayrı bir ChromaDB sunucusuna değil, image'a gömülü klasöre bakıyor.
 # (Favoriler Faz 9'da Firestore'a taşındı; chromadb servisi tamamen kalktı.)
 CHROMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chroma_data")
-print(f"Opening recipes database: {CHROMA_PATH}")
-chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
-# Embedding'i ChromaDB'nin varsayılan fonksiyonu üretiyor: aynı all-MiniLM-L6-v2
-# modeli, torch yerine ONNX motoruyla.
-collection = chroma_client.get_collection("recipes")
+log.info("Opening recipes database: %s", CHROMA_PATH)
+with timed_block("chromadb open", logger_name="main"):
+    chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
+    # Embedding'i ChromaDB'nin varsayılan fonksiyonu üretiyor: aynı all-MiniLM-L6-v2
+    # modeli, torch yerine ONNX motoruyla.
+    collection = chroma_client.get_collection("recipes")
 
-print(f"Ready! Collection has {collection.count()} recipes.")
+log.info("Ready! Collection has %s recipes.", collection.count())
 
 
 class SearchRequest(BaseModel):
@@ -78,18 +82,29 @@ def root():
 
 
 @app.post("/api/recipes/search")
+@timed  # dış ölçüm: endpoint'in ucundan ucuna süresi
 def search_recipes(request: SearchRequest, user_email: str = Depends(get_current_user_email)):
+    log.info("Text search: %r (n=%s)", request.query, request.n_results)
+
     # 1. Kullanıcı sorgusundan filtre çıkar
-    where_filter = extract_filters(request.query)
+    with timed_block("extract_filters"):
+        where_filter = extract_filters(request.query)
 
     # 2. ChromaDB'de semantic + metadata arama yap
-    results = collection.query(
-        query_texts=[request.query],
-        n_results=request.n_results,
-        where=where_filter
-    )
+    #    (embedding üretimi de bu çağrının içinde — query_texts veriyoruz)
+    with timed_block("chromadb query"):
+        results = collection.query(
+            query_texts=[request.query],
+            n_results=request.n_results,
+            where=where_filter
+        )
 
     recipes = _cards_from_query(results)
+
+    # Sonuçsuz arama hata değil ama sessizce geçilmemeli: filtre çıkarımı fazla
+    # daraltmış olabilir, log'da sarı bir satır olarak görünsün.
+    if not recipes:
+        log.warning("No results for %r (filters: %s)", request.query, where_filter)
 
     # LLM burada BEKLENMİYOR. Tarifler ~0.3sn'de hazır oluyordu ama endpoint
     # Gemini'yi bekliyordu; Gemini yavaşladığında (503 + SDK retry) toplam süre
@@ -108,6 +123,9 @@ class CommentaryRequest(BaseModel):
 
 
 @app.post("/api/recipes/commentary")
+# Bu endpoint Gemini'yi bekliyor; "yavaş" eşiği aramanınkinden yüksek olmalı
+# yoksa normal çalışan her istek WARNING üretir ve uyarı anlamını yitirir.
+@timed(slow_ms=5000)
 def recipe_commentary(
     request: CommentaryRequest,
     user_email: str = Depends(get_current_user_email),
@@ -139,7 +157,7 @@ def recipe_commentary(
     except Exception as e:
         # Kota dolması buraya düşüyor. Arama zaten tamamlandı; yorumun gelmemesi
         # sayfayı bozmuyor, frontend kutuyu gizliyor.
-        print(f"LLM error (commentary skipped): {e}")
+        log.error("LLM error (commentary skipped): %s", e)
         return {"answer": None, "error": "commentary_unavailable"}
 
 
@@ -155,6 +173,8 @@ class ImageSearchRequest(BaseModel):
 
 
 @app.post("/api/recipes/from-image")
+# Vision çağrısını içerdiği için metin aramasından yavaş olması normal.
+@timed(slow_ms=5000)
 def search_recipes_from_image(
     request: ImageSearchRequest,
     user_email: str = Depends(get_current_user_email)
@@ -167,7 +187,7 @@ def search_recipes_from_image(
     try:
         detected_ingredients = detect_ingredients_from_image(request.image_base64)
     except Exception as e:
-        print(f"Vision error: {e}")
+        log.error("Vision error: %s", e)
         quota_exhausted = "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)
         return {
             "error": (
@@ -179,7 +199,11 @@ def search_recipes_from_image(
         }
 
     if len(detected_ingredients) == 0:
+        log.warning("No ingredients detected in the image")
         return {"error": "No ingredients detected in the image"}
+
+    # Bu metin de bize dışarıdan geliyor (LLM üretiyor) — yine %r.
+    log.info("Detected ingredients: %r", ", ".join(detected_ingredients))
 
     # 2. Malzemeleri + (varsa) kullanıcının ek notunu birleştirip arama sorgusu oluştur
     ingredients_text = ", ".join(detected_ingredients)
@@ -189,15 +213,20 @@ def search_recipes_from_image(
         combined_query = ingredients_text
 
     # 3. Aynı arama akışını kullan (filtre + embedding + ChromaDB + LLM)
-    where_filter = extract_filters(combined_query)
+    with timed_block("extract_filters"):
+        where_filter = extract_filters(combined_query)
 
-    results = collection.query(
-        query_texts=[combined_query],
-        n_results=request.n_results,
-        where=where_filter
-    )
+    with timed_block("chromadb query"):
+        results = collection.query(
+            query_texts=[combined_query],
+            n_results=request.n_results,
+            where=where_filter
+        )
 
     recipes = _cards_from_query(results)
+
+    if not recipes:
+        log.warning("No results for image query %r (filters: %s)", combined_query, where_filter)
 
     # Metin aramasındaki gibi: LLM yorumu beklenmiyor, ayrı istekle geliyor.
     # (Buradaki Gemini vision çağrısı zorunlu — malzemeler olmadan arama yapılamaz.)
@@ -214,10 +243,16 @@ def search_recipes_from_image(
 
 
 @app.get("/api/recipes/{recipe_id}")
+@timed
 def get_recipe_detail(recipe_id: str, user_email: str = Depends(get_current_user_email)):
     results = collection.get(ids=[recipe_id])
 
     if len(results["ids"]) == 0:
+        # %r (repr) kullanılıyor, %s değil: recipe_id kullanıcıdan geliyor ve
+        # içinde satır sonu olabilir (URL'de %0A). Düz %s ile loglanırsa satır
+        # sonu aynen basılır ve saldırgan log'a sahte bir satır uydurabilir
+        # (log injection). repr satır sonunu \n olarak kaçırıyor.
+        log.warning("Recipe not found: %r", recipe_id)
         return {"error": "Recipe not found"}
 
     meta = results["metadatas"][0]
@@ -250,15 +285,20 @@ class FavoriteRequest(BaseModel):
 
 
 @app.post("/api/favorites/add")
+@timed
 def add_favorite_endpoint(request: FavoriteRequest, user_email: str = Depends(get_current_user_email)):
     try:
         add_favorite(user_email, request.recipe_id)
         return {"message": "Recipe added to favorites", "recipe_id": request.recipe_id}
     except ValueError as e:
+        # Beklenen bir ret (zaten favoride) — ERROR değil WARNING. Ölçüm de
+        # bozulmuyor: hata burada yakalandığı için @timed normal dönüş görüyor.
+        log.warning("Add favorite rejected (%r): %s", request.recipe_id, e)
         return {"error": str(e)}
 
 
 @app.get("/api/favorites")
+@timed
 def list_favorites_endpoint(
     include_details: bool = False,
     user_email: str = Depends(get_current_user_email),
@@ -280,7 +320,10 @@ def list_favorites_endpoint(
         return {"favorites": favorites}
 
     ids = [f["recipe_id"] for f in favorites]
-    results = collection.get(ids=ids)
+    # Faz 11'de N+1'in kaldırıldığı yer: N ayrı istek yerine tek `get`.
+    # Ölçüm burada duruyor ki iddiayı log'dan gösterebilelim.
+    with timed_block(f"chromadb get ({len(ids)} recipes)"):
+        results = collection.get(ids=ids)
 
     # ChromaDB dönüş sırasını garanti etmiyor ve olmayan ID'leri sessizce atlıyor;
     # id -> kart eşlemesi kurup favori sırasını koruyoruz.
@@ -300,9 +343,11 @@ def list_favorites_endpoint(
 
 
 @app.delete("/api/favorites/{recipe_id}")
+@timed
 def remove_favorite_endpoint(recipe_id: str, user_email: str = Depends(get_current_user_email)):
     try:
         remove_favorite(user_email, recipe_id)
         return {"message": "Recipe removed from favorites", "recipe_id": recipe_id}
     except ValueError as e:
+        log.warning("Remove favorite rejected (%r): %s", recipe_id, e)
         return {"error": str(e)}

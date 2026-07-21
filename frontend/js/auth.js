@@ -3,6 +3,8 @@
  * Bu dosya, Firebase compat SDK script'leri ve firebase.js'ten SONRA yüklenir.
  */
 
+const authLog = Logger.get('auth');
+
 // Zaten giriş yapılmışsa direkt search.html'e yönlendir
 authReady.then((user) => {
   if (user) window.location.href = 'search.html';
@@ -67,6 +69,11 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   btn.disabled = true;
   btn.textContent = 'Signing in…';
 
+  // Giriş süresi YALNIZCA burada ölçülebilir: Faz 6'dan beri giriş tarayıcı ile
+  // Firebase arasında geçiyor, bizim sunucumuza hiç uğramıyor. Backend logunda
+  // bu işlemin izi yoktur.
+  const start = performance.now();
+
   try {
     const result = await auth.signInWithEmailAndPassword(email, password);
 
@@ -75,10 +82,15 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     if (pendingGoogleCredential) {
       await result.user.linkWithCredential(pendingGoogleCredential);
       pendingGoogleCredential = null;
+      authLog.info('Google credential linked to password account');
     }
 
+    Logger.duration('auth', 'sign in (password)', performance.now() - start, 3000);
     window.location.href = 'search.html';
   } catch (err) {
+    authLog.error(
+      `sign in (password) failed after ${Logger.fmt(performance.now() - start)}: ${err.code}`
+    );
     errorEl.textContent = friendlyError(err.code);
     btn.disabled = false;
     btn.textContent = 'Sign in';
@@ -98,9 +110,12 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
   btn.disabled = true;
   btn.textContent = 'Creating account…';
 
+  const start = performance.now();
+
   try {
     // Firebase hesabı oluşturur ve kullanıcıyı otomatik giriş yaptırır.
     const result = await auth.createUserWithEmailAndPassword(email, password);
+    Logger.duration('auth', 'create account', performance.now() - start, 3000);
 
     // Doğrulama maili gönder. Kritik: email doğrulanmadan aynı adresle Google'a
     // girilirse, Firebase güvenlik gereği doğrulanmamış şifreyi siler. Doğrulanmış
@@ -108,7 +123,7 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
     try {
       await result.user.sendEmailVerification();
     } catch (e) {
-      console.warn('Verification email could not be sent:', e);
+      authLog.warn(`Verification email could not be sent: ${e.code || e.message}`);
     }
 
     window.location.href = 'search.html';
@@ -166,8 +181,14 @@ document.getElementById('google-btn').addEventListener('click', async () => {
   const errorEl = document.getElementById('google-error');
   errorEl.textContent = '';
 
+  // Popup açık kaldığı sürece kullanıcı hesap seçiyor; bu yüzden ölçülen süre
+  // "sistemin yavaşlığı" değil, kullanıcının düşünme süresini de içeriyor.
+  // Eşik bu yüzden yüksek (10 sn) — yoksa her normal giriş sarı yanardı.
+  const start = performance.now();
+
   try {
     await auth.signInWithPopup(googleProvider);
+    Logger.duration('auth', 'sign in (Google popup)', performance.now() - start, 10000);
     window.location.href = 'search.html';
   } catch (err) {
     // Bu email şifreyle kayıtlı: Firebase güvenlik gereği otomatik bağlamaz,

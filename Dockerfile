@@ -5,6 +5,10 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
+# Python stdout'u tamponlamasın: aksi halde log satırları tampon dolana kadar
+# bekler ve `docker logs` / Render'ın log ekranı gecikmeli (bazen hiç) gösterir.
+ENV PYTHONUNBUFFERED=1
+
 COPY api/requirements.txt .
 # --timeout/--retries dengesiz bağlantıda kopan indirmeleri toparlar.
 RUN pip install --no-cache-dir --timeout 120 --retries 10 -r requirements.txt

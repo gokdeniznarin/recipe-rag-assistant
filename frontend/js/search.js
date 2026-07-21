@@ -1,3 +1,5 @@
+const searchLog = Logger.get('search');
+
 // ── DOM elemanları ───────────────────────────────────────
 const textPanel      = document.getElementById('text-panel');
 const cameraPanel    = document.getElementById('camera-panel');
@@ -98,7 +100,12 @@ async function loadCommentary(query, recipes) {
   }
 }
 
-function renderResults(data) {
+// Kartların DOM'a çizilmesi. Logger.timed ile sarmalandı — backend'in ASLA
+// göremediği bir maliyet: yanıt geldikten sonra kullanıcı sonuçları ancak
+// render bitince görüyor. Backend'de aynı işi @timed decorator'ı yapıyor;
+// buradaki onun JS karşılığı (higher-order function).
+// Eşik 100 ms: 5 kart çizmek milisaniyeler sürmeli, aşıyorsa bir sorun var.
+const renderResults = Logger.timed(function (data) {
   llmBox.classList.add('hidden');   // önceki aramanın yorumu kalmasın
   recipeList.innerHTML = '';
   resultsCount.textContent = `${data.results.length} matches`;
@@ -137,7 +144,7 @@ function renderResults(data) {
   });
 
   results.classList.remove('hidden');
-}
+}, 'renderResults', 'search', 100);
 
 function escapeHtml(str) {
   const div = document.createElement('div');
@@ -290,7 +297,7 @@ if (SpeechRecognition && micBtn) {
 };
 
   recognition.onerror = (event) => {
-    console.warn('Speech recognition error:', event.error);
+    searchLog.warn(`Speech recognition error: ${event.error}`);
     stopListening();
   };
 
@@ -317,7 +324,7 @@ function startListening() {
     micBtn.classList.add('is-listening');
     micBtn.setAttribute('aria-label', 'Stop listening');
   } catch (err) {
-    console.warn(err);
+    searchLog.warn(`Could not start microphone: ${err.message || err}`);
   }
 }
 

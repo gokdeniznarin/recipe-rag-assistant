@@ -4,6 +4,8 @@ import firebase_admin
 from firebase_admin import credentials, auth as firebase_auth
 from fastapi import Header, HTTPException
 
+from logger import timed
+
 
 # ── Firebase Admin SDK ────────────────────────────────────
 # Service-account kimliğini üç kaynaktan biriyle bulur (öncelik sırasıyla):
@@ -26,6 +28,15 @@ if not firebase_admin._apps:
         firebase_admin.initialize_app()
 
 
+# Korumalı HER istekte çalışan tek iş bu — endpoint'in @timed ölçümü bunu
+# KAPSAMIYOR, çünkü FastAPI dependency'leri endpoint fonksiyonundan önce çalışır.
+# Yani token doğrulaması bugüne kadar ölçülmeyen tek maliyetti (Faz 11'de
+# "her istek ayrıca verify_id_token çalıştırıyor" denmişti ama hiç ölçülmemişti).
+#
+# expected=(HTTPException,): süresi dolmuş ya da bozuk bir token'ın 401 alması
+# arıza değil, sistemin doğru çalıştığının işareti — kırmızı ERROR yerine sarı
+# WARNING olarak loglanıyor.
+@timed(name="verify token", expected=(HTTPException,))
 def get_current_user_email(authorization: str = Header(...)) -> str:
     """Header'daki Firebase ID token'ını doğrular, geçerliyse kullanıcının e-postasını döner."""
     if not authorization.startswith("Bearer "):

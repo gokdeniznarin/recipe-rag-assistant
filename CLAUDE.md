@@ -60,6 +60,7 @@
 - `ingestion/test_search.py` — arama testleri. Gömülü veritabanını okuyor (sunucu yok). `CHROMA_PATH` env var'ıyla image'daki kopyaya yöneltilebilir — **repodaki `api/chroma_data`'ya yöneltirsen commit'li dosyayı kirletir** (bkz. Faz 8 notları).
 - `api/main.py` — FastAPI backend + CORS middleware (Faz 10'dan beri kendi origin'lerimizle sınırlı): /api/recipes/search, /api/recipes/from-image, **/api/recipes/commentary** (Faz 11), /api/recipes/{recipe_id}, /api/favorites/* endpoint'leri. Tarifleri image'a gömülü `chroma_data/` klasöründen `PersistentClient` ile okuyor (Faz 8). Arama endpoint'leri LLM'i beklemiyor (Faz 11).
 - `api/chroma_data/` — **git'e commit edilmiş** gömülü tarif veritabanı (35MB: `chroma.sqlite3` + HNSW indeks dosyaları). `load_to_chromadb.py` üretiyor, Dockerfile `COPY . .` ile image'a alıyor.
+- `api/logger.py` — **merkezi logging + süre ölçümü** (Faz 13). Renkli seviye formatter'ı (`ColorFormatter`), `@timed` decorator'ı ve `timed_block` context manager'ı. Uygulamada `print` kalmadı. `python api/logger.py` ile seviyeleri/renkleri tek başına gösteren bir demo bloğu var.
 - `api/auth.py` — tek iş: Firebase Admin SDK ile `verify_id_token()` → e-posta. `get_current_user_email` dependency'si korumalı endpoint'lerde kullanılıyor. (Eskiden JWT + bcrypt + kullanıcı kayıt/giriş vardı; Firebase geçişiyle ~140 satırdan ~30 satıra düştü.)
 - `api/llm.py` — Gemini API ile LLM cevap üretimi + fotoğraftan malzeme tanıma (`gemini-2.5-flash`)
 - `api/filters.py` — kullanıcı sorgusundan diyet/süre/kalori filtresi çıkarımı
@@ -76,6 +77,7 @@
 - `frontend/favorites.html` — kayıtlı tariflerin listesi (boş durum ekranı ile)
 - `frontend/css/style.css` — tüm sayfalar için ortak CSS (design tokens, layout, components, user menu dropdown)
 - `frontend/js/firebase.js` — Firebase init + `authReady` promise'i (oturum durumu **kesinleşene** kadar bekler). Her sayfada compat SDK script'lerinden sonra, diğer JS'lerden önce yüklenir.
+- `frontend/js/logger.js` — **frontend logging + süre ölçümü** (Faz 13). `api/logger.py`'nin tarayıcı tarafındaki eşi: aynı satır biçimi, aynı seviyeler, aynı "yavaşsa sarı" kuralı. `Logger.get(scope)`, `Logger.timed(fn, ...)` (decorator'ın JS'teki higher-order function karşılığı), `Logger.duration(...)`. Ayarlar `localStorage` üzerinden (`log_level`, `slow_ms`) — tarayıcıda ortam değişkeni yok. Her sayfada, kendisini kullanan dosyalardan önce yüklenir.
 - `frontend/js/config.js` — `window.API_BASE`'i ortama göre kuruyor (yerel/LAN → `localhost:8080`, canlı → Render). `api.js`'ten önce yüklenir (Faz 10).
 - `frontend/js/api.js` — ortak API katmanı (backend adresini `window.API_BASE`'den alır; Firebase ID token'ı header'a ekleyen fetch wrapper, `authReady` tabanlı auth guard, 401'de otomatik logout, kullanıcı menüsü/email + dropdown sign out, doğrulanmamış e-posta için hatırlatma bandı)
 - `frontend/js/auth.js` — giriş/kayıt formu mantığı + Google girişi (Firebase `signInWithPopup`), hesap bağlama (`linkWithCredential`), kayıtta `sendEmailVerification()`, şifre sıfırlama (`sendPasswordResetEmail`; Faz 12)
@@ -127,7 +129,81 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 - **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Faz 6–11'in tamamı bu branch'te. `main` el değmemiş durumda. **Canlı deploy `firebase-auth` dalından yapılıyor** (hem Render hem Vercel bu dalı izliyor), dolayısıyla merge sonrası deploy dalını `main`'e çevirmek gerekecek.
 - Repo **GitHub'da**: `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private). Sırlar (`firebase-key.json`, `.env`) gitignored, repoda yok — Render'da env var olarak duruyor.
 
-## Güncel Durum: Faz 12 (Faz 11 TAMAMLANDI ✅)
+## Güncel Durum: Faz 13 (Logging + süre ölçümü) ✅
+
+**Neden:** Hocanın isteği — "search fonksiyonlarının çalışma sürelerini ölç", decorator + logging sistemi, seviyeler ve renkler, Render'ın log ekranında da görünsün. Aynı zamanda gerçek bir eksikti: Faz 7/11'deki tüm süre ölçümleri **tek seferlik test scriptleriyle** yapılmıştı, çalışan uygulamada hiç ölçüm yoktu; hata ayıklama `print` ile yapılıyordu (seviye yok, zaman damgası yok, filtrelenemiyor).
+
+**`api/logger.py` (yeni, sadece standart kütüphane — yeni bağımlılık yok):**
+- `ColorFormatter` — `HH:MM:SS | LEVEL | modül | mesaj`, seviyeye göre ANSI renk (DEBUG cyan, INFO yeşil, WARNING sarı, ERROR kırmızı). `LOG_COLOR=0` ile kapatılabilir (renk anlamayan bir log toplayıcıya yazılırsa).
+- `setup_logging()` — root'a **tek** stdout handler bağlar, iki kez çağrılırsa hiçbir şey yapmaz (yoksa her satır iki kez basılır). Gürültülü kütüphaneler (`httpx`, `chromadb`, `google`, `grpc`) WARNING'e kısıldı. `LOG_LEVEL` env var'ıyla ayarlanıyor.
+- `@timed` decorator — **fonksiyon gövdesine hiç dokunmadan** süre ölçer. `@timed`, `@timed(slow_ms=5000)`, `@timed(name=...)` kullanımlarının üçü de çalışır; sync ve async fonksiyonları ayrı ayrı destekler.
+- `timed_block(...)` context manager — fonksiyonun tamamını değil **içindeki bir adımı** ölçmek için. Toplam süre "nerede yavaşlıyor?" sorusunu cevaplamıyor; asıl bilgi kırılımda (filtre ~0 ms, ChromaDB ~300 ms, Gemini saniyeler).
+
+**Seviye seçimi ölçümün kendisinden çıkıyor** (levels'ı süsleme değil, karar mekanizması yapan kısım):
+| durum | seviye | renk |
+|---|---|---|
+| süre < eşik | INFO | yeşil |
+| süre ≥ eşik (`SLOW_MS`, varsayılan 1000 ms) | WARNING | sarı |
+| fonksiyon hata fırlattı | ERROR | kırmızı (süre yine loglanır, hata **yutulmaz**) |
+
+Eşik fonksiyon başına ayarlanabiliyor: Gemini'yi bekleyen endpoint'ler `slow_ms=5000` ile işaretlendi, yoksa normal çalışan her istek WARNING üretir ve uyarı anlamını yitirirdi.
+
+**Nereye takıldı:** `search_recipes`, `search_recipes_from_image`, `recipe_commentary`, `get_recipe_detail`, favori endpoint'leri (`@timed`); içeride `extract_filters` + `chromadb query` + favorilerdeki toplu `chromadb get` (`timed_block`); `llm.py`'de `generate_answer` / `detect_ingredients_from_image` ve **her model denemesi ayrı ayrı** — hangi modelin ne kadar sürdüğü (0.65sn vs 8.5sn) artık log'dan okunuyor; `favorites.py`'de `get_favorites`.
+
+**Seviyeler için gerçek kullanım yerleri** (uydurma değil, mevcut kod yollarından geldi): sonuçsuz arama → WARNING, fotoğrafta malzeme bulunamaması → WARNING, model kota dolup sonrakine geçiş → WARNING, zaten favoride olan tarif → WARNING, LLM/vision hatası → ERROR, tüm modellerin tükenmesi → ERROR.
+
+**İki incelik:**
+- **Decorator `@app.post(...)`'un ALTINA yazılmalı** — önce sarmala, sonra route'a kaydet. Üstte olsaydı FastAPI sarmalanmamış fonksiyonu kaydeder, ölçüm hiç çalışmazdı. `functools.wraps` `__wrapped__` alanını da kopyaladığı için FastAPI orijinal imzayı görmeye devam ediyor; `Depends(...)` ve Pydantic gövde doğrulaması etkilenmiyor (TestClient ile doğrulandı: 200 / 422 / 500 yolları, `Depends` değeri ve gövde doğrulaması bozulmadan çalışıyor).
+- **`_generate`'deki model denemeleri `timed_block` ile ölçülmüyor**, elle ölçülüyor — çünkü `timed_block` başarısızlığı ERROR sayardı, oysa 429 alıp sonraki modele geçmek hata değil planlanmış davranış. Aynı ölçüm `log_duration()` ile loglanıyor.
+
+**Token doğrulaması da ölçülüyor (`auth.py`) — ve `expected` parametresi.** `get_current_user_email` korumalı **her** istekte çalışıyor ama endpoint'in `@timed` ölçümü onu kapsamıyor: FastAPI dependency'leri endpoint fonksiyonundan **önce** çalışır. Faz 11'de "her istek ayrıca `verify_id_token()` çalıştırıyor" denmişti ama hiç ölçülmemişti; artık ölçülüyor.
+Bunun için `timed`'a **`expected`** parametresi eklendi: orada listelenen istisnalar ERROR yerine WARNING sayılıyor. Gerekçe: **her istisna arıza değildir** — süresi dolmuş bir token'ın 401 alması sistemin doğru çalıştığının işaretidir, kırmızı yanması yanıltıcı olurdu (aynı ayrım `llm.py`'deki 429 fallback'inde de yapılmıştı). Hangi istisnaların beklenen olduğunu **çağıran** bildiriyor (`@timed(expected=(HTTPException,))`), böylece `logger.py` FastAPI'ye bağımlı kalmıyor.
+**Doğrulama:** başarılı doğrulama → `INFO verify token took 150.2 ms`; süresi dolmuş token ve bozuk header → `WARNING verify token failed ... 401` (ERROR değil). Dependency imzası korundu: header'sız istek hâlâ **422**, sahte token **401**, OpenAPI'de `authorization` header'ı hâlâ zorunlu görünüyor.
+
+**Log injection'a karşı `%r`:** kullanıcıdan gelen değerler log satırına `%s` ile konursa içindeki satır sonu (URL'de `%0A`) aynen basılır ve saldırgan log'a **sahte bir satır uydurabilir** — örn. `Recipe not found: 17450` satırının altına gerçekmiş gibi görünen ikinci bir satır. `%r` (repr) satır sonunu `\n` olarak kaçırdığı için tek satırda kalıyor. Sorgular zaten `%r` kullanıyordu; `recipe_id`'ler ve LLM'den gelen malzeme metni de `%r`'ye çevrildi (canlı denendi: uydurma satır tek satır hâlinde kaçırılmış olarak göründü).
+
+**Test sırasında çıkan bulgu — `google_genai` gürültüsü:** gürültülü kütüphane listesinde `"google"` vardı ama Gemini SDK'sının logger adı `google_genai.models`, yani **alt çizgili — `google` logger'ının çocuğu değil**, dolayısıyla kısılma ona uygulanmıyordu ve her Gemini çağrısında bir `AFC is enabled with max remote calls: 10` satırı sızıyordu. Listeye ayrıca eklendi. (Logger hiyerarşisi nokta ile kurulur: `google.auth` çocuktur, `google_genai` değildir.)
+
+**Saat dilimi (`docker-compose.yml` → `TZ=Europe/Istanbul`):** container varsayılan olarak UTC kullanıyor, log saatleri kendi saatimizden 3 saat geride görünüyordu — testte "loglar akmıyor" sanılmasına yol açtı (aslında akıyordu, saat eski görünüyordu). Sadece yerel geliştirme kolaylığı; canlıda (Render) UTC kalması normal.
+
+**Render:** platform log akışını stdout'tan okuduğu için ek bir şey gerekmiyor; Dockerfile'a `ENV PYTHONUNBUFFERED=1` eklendi — yoksa Python satırları tamponda bekletir ve loglar gecikmeli (bazen hiç) görünür.
+
+### Faz 13b (frontend logging) ✅
+Backend logu `search_recipes took 572 ms` diyor ama **kullanıcının beklediği süre bu değil**: token alma, ağ gecikmesi, JSON parse ve render onun dışında; Render uykudaysa o 30-60 saniye backend logunda hiç görünmez (Python henüz çalışmıyor). `frontend/js/logger.js` bu boşluğu kapatıyor.
+
+- **Neden ayrı dosya:** `logger.py` Python, container'da çalışıyor; bu kod kullanıcının tarayıcısında. İki farklı çalışma ortamı, hatta iki farklı makine — modül paylaşılamaz. Ortak olan **tasarım**: aynı `HH:MM:SS | LEVEL | scope | mesaj` biçimi, aynı seviyeler, aynı eşik kuralı (varsayılan 1000 ms), böylece iki tarafın logları yan yana okunabiliyor. Renkler ANSI yerine `console.log`'un `%c` biçimlendiricisiyle.
+- **Ayar `localStorage` ile** (tarayıcıda ortam değişkeni yok): `localStorage.setItem('log_level','debug')`, `localStorage.setItem('slow_ms','500')`.
+- **Decorator'ın JS karşılığı `Logger.timed(fn, label, scope)`** — sade tarayıcı JS'inde decorator sözdizimi yok (standart değil, derleyici ister), ama **fikir aynı**: fonksiyonu zarfla sarmalayıp ölçümü dışarıda tutmak. Yani higher-order function; decorator, bunun sözdizimsel şekeri. Sunumda "aynı desen, iki dilde" olarak anlatılabilir.
+- **Asıl ölçüm `apiRequest()` içinde** (`api.js`): bütün istekler oradan geçtiği için tek yere yazılan ölçüm hepsini kapsıyor — çağıran hiçbir dosya değişmedi. Backend'de aynı işi `@timed` yapıyordu.
+- **Giriş/çıkış ARTIK ÖLÇÜLÜYOR** — ve yalnızca burada ölçülebilirdi: Faz 6'dan beri giriş tarayıcı ile Firebase arasında geçiyor, sunucumuza hiç uğramıyor, backend logunda izi yok. `sign in (password)`, `create account`, `sign in (Google popup)`, `sign out` ölçülüyor. Google popup'ının eşiği bilerek 10 sn: ölçülen süre kullanıcının hesap seçme süresini de içeriyor, sistem yavaşlığı değil.
+- **`Logger.timed` gerçekten kullanılıyor:** `search.js`'teki `renderResults` onunla sarmalandı (eşik 100 ms). Gözden geçirmede fark edildi ki fonksiyon yazılmış ama hiçbir yerde çağrılmıyordu — decorator'ı anlatan bir projede ölü kod olarak durması zayıflıktı. Üstelik ölçtüğü şey tam da "backend'in göremediği maliyet": yanıt geldikten sonra kullanıcı sonuçları ancak DOM'a çizim bitince görüyor. Fonksiyon bildirimi `const renderResults = Logger.timed(function (data) {...})` hâline geldi; çağrı yerlerinin ikisi de olay işleyicilerinin içinde olduğu için hoisting sorunu yok.
+- **Yalnızca frontend'in görebildiği durumlar:** `fetch` hiç dönmezse (sunucu kapalı, DNS, CORS reddi) backend'de hiçbir kayıt olmaz — bu ERROR sadece tarayıcıda görünür. `getToken` 100 ms'yi aşarsa uyarı (SDK önbellekten vermeyip Firebase'e gitmiş demektir). Sayfa yükleme süresi Navigation Timing API ile.
+- Dağınık 3 `console.warn` (mikrofon, kamera, doğrulama maili) sisteme bağlandı; frontend'de artık başıboş `console.*` yok.
+- **Script sırası:** `logger.js` kendisini kullanan her dosyadan önce yükleniyor (4 sayfada da). Tarayıcıda klasik `<script>`'lerin top-level `const`'ları paylaşılır — `firebase.js`'in `const auth`/`const authReady`'si zaten bu şekilde çalışıyordu, `const Logger` da aynı desende.
+**Gözden geçirmede çıkan 4 kusur (hepsi düzeltildi):**
+1. **`localStorage` erişimi uygulamayı düşürebilirdi (en ciddisi).** Safari gizli modda / site verileri engellendiğinde `localStorage.getItem` **okurken bile** `SecurityError` fırlatıyor. Bu çağrı modül kurulumunda olduğu için `Logger` hiç tanımlanmaz, onu ilk satırında kullanan `api.js` komple çökerdi — auth guard, `apiRequest`, kullanıcı menüsü hepsi ölürdü. Yani log sistemi uygulamayı düşürürdü. `setting()` yardımcısı try/catch ile sarıldı, ayar okunamazsa varsayılana dönüyor.
+2. **Sayfa yükleme süresi her zaman `0.0 ms` basardı.** `PerformanceNavigationTiming.duration` = `loadEventEnd - startTime`, ve `loadEventEnd` **`load` olayı tamamlandıktan sonra** yazılıyor; handler'ın içinde okununca henüz 0. `setTimeout(..., 0)` ile bir tik bekleniyor, yine boşsa `performance.now()`'a düşülüyor. Sessiz bir hataydı — yanlış değer basar, hata vermezdi.
+3. **`getToken` yanlış alarm verecekti.** Ölçüm `await authReady`'yi de kapsıyordu; sayfa ilk açılışında oturumun geri yüklenmesi yüzlerce ms sürebildiği için **her sayfa yüklemesinde** sahte bir "yavaş" uyarısı çıkardı. İkisi ayrıldı: oturum bekleme → DEBUG, gerçek token yenileme → INFO.
+4. **Biçim backend ile uyuşmuyordu** ("aynı satır biçimi" iddiası yanlış oluyordu): seviye adı `WARN` idi (backend `WARNING`), scope alanı 9 karakter idi (backend 10). İkisi de hizalandı — iki tarafın logları yan yana konduğunda sütunlar birebir örtüşüyor.
+
+Ayrıca `res.json()` başarısız olursa (sunucu/proxy JSON olmayan bir hata sayfası döndüğünde) istek ölçümü hiç loglanmadan kayboluyordu; artık ERROR olarak yazılıyor.
+
+**Bilinen sınır:** DevTools'ta **"Preserve log" açık olmalı**. Bu bir MPA — giriş yapınca sayfa `search.html`'e gidiyor ve konsol varsayılan olarak temizleniyor, yani `sign in took ...` satırı basılıyor ama görülemiyor. `logger.js` başlığına da not düşüldü.
+
+- **Doğrulama:** 8 JS dosyası `node --check`'ten geçti; `Logger` Node'da sahte bir tarayıcı ortamında çalıştırılıp davranışı test edildi — seviye filtresi, eşik (812 ms → INFO, 1.24 s → WARNING), `localStorage` ayarları, `timed()`'ın senkron/async/hata yolları (hata ERROR yazılıp yukarı fırlatılıyor), süre biçimi. nginx yeni dosyaları sunuyor (`js/logger.js` 200).
+
+**Dosya adı `logger.py`, `logging.py` DEĞİL** — ikincisi standart kütüphanenin `logging` modülünü gölgeleyip her şeyi kırardı (`api/` düz bir klasör, importlar çıplak).
+
+**Doğrulama (yerel Docker, yeniden build edilmiş image, gerçek endpoint'ler):**
+- Metin araması referansla **birebir aynı** sonuçları döndürüyor (17450/37913/306021) — ölçüm kodu davranışı değiştirmiyor. Kırılım: `extract_filters` 0.2 ms, `chromadb query` 482 ms, toplam 484 ms.
+- Gerçek HTTP yolu (route + CORS middleware + `@timed`, `dependency_overrides` ile token atlanarak): **200 + doğru CORS header'ı**; eksik gövde alanı hâlâ **422**; sahte/bozuk token hâlâ **401**. OpenAPI şemasında `SearchRequest` gövdesi ve `authorization` header parametresi yerinde → `functools.wraps` imzayı koruyor.
+- WARNING yolları: sonuçsuz arama, olmayan tarif, zaten favoride olan tarif, olmayan favorinin silinmesi, eşiği aşan süre.
+- ERROR yolları: bozuk base64 ile vision hatası (`llm` ERROR → `main` ERROR → endpoint yine **200 + anlamlı mesaj** döndü, yani Faz 11b'nin "500 verme" kuralı bozulmadı).
+- Kota simülasyonu (ilk model 429 fırlatacak şekilde monkeypatch): `WARNING Model gemini-3.1-flash-lite unavailable, falling back` → `INFO gemini gemini-3.5-flash took 2.28 s`; hepsi tükendiğinde `ERROR All models exhausted` + hata yukarı fırlatılıyor.
+- Favoriler (gerçek Firestore): ekleme / duplike reddi / detaylı listeleme / silme / olmayanı silme — hepsi eskisiyle aynı, ölçüm satırlarıyla birlikte. Test kaydı silindi.
+- `LOG_LEVEL`, `LOG_COLOR`, `SLOW_MS` container içinde ayrı ayrı doğrulandı; startup satırları `docker compose logs`'ta anında ve **tek kez** görünüyor (handler mükerrer eklenmiyor).
+
+## Faz 12 (Faz 11 TAMAMLANDI ✅)
 
 ### Faz 12 (Giriş/kayıt akışının olgunlaştırılması) ✅
 **Soru neydi:** "E-posta doğrulamayı zorunlu kılsak Google girişi işlevsiz kalır mı?"

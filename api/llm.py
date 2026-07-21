@@ -1,7 +1,12 @@
 import os
 import base64
+import time
 from dotenv import load_dotenv
 from google import genai
+
+from logger import get_logger, log_duration, timed
+
+log = get_logger("llm")
 
 # .env dosyasındaki GEMINI_API_KEY'i yükle
 load_dotenv()
@@ -34,8 +39,15 @@ def _generate(models: tuple[str, ...], contents):
     """
     last_error = None
     for model in models:
+        # Her model denemesi ayrı ölçülüyor: hangi modelin ne kadar sürdüğü
+        # (0.65sn vs 8.5sn) doğrudan log'dan okunabilsin. Ölçüm burada elle
+        # yapılıyor çünkü timed_block başarısızlığı ERROR sayardı — oysa 429
+        # alıp bir sonraki modele geçmek hata değil, planlanmış davranış.
+        start = time.perf_counter()
         try:
-            return client.models.generate_content(model=model, contents=contents)
+            response = client.models.generate_content(model=model, contents=contents)
+            log_duration(log, f"gemini {model}", (time.perf_counter() - start) * 1000, slow_ms=5000)
+            return response
         except Exception as e:
             text = str(e)
             unavailable = any(
@@ -43,11 +55,15 @@ def _generate(models: tuple[str, ...], contents):
             )
             if not unavailable:
                 raise
-            print(f"Model {model} unavailable, falling back: {text[:120]}")
+            # Hata değil: planlanmış geri çekilme. Ama sessiz de geçilmemeli —
+            # kotanın dolduğu buradan görülüyor.
+            log.warning("Model %s unavailable, falling back: %s", model, text[:120])
             last_error = e
+    log.error("All models exhausted (%s)", ", ".join(models))
     raise last_error
 
 
+@timed(slow_ms=5000)
 def generate_answer(user_query: str, recipes: list) -> str:
     """Bulunan tarifleri LLM'e verip doğal bir öneri cevabı üretir."""
 
@@ -71,6 +87,7 @@ Keep your answer concise (2-4 sentences). Respond in English.
     return response.text
 
 
+@timed(slow_ms=5000)
 def detect_ingredients_from_image(image_base64: str) -> list[str]:
     """Base64 formatındaki bir fotoğraftan malzeme listesi çıkarır."""
 
