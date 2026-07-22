@@ -178,6 +178,7 @@ Backend logu `search_recipes took 572 ms` diyor ama **kullanıcının beklediği
 - **Giriş/çıkış ARTIK ÖLÇÜLÜYOR** — ve yalnızca burada ölçülebilirdi: Faz 6'dan beri giriş tarayıcı ile Firebase arasında geçiyor, sunucumuza hiç uğramıyor, backend logunda izi yok. `sign in (password)`, `create account`, `sign in (Google popup)`, `sign out` ölçülüyor. Google popup'ının eşiği bilerek 10 sn: ölçülen süre kullanıcının hesap seçme süresini de içeriyor, sistem yavaşlığı değil.
 - **`Logger.timed` gerçekten kullanılıyor:** `search.js`'teki `renderResults` onunla sarmalandı (eşik 100 ms). Gözden geçirmede fark edildi ki fonksiyon yazılmış ama hiçbir yerde çağrılmıyordu — decorator'ı anlatan bir projede ölü kod olarak durması zayıflıktı. Üstelik ölçtüğü şey tam da "backend'in göremediği maliyet": yanıt geldikten sonra kullanıcı sonuçları ancak DOM'a çizim bitince görüyor. Fonksiyon bildirimi `const renderResults = Logger.timed(function (data) {...})` hâline geldi; çağrı yerlerinin ikisi de olay işleyicilerinin içinde olduğu için hoisting sorunu yok.
 - **"Yavaş" eşiği frontend'de de uç nokta başına** (`SLOW_THRESHOLDS`, `api.js`): tarayıcı testinde ortaya çıktı ki tek genel eşik (1 sn) `commentary` ve `from-image`'i sürekli sarı yakıyordu — oysa backend'de bu uçların eşiği 5 sn olduğu için **aynı istek backend'de yeşil, frontend'de sarı** görünüyordu. `commentary` 5 sn, `from-image` 8 sn (base64 fotoğraf yüklemesi frontend ölçümüne dahil, backend ölçümü istek geldikten sonra başlıyor), diğerleri varsayılan.
+- **Firebase oturum beklemesi ayrıca loglanıyor — ve MPA'nın bedelini ölçüyor.** `apiRequest`'in ölçümü `await authReady`'yi de kapsıyor; sayfa açıldıktan sonraki **ilk** istekte bu bekleme yerelde ~450 ms, canlıda ~975 ms sürebiliyor. Loglanmasaydı konsolda "istek 1.47 s sürdü" yazarken backend "1.4 ms" diyecekti ve aradaki fark açıklamasız kalacaktı. Bekleme 100 ms'yi aşınca INFO olarak yazılıyor (`waited ... for Firebase auth state (first request on this page)`). **Bu bedel her sayfa geçişinde yeniden ödeniyor** — SPA'da bir kez ödenirdi; Faz 1'deki "React değil MPA" kararının ölçülmüş maliyeti bu.
 - **Yalnızca frontend'in görebildiği durumlar:** `fetch` hiç dönmezse (sunucu kapalı, DNS, CORS reddi) backend'de hiçbir kayıt olmaz — bu ERROR sadece tarayıcıda görünür. `getToken` 100 ms'yi aşarsa uyarı (SDK önbellekten vermeyip Firebase'e gitmiş demektir). Sayfa yükleme süresi Navigation Timing API ile.
 - Dağınık 3 `console.warn` (mikrofon, kamera, doğrulama maili) sisteme bağlandı; frontend'de artık başıboş `console.*` yok.
 - **Script sırası:** `logger.js` kendisini kullanan her dosyadan önce yükleniyor (4 sayfada da). Tarayıcıda klasik `<script>`'lerin top-level `const`'ları paylaşılır — `firebase.js`'in `const auth`/`const authReady`'si zaten bu şekilde çalışıyordu, `const Logger` da aynı desende.
@@ -192,6 +193,28 @@ Ayrıca `res.json()` başarısız olursa (sunucu/proxy JSON olmayan bir hata say
 **Bilinen sınır:** DevTools'ta **"Preserve log" açık olmalı**. Bu bir MPA — giriş yapınca sayfa `search.html`'e gidiyor ve konsol varsayılan olarak temizleniyor, yani `sign in took ...` satırı basılıyor ama görülemiyor. `logger.js` başlığına da not düşüldü.
 
 - **Doğrulama:** 8 JS dosyası `node --check`'ten geçti; `Logger` Node'da sahte bir tarayıcı ortamında çalıştırılıp davranışı test edildi — seviye filtresi, eşik (812 ms → INFO, 1.24 s → WARNING), `localStorage` ayarları, `timed()`'ın senkron/async/hata yolları (hata ERROR yazılıp yukarı fırlatılıyor), süre biçimi. nginx yeni dosyaları sunuyor (`js/logger.js` 200).
+
+### Faz 13c (yerel ↔ canlı karşılaştırması) ✅
+Ölçüm altyapısının ilk gerçek getirisi: canlıdaki yavaşlığın **ne kadarı ağ, ne kadarı sunucu** sorusu artık cevaplanabiliyor. Aynı sorgu (`gluten free quick chicken dinner`) iki ortamda çalıştırılıp her iki uçtan da ölçüldü.
+
+| Ölçüm | Yerel | Canlı (Render/Vercel) |
+|---|---:|---:|
+| Tarif detayı — **backend** | 3.0 ms | **2.8 ms** |
+| Arama — **backend** | 300–440 ms | **~5.4 s** |
+| Ağ (bağlantı kurulmuşken) | ~5–10 ms | **~227 ms** |
+| Ağ (sayfanın ilk isteği, TLS dahil) | ~0 ms | ~490 ms |
+| Firebase oturum beklemesi | ~450 ms | ~975 ms |
+| `renderResults` | 0.6 ms | 0.2 ms |
+
+**Ayrıştırma yöntemi:** tarif detayı endpoint'i sunucuda neredeyse hiç iş yapmıyor, dolayısıyla canlıdaki süresi neredeyse tamamen ağ. Aramadaki fazlalıktan bu ağ payı düşülünce geriye **sunucudaki hesap farkı** kalıyor.
+
+**Sonuçlar:**
+- **Tarif detayı iki ortamda da ~3 ms** → sunucu aynı işi aynı hızda yapıyor; oradaki fark tamamen taşıma.
+- **Arama backend'i 0.3 s → 5.4 s (12–18x)** → bu **ağ değil, CPU**. Render ücretsiz katman **0.1 vCPU** veriyor ve sorgu embedding'i (ONNX) CPU'ya bağlı. Render Logs'ta `chromadb query took ~5 s` satırı bunu doğruluyor; Metrics sekmesindeki CPU grafiği ikinci bağımsız kanıt.
+- **`renderResults` iki ortamda da aynı** → o kod kullanıcının tarayıcısında çalışıyor, sunucudan bağımsız. Ölçümün doğru şeyi ölçtüğünün kontrolü: ortamdan bağımsız olması gereken tek şey gerçekten bağımsız çıktı.
+- **AI yorumu için net sonuç YOK:** yerel 835 ms–1.15 s, canlı 818–960 ms — aralıklar çakışıyor. Gemini gecikmesi zaten değişken; "canlı daha hızlı" demek için tekrarlı ölçüm gerekir.
+
+**Yöntem notu:** ölçüm bir ara `scripts/benchmark.py` ile otomatikleştirilmişti (commit `a72f3af`), sonra kaldırıldı (`3c8034b`) — karşılaştırma elle yapılıyor: yerelde `docker compose logs -f api`, canlıda Render → Logs, iki tarafta da tarayıcı konsolu. Script geri istenirse `git checkout a72f3af -- scripts/`.
 
 **Dosya adı `logger.py`, `logging.py` DEĞİL** — ikincisi standart kütüphanenin `logging` modülünü gölgeleyip her şeyi kırardı (`api/` düz bir klasör, importlar çıplak).
 
