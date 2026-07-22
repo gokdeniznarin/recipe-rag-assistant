@@ -7,7 +7,7 @@
 - **Backend:** Python, FastAPI
 - **Veritabanı:** İki yer, ama **rolleri kesin ayrı** (Faz 8–9'da netleşti): **ChromaDB** yalnızca tarifler için — semantic search + metadata filtreleme aynı yerde yapılıyor (MongoDB kullanılmadı), veri salt-okunur ve image'a gömülü, ortada sunucu yok. **Firestore** ise çalışma anında değişen tek veri olan favoriler için. Eski "sadece ChromaDB" kararı favorileri de oraya koyuyordu; bu yanlıştı — her favori kaydına sahte bir `[[0.0] * 384]` embedding yazılıyordu, yani vektör veritabanı anahtar-değer deposu gibi kullanılıyordu. Ayrıca kalıcı disk ihtiyacının tek sebebi buydu ve deploy'u kilitliyordu.
 - **Embedding modeli:** `all-MiniLM-L6-v2` (İngilizce arayüz kararı verildiği için çok dilli model şart değil). Model **ChromaDB'nin kendi varsayılan embedding fonksiyonu** (`DefaultEmbeddingFunction`) üzerinden, **ONNX** motoruyla çalışıyor — `sentence-transformers` + `torch` kurulumu kaldırıldı (bkz. Faz 7). Kod artık embedding'i elle üretmiyor: `collection.query(query_texts=[...])` ile metni doğrudan ChromaDB'ye veriyor, embedding'i o üretiyor.
-- **LLM:** Google Gemini API, **çoklu model** (Faz 11b — kota model başına olduğu için sırayla denenen liste; bkz. `llm.py` `COMMENTARY_MODELS` / `VISION_MODELS`), `google-genai` kütüphanesi (eski `google-generativeai` deprecated olduğu için güncel kütüphaneye geçildi). Model seçimi iki kez değişti: önce `gemini-2.5-flash` → `gemini-flash-latest` (ikinci API key'in projesinde 2.5'e erişim kapalıydı + alias deprecation'a karşı güvenliydi), sonra **geri `gemini-2.5-flash`'a** — çünkü alias'ın işaret ettiği model free tier'da sürekli **503 (overloaded)** veriyordu, SDK retry'ları her aramayı ~20sn'ye çıkarıyordu. Ölçüm: alias 20.1sn, `gemini-2.5-flash` ort. 3.5sn (**~6x**). Ödünleşim kabul edildi: sabit sürüm ileride deprecate olabilir, o zaman güncel sürüme taşınır (hata mesajı net gelir).
+- **LLM:** Google Gemini API, **çoklu model** (Faz 11b — kota model başına olduğu için sırayla denenen liste; **Faz 14'te 5 modele çıkarıldı ve vision sırası düzeltildi**; bkz. `llm.py` `COMMENTARY_MODELS` / `VISION_MODELS`), `google-genai` kütüphanesi (eski `google-generativeai` deprecated olduğu için güncel kütüphaneye geçildi). Model seçimi iki kez değişti: önce `gemini-2.5-flash` → `gemini-flash-latest` (ikinci API key'in projesinde 2.5'e erişim kapalıydı + alias deprecation'a karşı güvenliydi), sonra **geri `gemini-2.5-flash`'a** — çünkü alias'ın işaret ettiği model free tier'da sürekli **503 (overloaded)** veriyordu, SDK retry'ları her aramayı ~20sn'ye çıkarıyordu. Ölçüm: alias 20.1sn, `gemini-2.5-flash` ort. 3.5sn (**~6x**). Ödünleşim kabul edildi: sabit sürüm ileride deprecate olabilir, o zaman güncel sürüme taşınır (hata mesajı net gelir).
 - **Frontend:** Sade HTML/CSS/JS (React/Next.js tercih edilmedi — React öğrenme eğrisi kalan sürede risk yaratıyordu, projenin asıl değeri backend RAG pipeline'ında). Sayfa başına ayrı HTML dosyaları, ortak CSS tek dosyada, her sayfanın kendi JS dosyası. Sayfa yönlendirme klasik `<a href>` ile — SPA değil, MPA. Vercel'e statik site olarak deploy edilebilir yapıda.
 - **Frontend tasarım:** Koyu zeytin yeşili (`#2D3B2D`) + krem (`#F5F0E8`) + sıcak turuncu aksan (`#E8824A`) paleti, Playfair Display (serif başlıklar, yemek dergisi hissi) + Inter (UI). Merkezi CSS tokens ile tutarlı stil.
 - **Kimlik doğrulama:** **Firebase Auth** (email/şifre + Google). Önceki custom JWT + bcrypt + manuel Google doğrulama kurulumundan tamamen geçildi (bkz. Faz 6). Şifre bizim sunucumuza hiç ulaşmıyor: tarayıcı doğrudan Firebase ile konuşuyor, `getIdToken()` ile alınan ID token her istekte `Authorization: Bearer` header'ına konuyor ve süresi dolunca SDK sessizce yeniliyor. Backend (`api/auth.py`) yalnızca Admin SDK ile `verify_id_token()` yapıp e-postayı çıkarıyor — başka hiçbir kimlik mantığı yok. Frontend Firebase JS SDK'nın **compat** build'ini kullanıyor (mevcut global-script/MPA mimarisini korumak için; modüler SDK sayfalar arası global paylaşımı bozardı). Kullanıcılar artık ChromaDB'de değil Firebase'de. Favoriler e-posta anahtarlı olduğu için migrasyondan hiç etkilenmedi.
@@ -129,7 +129,33 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 - **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Faz 6–11'in tamamı bu branch'te. `main` el değmemiş durumda. **Canlı deploy `firebase-auth` dalından yapılıyor** (hem Render hem Vercel bu dalı izliyor), dolayısıyla merge sonrası deploy dalını `main`'e çevirmek gerekecek.
 - Repo **GitHub'da**: `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private). Sırlar (`firebase-key.json`, `.env`) gitignored, repoda yok — Render'da env var olarak duruyor.
 
-## Güncel Durum: Faz 13 (Logging + süre ölçümü) ✅
+## Güncel Durum: Faz 14 (Yeni Gemini modelleri + vision sırasının düzeltilmesi) ✅
+
+**Tetikleyici:** Google'ın duyuru maili — `gemini-3.6-flash` ve `gemini-3.5-flash-lite` API'de kullanılabilir hâle geldi. Model adları **tahmin edilmedi**, `client.models.list()` ile doğrulandı (Faz 11b'de `gemini-2.5-flash-lite` 404 vermişti; API'ye sormak alışkanlık hâline geldi).
+
+**Ölçüm (2026-07-22, 3'er/2'şer tekrar, medyan; görsel için projenin kendi `test_photo.jpg`'si):**
+
+| Model | Yorum | Görsel | Not |
+|---|---:|---:|---|
+| `gemini-3.5-flash-lite` 🆕 | **742 ms** | **867 ms** | her iki işte de en hızlı |
+| `gemini-3.1-flash-lite` | 762 ms | 1027 ms | |
+| `gemini-2.5-flash` | 2771 ms | 2483 ms | |
+| `gemini-3.6-flash` 🆕 | 5454 ms | 3057 ms | bu işler için yavaş, zincirin sonunda |
+| `gemini-3.5-flash` | 12374 ms | 9483 ms | |
+
+**Asıl bulgu — vision sıralaması tersti.** `VISION_MODELS`'in ilk sırasında `gemini-3.5-flash` vardı (9.5sn). Eski gerekçe: *"malzeme tanıma asıl görsel iş, daha güçlü model başta."* **Ölçüm bu varsayımı çürüttü:** beş model de aynı üç malzemeyi buluyor (eggplant, tomato, green chili), ama o model 11 kat yavaş. Varsayım hiç test edilmemişti. Kamera araması uçtan uca **1.41sn**'ye indi (vision 1.09sn + chromadb 322ms). *(Kalite kıyası tek fotoğrafa dayanıyor — "kalite eşit" demek için birkaç fotoğraf gerekir; ama "9.5sn gereksiz" sonucu tek fotoğrafla bile sağlam.)*
+
+**Kota — "çapraz sıralama" gerekçesi düzeltildi.** Kota `PerProjectPerModel`, yani aynı anahtarla her modelin ayrı 20 hakkı var; 3 model → 5 model = 60 → 100 istek/gün. Ama iki listenin ilk sıralarının farklı olması **kapasiteyi artırmıyor** (zincir aşağı indikçe iki akış da aynı havuzlara ulaşıyor, toplam aynı). Kazandırdığı şey **boşa giden deneme**: aynı modelle başlasalardı, 20 yorumdan sonra kamera aramasının ilk denemesi 429 yiyip bir ağ turu kaybederdi. Çapraz başlayınca her akış taze havuzla başlıyor.
+
+**Kod değişikliği sadece iki tuple** — `_generate`'deki Chain of Responsibility kaç model olursa olsun çalışıyor.
+
+**Uyarı:** ücretsiz katmanda gecikmeler günden güne çok oynuyor (`gemini-3.5-flash` Faz 11b'de 5.17sn, bugün 12.4sn; `gemini-2.5-flash` 8.5sn'den 2.77sn'ye). Sıralama bugünün ölçümüne göre doğru, mutlak değerlere yaslanmamalı.
+
+**Yan gözlem (kalite):** lite modeller yorumda bazen *"all three options are excellent"* deyip seçim yapmıyordu; büyük modeller gerçekten seçiyordu. Yeni sıralamayla yapılan testte `gemini-3.5-flash-lite` düzgün seçim yaptı (*"The **Quick India Chicken** ve **Mediterranean...**"*), ama bu tek gözlem. Sorun tekrarlarsa çözüm model değiştirmek değil prompt'u sıkılaştırmak.
+
+**Doğrulama:** yorum ilk modelle 1.21sn; kamera araması gerçek fotoğrafla uçtan uca 1.41sn, 3 tarif döndü; fallback zinciri 5 modelle test edildi (ilk iki model 429 → 3.'ye düştü, cevap geldi; hepsi tükendiğinde `ERROR All models exhausted` + hata yukarı fırlatıldı).
+
+## Faz 13 (Logging + süre ölçümü) ✅
 
 **Neden:** Hocanın isteği — "search fonksiyonlarının çalışma sürelerini ölç", decorator + logging sistemi, seviyeler ve renkler, Render'ın log ekranında da görünsün. Aynı zamanda gerçek bir eksikti: Faz 7/11'deki tüm süre ölçümleri **tek seferlik test scriptleriyle** yapılmıştı, çalışan uygulamada hiç ölçüm yoktu; hata ayıklama `print` ile yapılıyordu (seviye yok, zaman damgası yok, filtrelenemiyor).
 

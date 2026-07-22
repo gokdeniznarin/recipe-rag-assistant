@@ -14,20 +14,48 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 # Free tier kotası MODEL BAŞINA veriliyor — 429 hatasının kendisi söylüyor:
 #   quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier, quotaValue: 20
-# Tek bir modele bağlı kalmak, o modelin günlük 20 isteği bitince tüm LLM
-# özelliklerinin ölmesi demekti (kamera araması dahil). Bunun yerine sırayla
-# denenen bir liste tutuyoruz: baştaki model kotasını doldurursa bir sonrakine
-# geçiliyor, yani pratikte 3 ayrı kota havuzu.
+# "PerProjectPerModel": sayaç proje × model kırılımında tutuluyor, yani aynı API
+# anahtarıyla her modelin ayrı 20 hakkı var. Tek bir modele bağlı kalmak, o
+# modelin 20 isteği bitince tüm LLM özelliklerinin ölmesi demekti (kamera
+# araması dahil). Sırayla denenen liste bunu çözüyor: 5 model = 5 ayrı havuz.
 #
-# İki akış farklı sırayla gidiyor ki biri diğerinin kotasını tüketmesin:
-# yorum hafif bir iş (2-4 cümle), en hızlı modelle başlıyor; malzeme tanıma
-# ise asıl işi yapan görsel analiz, daha güçlü modelle başlıyor.
+# İki akışın ilk iki sırası bilerek ÇAPRAZ. Kapasiteyi artırmıyor (zincir aşağı
+# indikçe iki akış da aynı modellere ulaşıyor, toplam yine aynı); kazandırdığı
+# şey boşa giden deneme: aynı modelle başlasalardı, 20 yorumdan sonra kamera
+# aramasının İLK denemesi 429 yiyip bir ağ turu kaybederdi. Çapraz başlayınca
+# her akış kendi taze havuzuyla başlıyor.
 #
-# Ölçüm (aynı yorum promptu): gemini-3.1-flash-lite 0.65sn, gemini-3.5-flash
-# 5.17sn, gemini-2.5-flash ~8.5sn. gemini-2.5-flash-lite ve 2.0-flash-lite
-# elendi (sırasıyla "no longer available to new users" ve kota paylaşımı).
-COMMENTARY_MODELS = ("gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash")
-VISION_MODELS = ("gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash")
+# ÖLÇÜM (2026-07-22, aynı prompt / projenin kendi test_photo.jpg'si):
+#   model                  yorum      görsel
+#   gemini-3.5-flash-lite   742 ms     867 ms
+#   gemini-3.1-flash-lite   762 ms    1027 ms
+#   gemini-2.5-flash       2771 ms    2483 ms
+#   gemini-3.6-flash       5454 ms    3057 ms
+#   gemini-3.5-flash      12374 ms    9483 ms
+#
+# Vision sırası bu ölçümle DÜZELTİLDİ. Önceki gerekçe "malzeme tanıma asıl
+# görsel iş, daha güçlü model başta" idi ve gemini-3.5-flash ilk sıradaydı —
+# ölçüm bu varsayımı çürüttü: beş model de aynı üç malzemeyi buluyor, ama o
+# model 11 kat yavaş. Kamera araması 9.5sn → 0.87sn.
+#
+# Not: ücretsiz katmanda gecikmeler günden güne çok oynuyor (gemini-3.5-flash
+# Faz 11b'de 5.17sn ölçülmüştü, bugün 12.4sn). Sıralama bugünün ölçümüne göre;
+# mutlak değerlere değil, zaten var olan fallback zincirine güveniyoruz.
+# Elenenler: gemini-2.5-flash-lite ve 2.0-flash-lite (Faz 11b).
+COMMENTARY_MODELS = (
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+)
+VISION_MODELS = (
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+)
 
 
 def _generate(models: tuple[str, ...], contents):
