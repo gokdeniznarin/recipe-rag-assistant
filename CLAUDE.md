@@ -65,7 +65,7 @@
 - `api/auth.py` — tek iş: Firebase Admin SDK ile `verify_id_token()` → e-posta. `get_current_user_email` dependency'si korumalı endpoint'lerde kullanılıyor. (Eskiden JWT + bcrypt + kullanıcı kayıt/giriş vardı; Firebase geçişiyle ~140 satırdan ~30 satıra düştü.)
 - `api/llm.py` — Gemini API ile LLM cevap üretimi + fotoğraftan malzeme tanıma (`gemini-2.5-flash`)
 - `api/filters.py` — kullanıcı sorgusundan diyet/süre/kalori filtresi çıkarımı
-- `api/validation.py` — **girdi doğrulama** (Faz 15). `validate_query()` saf fonksiyon: sorgu kullanılabilir değilse kullanıcıya gösterilecek mesajı, kullanılabilirse `None` döner. Kurallar dizginin **biçimine** bakıyor (harf içeriyor mu, uzunluk, tek harf tekrarı), anlamına değil — anlamsal eşik ölçümle elendi, bkz. Faz 15c.
+- `api/validation.py` — **girdi doğrulama** (Faz 15). İki saf fonksiyon: `validate_query()` sorgu kullanılabilir değilse kullanıcıya gösterilecek mesajı döner (kurallar dizginin **biçimine** bakıyor — harf var mı, uzunluk, tek harf tekrarı); `is_weak_match()` ChromaDB'nin zaten hesapladığı mesafeye bakıp en yakın sonucun uzak olup olmadığını söyler (`COMMENTARY_MAX_DISTANCE = 1.3`). Biri hiç iş yapılmadan reddediyor, diğeri sonuçları göstermeye devam edip yalnızca AI yorumunu kesiyor. Bkz. Faz 15c ve 15e.
 - `api/favorites.py` — favoriler sistemi (Repository Pattern'den esinlenmiş, kendi veri deposunu kendi yönetiyor). **Firestore** kullanıyor (Faz 9; öncesinde ChromaDB'ydi). `get_favorites` en son ekleneni üstte döner (Faz 11; sıralama bellekte — bkz. Faz 11 notu). Faz 6'daki Firebase Auth migrasyonunda **tek satır değişmemişti** — favoriler e-posta anahtarlı ve e-posta her iki auth sisteminde de aynı kimlik. Faz 9'da bunun tersi oldu: favoriler baştan yazıldı ama `main.py` hiç değişmedi (aynı fonksiyon imzaları, aynı `ValueError`'lar).
 - `Dockerfile` (**repo kökünde**, Faz 10'da `api/`'den taşındı) — `python:3.13-slim`, `uvicorn` `$PORT`'u (yoksa 8080) dinliyor. ONNX modelini build sırasında retry'lı indirip gömüyor, image'a sadece `api/` kopyalanıyor. Hem `docker-compose` hem Render bunu kullanıyor. Image **1.2GB** (Faz 7 öncesi 2.83GB → Faz 7 sonrası 1.14GB → Faz 8'de +35MB tarif verisi).
 - `.dockerignore` (**repo kökünde**) — `api/firebase-key.json` ve `.env`'i image dışında tutuyor (güvenlik), ayrıca `frontend/`, `ingestion/`, `*.csv`.
@@ -210,7 +210,9 @@ ChromaDB `distances`'ı zaten döndürüyor, `main.py:96` onu okumadan atıyordu
 | `pierogi ruskie` | 1.315 | ❌ reddedilir |
 | `zxcvbnm` (klavye ezmesi) | 1.240 | meşrulardan **daha yakın** |
 
-İki sebep: **(1) en yakın komşu mesafesi genelliği cezalandırıyor** — `dinner` kümenin merkezine yakın ama hiçbir *tekil* tarife yakın değil; **(2) dataset 522k'dan rastgele seçilmiş 4886 tarif**, `borscht`/`pierogi ruskie` karşılığı zayıf. İkisi de kullanıcı hatası değil.
+İki sebep: **(1) en yakın komşu mesafesi genelliği cezalandırıyor** — `dinner` kümenin merkezine yakın ama hiçbir *tekil* tarife yakın değil; **(2) yazım/ad farkları mesafeyi şişiriyor.** İkisi de kullanıcı hatası değil.
+
+**`borscht` bunun en çarpıcı örneği ve mesafenin neden sonuç gizlemek için kullanılamayacağının kanıtı:** mesafe 1.141 (eşiğin üstünde sayılacak kadar yüksek) ama en yakın sonuç **tam doğru tarif** — `Ukrainian Borsch With Pyrizhky (Pyrohy) (Piroshki)`. Veri setinde borscht **var**; mesafe sadece yazım farkı (`borscht` vs `Borsch`) ve uzun parantezli ad yüzünden yüksek. Eşik sonuçları gizleseydi kullanıcıdan **tam isabeti** saklamış olurduk. (Daha önce bu belgede "dataset'te karşılığı zayıf" yazıyordu — yanlıştı, ölçümle düzeltildi.)
 
 **Sonuç: hiçbir eşik iki sınıfı temiz ayıramıyor; mesafe hard-reject olarak kullanılamaz.** (Yazım hataları sorun değil: `chiken dinner` 0.986, `vegitarian pasta` 0.804 — embedding tolere ediyor.)
 
@@ -236,8 +238,102 @@ ChromaDB `distances`'ı zaten döndürüyor, `main.py:96` onu okumadan atıyordu
 
 **Log tutarlılığı:** `Text search:` INFO satırı artık sorguyu `[:100]` ile kırpıyor — uzunluk kontrolü o noktada henüz yapılmadığı için 200+ karakterlik bir sorguyu olduğu gibi basabilirdi. `%r` (log injection) koruması korundu.
 
+### Faz 15e — B′ (zayıf eşleşme kapısı) + `IRRELEVANT` kuralı ✅
+**Tetikleyici:** kullanıcı canlıda `lkjhgfdsa` tipi bir sorgu denedi. A katmanı bunu **tasarım gereği** geçirdi (harf var, 2'den fazla farklı harf var), sonuçta Swedish Glögg + Fried Shallots döndü **ve bir Gemini çağrısı harcandı**. İlginç ayrıntı: model saçmalığı kendisi teşhis etti — *"It looks like your previous message was a random string of letters"*.
+
+**A genişletilerek çözülemezdi.** Klavye ezmesini biçimden tanıma denemesi aynı duvara çarpıyor:
+
+| | `asdkjfhaskjdfh` | `borscht` |
+|---|---:|---:|
+| sesli harf oranı | 2/14 = %14 | 1/7 = %14 |
+| en uzun sessiz dizisi | 6 | 5 |
+
+İstatistiksel olarak ayırt edilemiyorlar.
+
+**Ölçüm — 12 klavye ezmesinin hepsi 1.304–1.612 aralığında** (`qweqweqwe` 1.304, `lkjhgfdsa` 1.421, `asdkjfhaskjdfh` 1.566, `asdf asdf` 1.612). Eşik 1.3 hepsini yakalıyor.
+
+**MESAFE TEK BAŞINA YETMEDİ — ikinci sinyal eklendi.** İlk sürüm yalnızca mesafeye bakıyordu ve kullanıcı testinde çöktü: `easy` yazınca yorum kesiliyordu, **ama dönen tarifin adı "Easy Pizza Sauce"**. Not (*"tam eşleşme olmayabilir"*) düpedüz yanlış oluyordu. Üstelik `quick` (1.419) yorumsuz kalırken eşanlamlısı `fast` (1.277) yorum alıyordu.
+
+**Kök sebep:** nearest-neighbour mesafesi isabeti değil **özgüllüğü** ölçüyor. `easy` yüzlerce tarifin adında geçtiği için hepsine *orta* uzaklıkta, hiçbirine *çok* yakın değil — mesafe bunu "alakasız" diye okuyor. `lkjhgfdsa` gerçekten alakasız. İkisi aynı sayıya düşüyor.
+
+**Ayırt edici ikinci soru: sorgudaki kelime dönen tariflerde geçiyor mu?** Bu bilgi de bedava (dokümanlar zaten yanıtta).
+
+| kural | yanlış red | kaçan |
+|---|---:|---:|
+| sadece mesafe | **6/16** | 1/13 |
+| mesafe **VE** sözcüksel örtüşme yok | **2/16** | **1/13** |
+
+Ödünleşim yok, katıksız kazanç. Geri kazanılanlar: `easy`, `quick`, `something good` **ve `pierogi ruskie`** (bu sonuncusu ilk sürümde "bilinen maliyet" olarak kaydedilmişti, artık yok). Kalan iki yanlış red: `simple` (1.766) ve `cheap` (1.702) — kelimeleri sonuçlarda geçmiyor (dönenler "Easy Appetizer Meatballs" gibi eşanlamlılar).
+
+**İki ölçülmüş ayrıntı:**
+- **Tam kelime sınırı (`\b...\b`) şart.** Önek eşleşmesinde `japan` sorgusu "Japanese Curry"ye takılıyor ve `what is the capital of Japan` kaçıyordu.
+- **Kaç dokümana bakılacağı:** 1 doküman `pierogi ruskie`'yi kaçırıyor (eşleşme 2. sırada, "Buffalo Pierogies"in malzemesinde); 5 doküman `best gaming laptop 2026`'yı içeri alıyor ("best" tarif adlarında çok geçiyor). **3 seçildi.**
+
+**Uygulanan:**
+- `validation.is_weak_match(distances, query, documents)` — saf fonksiyon, `COMMENTARY_MAX_DISTANCE = 1.3`. **İki sinyal birden** gerekiyor: en yakın sonuç uzak OLACAK **ve** sorgudaki hiçbir kelime bulunan tariflerde geçmeyecek. Mesafe/sonuç yoksa `False` (şüphede kullanıcının aleyhine davranma). 4 harften kısa kelimelerden oluşan sorgularda (`can you fix my car`) örtüşme iddia edilemez, mesafe tek karar verici kalır.
+- `main.py` her iki arama endpoint'ine `weak_match: bool` alanı ekliyor. **Alan adı bilinçli olarak politika değil olgu bildiriyor** (`commentary_eligible` değil): istemci hem yorumu atlıyor hem not gösteriyor, ileride politika değişirse alan anlamını koruyor.
+- `search.js` → `loadCommentary(query, results, weakMatch)`; kontrol **fonksiyonun içinde**, iki çağıranda kopyalanmasın diye. Zayıfsa **istek hiç kurulmuyor** — ağ turu + token doğrulaması + Gemini çağrısı birlikte gidiyor.
+- `search.html` + `style.css` → sonuçların üstünde not: *"These may not be a close match..."*. Uyarı değil bilgi olduğu için `--error` değil `--text-muted`.
+
+**Sonuçlar GİZLENMİYOR.** Ölçüm bunu yasaklıyor: meşru sorgular 1.566'ya kadar çıkıyor (`easy` 1.566, `something good` 1.503), yani sonuçları kesecek güvenli bir ikinci eşik yok.
+
+**Bilinen maliyet (teste yazıldı):** `simple` (1.766) ve `cheap` (1.702) meşru ama yorumsuz kalıyor — kelimeleri dönen tariflerde geçmiyor. Sonuçlarını yine görüyorlar.
+
+**Eşikle kovalanamayacak sınıf:** `what is the capital of Turkey` → **1.052**. "turkey" hem ülke hem hindi olduğu için sorgu yemek kümesinin tam içine düşüyor ve roast turkey tarifleri dönüyor. Aynı cümle kalıbı ülkeye göre 1.052 (Turkey) / 1.265 (switzerland) / 1.314 (France) / 1.520 (Japan) veriyor — tek belirleyici, ülke adının bir yemek kelimesiyle çakışıp çakışmaması. Bunları yakalamak için eşiği indirmek `borscht`/`dinner`/`food` dahil yarım listeyi keserdi. **Bu sınıf `IRRELEVANT` kuralının işi**, mesafenin değil.
+
+**`IRRELEVANT` kuralı (`llm.py`):** prompt'a *"gerçek bir yemek isteği değilse yalnızca IRRELEVANT yaz"* eklendi; `generate_answer` artık `str | None` dönüyor. Eşiğin **hemen altında** kalan saçma sorgular için ikinci savunma hattı. **Ek maliyeti yok** — aynı çağrının içinde, ek gecikme/token getirmiyor. Modelin bu yargıyı zaten yaptığı canlıda görülmüştü; tek eksik onu yapılandırılmış biçimde istemekti.
+
+**Neden LLM'i "kapı" olarak KULLANMADIK** (değerlendirildi, elendi): kotayı korumak için Gemini'ye sormak döngüsel. Meşru sorguda tüketim **2 çağrıya** çıkardı (kapı + yorum), yani günlük kapasite 100 → 50. Saçma sorguda ise bugüne göre tasarruf **sıfır** (B′ 0 çağrı harcıyor, LLM kapısı 1). Ayrıca Faz 11'in tüm kazancını geri alırdı: LLM aramanın **önüne** girer, kullanıcı sonuçları daha da geç görürdü. Üstüne Gemini'ye sert bağımlılık gelirdi (bugün Gemini çökse arama çalışıyor). Ölçüm bunu net gösteriyor: canlıda `commentary` 787–999 ms, `search` 5.8–7 sn — **Gemini bizim embedding'imizden 6 kat hızlı**, çünkü o Google'ın donanımında, bizimki 0.1 vCPU'da.
+
+**Doğrulama:** 159 test geçiyor. **Gerçek `search_recipes`, gerçek veritabanı kopyasıyla** uçtan uca çalıştırıldı (mock'lu değil — `chromadb.PersistentClient` yamalanıp scratchpad'deki kopyaya yönlendirildi, repo kirlenmedi):
+
+| sorgu | mesafe | weak | ilk sonuç |
+|---|---:|---|---|
+| `gluten free quick chicken dinner` | 0.573 | False | Quick Chicken Parmesan |
+| `borscht` | 1.141 | False | Ukrainian Borsch With Pyrizhky |
+| `dinner` | 1.185 | False | A Bowlful of Dinner |
+| `pierogi ruskie` | 1.315 | False | Ukrainian Borsch… |
+| `quick` | 1.419 | False | Quick Meat Sauce from a Jar |
+| `something good` | 1.503 | False | A Few (Really) Good Men |
+| `easy` | 1.566 | False | Easy Pizza Sauce |
+| `lkjhgfdsa` | 1.421 | **True** | Dk's Swedish Glögg |
+| `what is the capital of Japan` | 1.520 | **True** | Taiyaki |
+| `can you fix my car` | 1.698 | **True** | Carob Pinwheels |
+| `cheap` | 1.702 | **True** | Quick and Easy Meatball Minestrone |
+| `simple` | 1.766 | **True** | Easy Appetizer Meatballs |
+
+Sınır durumları patlamıyor: sonuçsuz arama (`vegan pescatarian dish` → 0 sonuç, `weak_match=False`), `distances` alanının hiç gelmemesi, `documents=None`, A katmanı reddi.
+
+#### Ayar düğmeleri ve geri alma (ileride değiştirilecekse)
+
+Hepsi `api/validation.py`'de, hepsi tek sayı/liste:
+
+| Sabit | Değer | Ne yapar | Artırılırsa | Azaltılırsa |
+|---|---:|---|---|---|
+| `COMMENTARY_MAX_DISTANCE` | `1.3` | uzaklık eşiği | daha az sorgu yakalanır (kaçan artar) | meşru sorgular yorumunu kaybeder |
+| `OVERLAP_DOCS` | `3` | kaç tarifte kelime aranacak | daha çok tesadüfi eşleşme → kaçan artar (5'te `best gaming laptop` kaçıyor) | 1'de `pierogi ruskie` yanlış reddedilir |
+| `MIN_TOKEN_LENGTH` | `4` | kaç harften uzun kelimeler aranacak | `easy`/`food` gibi 4 harfliler kontrol dışı kalır | `can`/`car`/`fix` gibi kısa kelimeler tesadüfi eşleşir |
+| `_STOPWORDS` | 22 kelime | örtüşmede yok sayılanlar | — | `what`, `with` gibi kelimeler tesadüfen eşleşir |
+
+**Yemek sıfatları (`easy`, `quick`, `good`, `best`) bilerek `_STOPWORDS`'te DEĞİL** — `easy` sorgusunun eşleşmesi gereken tek kelimesi o. `best` eklenirse `best gaming laptop 2026` da yakalanır ama bu tek örneğe göre ayar yapmak olur.
+
+**Tamamen geri almak için** (davranış Faz 15c'ye, yani sadece A katmanına döner):
+1. `main.py` → iki `weak = is_weak_match(...)` bloğunu ve yanıtlardaki `"weak_match": weak` alanını sil
+2. `search.js` → `loadCommentary`'deki `|| weakMatch` koşulunu, üçüncü parametreyi ve `renderResults`'taki not bloğunu sil
+3. `search.html` → `#weak-match-note` elemanını sil
+4. `validation.py` → `is_weak_match` / `_has_lexical_overlap` ve sabitlerini sil
+5. `test_validation.py` → `TestIsWeakMatch*` ile başlayan sınıfları sil
+
+`IRRELEVANT` kuralı bağımsız — B′ kaldırılsa da çalışmaya devam eder (tek başına da anlamlı, çünkü ekrandaki saçma kutuyu engelliyor).
+
+**Kalibrasyonu yeniden üretmek için:** scriptler repoda değil. Ölçüm `api/chroma_data`'nın bir **KOPYASI** üzerinde yapılmalı — repodaki klasör `PersistentClient` ile açılınca bile `chroma.sqlite3`'e yazılıyor ve commit'li 35MB'lık dosya kirleniyor. Yöntem: klasörü geçici bir yere kopyala, meşru/saçma sorgu listelerini `collection.query(query_texts=[q], n_results=5)` ile çalıştır, `distances[0][0]` dağılımına bak.
+
+#### Yerelde test etme
+- **Backend değişikliği** (`validation.py`, `main.py`, `llm.py`) → `api` servisi bind-mount **edilmiyor**, kaynak image'a `COPY` ediliyor. Rebuild şart: `docker compose up -d --build api`
+- **Frontend değişikliği** (`search.js`, `search.html`, `style.css`) → `./frontend` bind-mount edildiği için rebuild gerekmiyor; nginx dosyayı önbelleğe alabildiğinden `docker restart recipe_frontend` + tarayıcıda `Ctrl+Shift+R`
+- Doğrulama: `docker compose logs api --tail 50` içinde `WARNING | main | Weak match for '...' (best distance: ...)` satırı görünmeli
+
 ### Faz 15d — Değerlendirilip yapılmayanlar
-- **B′ — mesafe eşiği "soft gate" olarak.** Fikir: eşiği sonucu reddetmek için değil, **yalnızca yorumu atlamak** için kullanmak. Asimetrik maliyet: sonuç kaybı zararlı (kullanıcı borscht'unu kaybediyor), yorum kaybı zaten tasarlanmış bir durum (`search.js:96`, kota dolunca kutu gizleniyor). Eşik 1.3'te `dinner`/`borscht` yorumlarını **alır**, 2 saçma sorgu kaçar, 1 meşru sorgu (`pierogi ruskie`) yorumsuz kalır. **Uygulanırsa doğru yer arama yanıtı:** `/commentary` `collection.get(ids=...)` yapıyor, ortada sorgu vektörü olmadığı için mesafeyi göremez → arama yanıtına `commentary_eligible` alanı eklenip `search.js:172`'de kontrol edilmeli (ikinci HTTP isteği hiç kurulmaz).
 - **Katman 2 (HTTP sözleşme testleri)** — `conftest.py` + `TestClient` + `dependency_overrides`. Yukarıdaki doğrulamada kullanılan `sys.modules` sahteleme yöntemi çalıştığı için yol açık. **`conftest.py` ChromaDB'yi de sahtelemeli**, yoksa her `pytest` çalıştırması commit'li `chroma.sqlite3`'ü kirletir.
 - **Frontend'de aynı kuralların aynası** — anında geri bildirim verir ve bir ağ turu + token doğrulaması kurtarır, ama kuralların iki dilde kopyalanması drift riski taşıyor. Yapılmadı.
 - Kalibrasyon scriptleri repoda **değil** (scratchpad'de üretildi). Sayılar bu belgede kayıtlı; tekrar gerekirse `api/chroma_data`'nın bir **kopyası** üzerinde çalıştırılmalı (repodaki klasör açılınca kirlenir).
