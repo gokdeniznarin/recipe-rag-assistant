@@ -3,6 +3,7 @@ import base64
 import time
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
 
 from logger import get_logger, log_duration, timed
 
@@ -58,12 +59,15 @@ VISION_MODELS = (
 )
 
 
-def _generate(models: tuple[str, ...], contents):
+def _generate(models: tuple[str, ...], contents, config=None):
     """
     Modelleri sırayla dener. Yalnızca "bu model şu an kullanılamıyor" anlamına
     gelen hatalarda (kota dolu / model yok) sonrakine geçer — bozuk istek ya da
     ağ hatası gibi durumlarda denemeye devam etmek yanıltıcı olurdu, o yüzden
     onlar olduğu gibi yukarı fırlatılır.
+
+    config: opsiyonel GenerateContentConfig. Sınıflandırıcı temperature=0
+    veriyor (deterministik olsun); yorum/vision varsayılanı kullanıyor (None).
     """
     last_error = None
     for model in models:
@@ -73,7 +77,9 @@ def _generate(models: tuple[str, ...], contents):
         # alıp bir sonraki modele geçmek hata değil, planlanmış davranış.
         start = time.perf_counter()
         try:
-            response = client.models.generate_content(model=model, contents=contents)
+            response = client.models.generate_content(
+                model=model, contents=contents, config=config
+            )
             log_duration(log, f"gemini {model}", (time.perf_counter() - start) * 1000, slow_ms=5000)
             return response
         except Exception as e:
@@ -117,7 +123,14 @@ Reply with only the single word YES or NO.
 Input: "{query}"
 """
     try:
-        response = _generate(COMMENTARY_MODELS, prompt)
+        # temperature=0: sınıflandırma deterministik olmalı. Varsayılan sıcaklık
+        # sınırdaki sorgularda ("does spain have good food?") aynı girdiye çağrı-
+        # başı farklı YES/NO verdiriyordu. 0 bu rastgeleliği kaldırıyor. (Model
+        # fallback zinciri hâlâ modeller arası fikir ayrılığına açık — bkz. yorum.)
+        response = _generate(
+            COMMENTARY_MODELS, prompt,
+            config=types.GenerateContentConfig(temperature=0.0),
+        )
         answer = (response.text or "").strip().upper()
         # Kesin "NO" değilse yemek say — belirsizlikte de kullanıcının lehine.
         is_food = not answer.startswith("NO")
