@@ -5,7 +5,7 @@
 
 ## Teknoloji Kararları
 - **Backend:** Python, FastAPI
-- **Veritabanı:** İki yer, ama **rolleri kesin ayrı** (Faz 8–9'da netleşti): **ChromaDB** yalnızca tarifler için — semantic search + metadata filtreleme aynı yerde yapılıyor (MongoDB kullanılmadı), veri salt-okunur ve image'a gömülü, ortada sunucu yok. **Firestore** ise çalışma anında değişen tek veri olan favoriler için. Eski "sadece ChromaDB" kararı favorileri de oraya koyuyordu; bu yanlıştı — her favori kaydına sahte bir `[[0.0] * 384]` embedding yazılıyordu, yani vektör veritabanı anahtar-değer deposu gibi kullanılıyordu. Ayrıca kalıcı disk ihtiyacının tek sebebi buydu ve deploy'u kilitliyordu.
+- **Veritabanı:** İki yer, ama **rolleri kesin ayrı** (Faz 8–9'da netleşti): **ChromaDB** yalnızca tarifler için — semantic search + metadata filtreleme aynı yerde yapılıyor (MongoDB kullanılmadı), veri salt-okunur ve image'a gömülü, ortada sunucu yok. **Firestore** ise çalışma anında değişen kullanıcı verisi için — favoriler ve (Faz 16'dan beri) koleksiyonlar. Eski "sadece ChromaDB" kararı favorileri de oraya koyuyordu; bu yanlıştı — her favori kaydına sahte bir `[[0.0] * 384]` embedding yazılıyordu, yani vektör veritabanı anahtar-değer deposu gibi kullanılıyordu. Ayrıca kalıcı disk ihtiyacının tek sebebi buydu ve deploy'u kilitliyordu.
 - **Embedding modeli:** `all-MiniLM-L6-v2` (İngilizce arayüz kararı verildiği için çok dilli model şart değil). Model **ChromaDB'nin kendi varsayılan embedding fonksiyonu** (`DefaultEmbeddingFunction`) üzerinden, **ONNX** motoruyla çalışıyor — `sentence-transformers` + `torch` kurulumu kaldırıldı (bkz. Faz 7). Kod artık embedding'i elle üretmiyor: `collection.query(query_texts=[...])` ile metni doğrudan ChromaDB'ye veriyor, embedding'i o üretiyor.
 - **LLM:** Google Gemini API, **çoklu model** (Faz 11b — kota model başına olduğu için sırayla denenen liste; **Faz 14'te 5 modele çıkarıldı ve vision sırası düzeltildi**; bkz. `llm.py` `COMMENTARY_MODELS` / `VISION_MODELS`), `google-genai` kütüphanesi (eski `google-generativeai` deprecated olduğu için güncel kütüphaneye geçildi). Model seçimi iki kez değişti: önce `gemini-2.5-flash` → `gemini-flash-latest` (ikinci API key'in projesinde 2.5'e erişim kapalıydı + alias deprecation'a karşı güvenliydi), sonra **geri `gemini-2.5-flash`'a** — çünkü alias'ın işaret ettiği model free tier'da sürekli **503 (overloaded)** veriyordu, SDK retry'ları her aramayı ~20sn'ye çıkarıyordu. Ölçüm: alias 20.1sn, `gemini-2.5-flash` ort. 3.5sn (**~6x**). Ödünleşim kabul edildi: sabit sürüm ileride deprecate olabilir, o zaman güncel sürüme taşınır (hata mesajı net gelir).
 - **Frontend:** Sade HTML/CSS/JS (React/Next.js tercih edilmedi — React öğrenme eğrisi kalan sürede risk yaratıyordu, projenin asıl değeri backend RAG pipeline'ında). Sayfa başına ayrı HTML dosyaları, ortak CSS tek dosyada, her sayfanın kendi JS dosyası. Sayfa yönlendirme klasik `<a href>` ile — SPA değil, MPA. Vercel'e statik site olarak deploy edilebilir yapıda.
@@ -50,7 +50,8 @@
 - **Hafta 7 — deploy hazırlığı:** torch'un kaldırılması ✅ (Faz 7), `recipes`'in image'a gömülmesi ✅ (Faz 8), favorites → Firestore + `chromadb` servisinin kaldırılması ✅ (Faz 9). Backend **stateless** hâle geldi.
 - **Hafta 8 — CANLI:** Backend → Render, frontend → Vercel ✅ (Faz 10). 4 blocker'ın 3'ü çözüldü, in-app tarayıcı Google girişi (④) bilinçli ertelendi.
 - **Hafta 9 — performans:** Faz 11 ✅ — arama LLM'i beklemiyor (8.87sn → 0.32sn), favoriler N+1 kalktı, favori sırası düzeldi.
-- **Hafta 10 (şu an buradayız) — kalite:** Faz 13 logging ✅, Faz 14 model güncellemesi ✅, **Faz 15 test altyapısı + girdi doğrulama + LLM sınıflandırıcı ✅** (Katman 1 + Katman 2: 148 test). Kalan: `main`'e merge, README/sunum hazırlığı.
+- **Hafta 10 — kalite:** Faz 13 logging ✅, Faz 14 model güncellemesi ✅, **Faz 15 test altyapısı + girdi doğrulama + LLM sınıflandırıcı ✅** (Katman 1 + Katman 2: 148 test).
+- **Hafta 11 (şu an buradayız) — zenginleştirme + gelir modeli:** rakip özelliklerini (Samsung Food / ReciMe) ekleyip gelir hikayesi kurma. **Faz 16 Koleksiyonlar ✅** (175 test). Sıradaki: Pantry → Meal Planner → Alışveriş listesi. Kalan (Faz 15'ten devir): `main`'e merge, README/sunum hazırlığı.
 
 ## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
 ### Backend
@@ -59,7 +60,7 @@
 - `ingestion/validate_tags.py` — diyet etiketi ve veri kalitesi doğrulama scripti
 - `ingestion/load_to_chromadb.py` — ChromaDB'ye yükleme. Embedding'i artık elle üretmiyor: `collection.add()`'e sadece `documents` veriliyor, ChromaDB kendi varsayılan fonksiyonuyla (ONNX) embed ediyor. `PersistentClient` ile `api/chroma_data/` klasörüne yazıyor (sunucuya değil). **Linux'ta çalıştırılmalı** — bkz. Faz 8'deki Windows/HNSW bulgusu.
 - `ingestion/test_search.py` — arama testleri. Gömülü veritabanını okuyor (sunucu yok). `CHROMA_PATH` env var'ıyla image'daki kopyaya yöneltilebilir — **repodaki `api/chroma_data`'ya yöneltirsen commit'li dosyayı kirletir** (bkz. Faz 8 notları).
-- `api/main.py` — FastAPI backend + CORS middleware (Faz 10'dan beri kendi origin'lerimizle sınırlı): /api/recipes/search, /api/recipes/from-image, **/api/recipes/commentary** (Faz 11), /api/recipes/{recipe_id}, /api/favorites/* endpoint'leri. Tarifleri image'a gömülü `chroma_data/` klasöründen `PersistentClient` ile okuyor (Faz 8). Arama endpoint'leri LLM'i beklemiyor (Faz 11).
+- `api/main.py` — FastAPI backend + CORS middleware (Faz 10'dan beri kendi origin'lerimizle sınırlı): /api/recipes/search, /api/recipes/from-image, **/api/recipes/commentary** (Faz 11), /api/recipes/{recipe_id}, /api/favorites/*, **/api/collections/*** (Faz 16) endpoint'leri. Tarifleri image'a gömülü `chroma_data/` klasöründen `PersistentClient` ile okuyor (Faz 8). Arama endpoint'leri LLM'i beklemiyor (Faz 11).
 - `api/chroma_data/` — **git'e commit edilmiş** gömülü tarif veritabanı (35MB: `chroma.sqlite3` + HNSW indeks dosyaları). `load_to_chromadb.py` üretiyor, Dockerfile `COPY . .` ile image'a alıyor.
 - `api/logger.py` — **merkezi logging + süre ölçümü** (Faz 13). Renkli seviye formatter'ı (`ColorFormatter`), `@timed` decorator'ı ve `timed_block` context manager'ı. Uygulamada `print` kalmadı. `python api/logger.py` ile seviyeleri/renkleri tek başına gösteren bir demo bloğu var.
 - `api/auth.py` — tek iş: Firebase Admin SDK ile `verify_id_token()` → e-posta. `get_current_user_email` dependency'si korumalı endpoint'lerde kullanılıyor. (Eskiden JWT + bcrypt + kullanıcı kayıt/giriş vardı; Firebase geçişiyle ~140 satırdan ~30 satıra düştü.)
@@ -67,6 +68,7 @@
 - `api/filters.py` — kullanıcı sorgusundan diyet/süre/kalori filtresi çıkarımı
 - `api/validation.py` — **girdi doğrulama** (Faz 15). Tek saf fonksiyon: `validate_query()` sorgu kullanılabilir değilse kullanıcıya gösterilecek mesajı döner (kurallar dizginin **biçimine** bakıyor — harf var mı, uzunluk, tek harf tekrarı). Aramadan önce çağrılıyor, `1235533443` gibi girdiler hiç iş yapılmadan reddediliyor. (Faz 15f'de buradaki mesafe eşiği `is_weak_match` kaldırıldı — anlamsal karar artık `llm.is_food_request`'te.)
 - `api/favorites.py` — favoriler sistemi (Repository Pattern'den esinlenmiş, kendi veri deposunu kendi yönetiyor). **Firestore** kullanıyor (Faz 9; öncesinde ChromaDB'ydi). `get_favorites` en son ekleneni üstte döner (Faz 11; sıralama bellekte — bkz. Faz 11 notu). Faz 6'daki Firebase Auth migrasyonunda **tek satır değişmemişti** — favoriler e-posta anahtarlı ve e-posta her iki auth sisteminde de aynı kimlik. Faz 9'da bunun tersi oldu: favoriler baştan yazıldı ama `main.py` hiç değişmedi (aynı fonksiyon imzaları, aynı `ValueError`'lar).
+- `api/collections_store.py` — **koleksiyonlar** (Faz 16), favorilerin ÜSTÜNE binen düzenleme katmanı. Firestore `collections` koleksiyonu, auto-ID doküman, üyelik `recipe_ids` dizisinde. Saf `validate_collection_name` + CRUD. Aynı isim yasağı bellekte (bileşik indeks yok). **Dosya adı `collections.py` DEĞİL** — stdlib `collections`'ı gölgelerdi (`logger.py`/`logging.py` tuzağının aynısı). İlişki kuralı (koleksiyon ⊆ favoriler) `main.py`'de kurulu; `favorites.py`'den habersiz.
 - `Dockerfile` (**repo kökünde**, Faz 10'da `api/`'den taşındı) — `python:3.13-slim`, `uvicorn` `$PORT`'u (yoksa 8080) dinliyor. ONNX modelini build sırasında retry'lı indirip gömüyor, image'a sadece `api/` kopyalanıyor. Hem `docker-compose` hem Render bunu kullanıyor. Image **1.2GB** (Faz 7 öncesi 2.83GB → Faz 7 sonrası 1.14GB → Faz 8'de +35MB tarif verisi).
 - `.dockerignore` (**repo kökünde**) — `api/firebase-key.json` ve `.env`'i image dışında tutuyor (güvenlik), ayrıca `frontend/`, `ingestion/`, `*.csv`.
 - `docker-compose.yml` — **2 servis**: `api`, `frontend` (Faz 9'da `chromadb` kaldırıldı). `api` kökteki Dockerfile'ı context=kök ile build ediyor.
@@ -75,8 +77,9 @@
 ### Frontend
 - `frontend/index.html` — giriş/kayıt sayfası (Sign in / Create account sekmeleri, "Continue with Google" butonu). Firebase compat SDK script'leri + `firebase.js`, diğer JS'lerden önce yükleniyor (sıra önemli).
 - `frontend/search.html` — ana arama sayfası (Text search / Camera search sekmeleri, mikrofon butonu)
-- `frontend/recipe.html` — tarif detay sayfası (instructions + kalp butonu ile favori toggle)
-- `frontend/favorites.html` — kayıtlı tariflerin listesi (boş durum ekranı ile)
+- `frontend/recipe.html` — tarif detay sayfası (instructions + kalp butonu ile favori toggle + Faz 16'da "Add to collection" seçicisi)
+- `frontend/favorites.html` — "Your recipes": üstte koleksiyon grid'i (Faz 16), altta "All saved" listesi (boş durum ekranı ile)
+- `frontend/collection.html` — **tek koleksiyon görünümü** (Faz 16): yeniden adlandır / sil (onay modalı) / tariften çıkar
 - `frontend/css/style.css` — tüm sayfalar için ortak CSS (design tokens, layout, components, user menu dropdown)
 - `frontend/js/firebase.js` — Firebase init + `authReady` promise'i (oturum durumu **kesinleşene** kadar bekler). Her sayfada compat SDK script'lerinden sonra, diğer JS'lerden önce yüklenir.
 - `frontend/js/logger.js` — **frontend logging + süre ölçümü** (Faz 13). `api/logger.py`'nin tarayıcı tarafındaki eşi: aynı satır biçimi, aynı seviyeler, aynı "yavaşsa sarı" kuralı. `Logger.get(scope)`, `Logger.timed(fn, ...)` (decorator'ın JS'teki higher-order function karşılığı), `Logger.duration(...)`. Ayarlar `localStorage` üzerinden (`log_level`, `slow_ms`) — tarayıcıda ortam değişkeni yok. Her sayfada, kendisini kullanan dosyalardan önce yüklenir.
@@ -84,8 +87,9 @@
 - `frontend/js/api.js` — ortak API katmanı (backend adresini `window.API_BASE`'den alır; Firebase ID token'ı header'a ekleyen fetch wrapper, `authReady` tabanlı auth guard, 401'de otomatik logout, kullanıcı menüsü/email + dropdown sign out, doğrulanmamış e-posta için hatırlatma bandı)
 - `frontend/js/auth.js` — giriş/kayıt formu mantığı + Google girişi (Firebase `signInWithPopup`), hesap bağlama (`linkWithCredential`), kayıtta `sendEmailVerification()`, şifre sıfırlama (`sendPasswordResetEmail`; Faz 12)
 - `frontend/js/search.js` — arama sayfası, mode tabs, kamera stream (`getUserMedia`), sesli arama (`SpeechRecognition`), sonuç render. AI yorumunu ayrı istekle çekiyor (`loadCommentary`, iskelet animasyonu + `commentarySeq` yarış koruması; Faz 11)
-- `frontend/js/recipe.js` — detay sayfası, `parseInstructions()` (R vector kalıntılarını filtreliyor)
-- `frontend/js/favorites.js` — favorileri tarif bilgileriyle **tek istekte** çekiyor (`?include_details=true`; Faz 11 öncesi her ID için ayrı istek atıyordu)
+- `frontend/js/recipe.js` — detay sayfası, `parseInstructions()` (R vector kalıntılarını filtreliyor) + Faz 16 koleksiyon seçicisi (lazy-load checkbox listesi, kalp↔koleksiyon senkronu)
+- `frontend/js/collection.js` — tek koleksiyon sayfası (Faz 16): rename/delete/remove akışları
+- `frontend/js/favorites.js` — koleksiyonları ve favorileri **paralel** çekiyor (Faz 16); favoriler tarif bilgileriyle **tek istekte** (`?include_details=true`; Faz 11 öncesi her ID için ayrı istek atıyordu)
 - `frontend/Dockerfile` — `nginx:alpine`, statik dosyaları doğrudan sunuyor
 
 ### Testler (Faz 15)
@@ -98,7 +102,9 @@
 - **Katman 2 — HTTP sözleşme testleri (Faz 15g):**
   - `api/tests/conftest.py` — dış servisleri (Firebase/Firestore/Gemini/ChromaDB) `sys.modules` + `patch` ile sahteliyor. `client` (gerçek auth) ve `auth_client` (bypass) fixture'ları.
   - `api/tests/test_api_contract.py` — 22 test: auth (422/401/200), is_food_request bağlantısı, CORS, decorator sırası, Faz 11b 200+CORS, sınır yolları.
-- **Toplam: 148 test + 1 xfail**, ~1.5 sn, container/ağ gerekmiyor.
+- **Koleksiyonlar (Faz 16):**
+  - `api/tests/test_collections.py` — 27 test: Katman 1 `validate_collection_name` (saf) + Katman 2 endpoint sözleşmesi (auth, create/rename biçim doğrulama, `include_details` kart eşleme, ilişki kuralı bağlantıları, delete).
+- **Toplam: 175 test + 1 xfail**, ~1.5 sn, container/ağ gerekmiyor.
 - Çalıştırma: `python -m pytest` · `-v` test adlarını gösterir · `--lf` sadece son kırılanları çalıştırır.
 - Windows notu: konsol cp1254 olduğu için Türkçe karakterli mesajlar bozuk görünür (çökme değil). `$env:PYTHONIOENCODING = "utf-8"` düzeltiyor.
 
@@ -145,7 +151,70 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 - **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Faz 6–11'in tamamı bu branch'te. `main` el değmemiş durumda. **Canlı deploy `firebase-auth` dalından yapılıyor** (hem Render hem Vercel bu dalı izliyor), dolayısıyla merge sonrası deploy dalını `main`'e çevirmek gerekecek.
 - Repo **GitHub'da**: `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private). Sırlar (`firebase-key.json`, `.env`) gitignored, repoda yok — Render'da env var olarak duruyor.
 
-## Güncel Durum: Faz 15 (Test altyapısı + girdi doğrulama) ✅
+## Güncel Durum: Faz 16 (Koleksiyonlar — rakip özelliği, gelir yol haritasının 1. adımı) ✅
+
+**Tetikleyici:** Staj hocası sunumda "gelir modeliniz ne?" diye soracak; mevcut uygulama özellik olarak zayıf ("tek iş: arama, bunu herhangi bir genel AI de yapıyor"). Rakip uygulamalar **Samsung Food** ve **ReciMe**. Karar: durumsuz (stateless) arama aracından, kullanıcı verisi biriktiren yapışkan (sticky) bir "kişisel mutfak asistanına" geçmek — genel AI'ın yapamadığı şey kalıcı kullanıcı durumu. Yol haritası: **Koleksiyonlar → Pantry ("Dolabım") → Meal Planner → Alışveriş listesi (affiliate gelir) → Cook Mode/porsiyon → Beslenme takibi**. Koleksiyonlar en düşük riskli ilk adım (mevcut favoriler koduna en yakın). Gelir modeli (freemium + affiliate) ve tam yol haritası proje hafızasında.
+
+### Temel tasarım kararı: koleksiyon favorileri DEĞİŞTİRMEZ, üstüne biner
+- **Favoriler ("All Saved")** master liste — `favorites.py` **tek satır değişmedi**.
+- **Koleksiyon** = favorilerin adlandırılmış bir ALT KÜMESİ. Bir tarif 0/1/birden çok koleksiyonda olabilir (çok-çok ilişki).
+- **İlişki kuralı (değişmez / invariant): koleksiyon üyeliği ⊆ favoriler.**
+  - Koleksiyona ekleme → **otomatik favoriye de ekler** (auto-favorite).
+  - Favoriden çıkarma → **tarifi tüm koleksiyonlardan da düşürür**.
+
+  Bu kural kalp butonunun anlamını koruyor ve "kayıtlı ama hiçbir yerde görünmeyen tarif" tutarsızlığını engelliyor. Samsung Food/ReciMe de böyle çalışıyor (önce kaydet, sonra klasörle). İlişki kuralı `main.py`'de kurulu — `favorites.py` ve `collections_store.py` birbirinden habersiz, orkestra eden main (Faz 9'daki "main favorileri bilmez" ayrımının aynası).
+
+### ⚠️ Dosya adı `collections_store.py`, `collections.py` DEĞİL
+`collections` Python **standart kütüphane** modülü (OrderedDict, namedtuple, `collections.abc`). `pythonpath = api` olduğu için düz bir `collections.py` onu gölgeleyip pydantic/fastapi dahil her şeyi kırardı — **`logger.py`'nin `logging.py` olmama sebebiyle birebir aynı tuzak**. API yolu ve arayüz terimi "collections" olarak kaldı; yalnızca dosya adında `_store` eki var.
+
+### Firestore şeması (ikinci Firestore koleksiyonu, `favorites`'in yanına)
+`collections` koleksiyonu, doküman ID'si **Firestore auto-ID** (favorilerdeki bileşik `{email}_{recipe_id}` anahtarının aksine — koleksiyonun kendi kimliği var):
+```
+owner_email · name · created_at · recipe_ids: [ ... ]
+```
+- **Üyelik dokümanda DİZİ olarak** (ayrı üyelik dokümanları değil): N+1 sorgu, bileşik indeks ve `order_by` derdini ortadan kaldırıyor — favorilerdeki "sıralamayı bellekte yap" kararıyla aynı gerekçe, kişisel ölçekte diziler küçük.
+- **Metadata dokümanı şart:** boş koleksiyon da bir şeydir (kullanıcı adlandırıp içini sonra doldurabilir), sadece tarife etiket koyup geçemeyiz.
+- **Sahiplik:** auto-ID kullanıcıya bağlı olmadığı için `owner_email` açıkça doğrulanıyor (`_owned_doc`). "Bulunamadı" ve "başkasının koleksiyonu" AYNI mesajı veriyor — ID tahmin edilebilir olduğundan varlık sızdırmamak için (favoride bu risk yoktu, bileşik anahtar zaten e-posta içeriyordu).
+
+### Aynı isim yasağı (kullanıcı isteği, 2026-07-23)
+Kullanıcı başına, büyük/küçük harf duyarsız (`"Breakfast"` = `"breakfast"`). Kontrol **bellekte**: `where(owner)` tek eşitlik filtresi + Python'da karşılaştırma — ikinci bir eşitlik filtresi eklemekten kaçınıldı ki bileşik indeks gerekmesin (favorilerdeki `order_by` kaçınmasıyla aynı ilke). Hem create'te hem rename'de (rename'de kendisi hariç). `validate_collection_name` **saf fonksiyon** (boş/whitespace/60 karakter üstü → kullanıcıya anlaşılır mesajla `ValueError`), Katman 1'de test edildi. `str.strip()` sonrası ölçülüyor.
+
+### Endpoint'ler (favorilerin deseni: `@timed` + `ValueError` → 200 + `{"error": ...}`)
+```
+POST   /api/collections                           create {name}
+GET    /api/collections                           list (recipe_ids DAHİL)
+GET    /api/collections/{id}?include_details=true  detay + tarif kartları
+PATCH  /api/collections/{id}                       rename {name}
+DELETE /api/collections/{id}                       sil (tarifler favoride kalır)
+POST   /api/collections/{id}/recipes              ekle {recipe_id} (+auto-favorite)
+DELETE /api/collections/{id}/recipes/{recipe_id}  çıkar (favoride kalır)
+```
+- **`?include_details=true`** favorilerdeki mantığın aynısı: tek ChromaDB `get`, sıra `id→kart` eşlemesiyle korunuyor, silinmiş tarif `None`.
+- **`GET /api/collections` `recipe_ids` döndürüyor:** favoriler sayfası tarif SAYISINI, `recipe.html` seçicisi ÜYELİĞİ (bu tarif hangi koleksiyonlarda) bundan hesaplıyor. Diziler küçük, tek istekte ucuz.
+- **Route çakışması yok:** `/api/collections` (literal) parametreli `/{id}` yollarını gölgelemiyor.
+
+### Frontend
+- **`favorites.html`/`favorites.js`** — üstte koleksiyon grid'i (kesikli "New collection" kutucuğu) + altta mevcut "All saved". Koleksiyon ve favoriler **paralel** çekiliyor (`Promise.all`). Kartlar görselsiz metin (datasette resim yok; mevcut estetikle tutarlı): isim + tarif sayısı. Boş durum: kayıt YOK **ve** koleksiyon YOK ise büyük boş ekran.
+- **`collection.html`/`collection.js` (yeni)** — tek koleksiyon: yeniden adlandırma (✎ inline form), silme (onay modalı + "tarifler All Saved'da kalır" notu), her tarifte "Remove" (koleksiyondan çıkarır, favoride bırakır).
+- **`recipe.html`/`recipe.js`** — kalp butonunun yanında "Add to collection" seçicisi: checkbox listesi (üyeliğe göre işaretli) + inline yeni koleksiyon. **Lazy load** (yalnızca açılınca `/api/collections`). Checkbox toggle → add/remove; add auto-favorite yaptığı için kalp otomatik doluyor. Kalple favoriden çıkınca (seçici açıksa) checkbox'lar tazeleniyor (backend zinciri temizlediği için bayatlamasın).
+
+### Test (148 → **175**, +27)
+- **Katman 1:** `validate_collection_name` (boş / whitespace / None / 60 sınırı / trim sonrası ölçüm / unicode) — saf, mock yok.
+- **Katman 2 (`api/tests/test_collections.py`):** auth sözleşmesi (header yok → 422); create başarı / duplike (200+error, **500 değil**) / boş ad / 61 karakter (Firestore'a **gitmeden** validate eliyor) / 201 karakter (Pydantic 422); detay (kart eşleme + sıra, boş → ChromaDB **atlanıyor**); **ilişki kuralı** (add → `add_favorite` çağrılıyor; zaten favoriyse `ValueError` yutuluyor; favori silme → `remove_recipe_from_all_collections` çağrılıyor; koleksiyondan çıkarma favoriye **dokunmuyor**); delete.
+- `collections_store`'un Firestore CRUD'u **birim test EDİLMEDİ** (favoriler gibi — MagicMock Firestore anlamlı davranış üretmez); endpoint'te monkeypatch'lenip yalnızca BAĞLANTILARI test ediliyor. Gerçek CRUD canlı Docker'da doğrulanacak.
+- `git status api/chroma_data` temiz (conftest ChromaDB'yi mock'luyor).
+
+### Yerelde test
+`docker compose up -d --build api` (backend `COPY` ile image'a girdiği için rebuild şart) + `docker restart recipe_frontend` + tarayıcıda `Ctrl+Shift+R`.
+
+### Bilinen sınırlar / ertelenenler
+- **JS makineyle syntax-check edilmedi:** geliştirme ortamında `node` kurulu değil; üç dosya da elle incelendi (mevcut çalışan `favorites.js`/`recipe.js` desenleriyle birebir). Tam doğrulama tarayıcıda.
+- **Firestore güvenlik kuralları:** backend Admin SDK ile bağlandığı için kurallar atlanıyor (Faz 9'daki gibi); frontend Firestore'a hiç doğrudan dokunmuyor, sahiplik `owner_email` ile API'de zorlanıyor.
+- **Eski favoriler** koleksiyonsuz kalıyor (yeni özellik, migrasyon yok) — kullanıcı dilediğinde gruplar.
+
+---
+
+## Faz 15 (Test altyapısı + girdi doğrulama) ✅
 
 > **⚠️ MİMARİ DEĞİŞİKLİK — Faz 15f (2026-07-23):** Faz 15c-15e'de kurulan **mesafe eşiği (`is_weak_match`) KALDIRILDI**, yerine **LLM sınıflandırıcı (`is_food_request`)** geldi. Sebep: mesafe yöntemi tutarsızdı — `what is the capital of switzerland?` (1.265) geçerken `where is the capital of france?` (1.31) yakalanıyordu, çünkü karar ülke adının bir yemek kelimesiyle çakışıp çakışmamasına bağlıydı. Aşağıdaki 15c-15e bölümleri **tarihsel kayıt** olarak duruyor (mesafe kalibrasyonu, örtüşme sinyali vb. hâlâ öğretici) ama **kod artık öyle çalışmıyor**. Güncel davranış için Faz 15f'ye bak. **Kapı 1 (`validate_query`) DEĞİŞMEDİ** — hâlâ ilk kontrol.
 
@@ -766,6 +835,9 @@ Yani **model başına günde 20 istek**. Kritik ayrıntı `PerModel`: kota model
 
 **Firestore (`favorites` koleksiyonu):**
 - Kullanıcı favorileri (user_email, recipe_id, added_at). Doküman ID'si bileşik: `{email}_{recipe_id}`.
+
+**Firestore (`collections` koleksiyonu, Faz 16):**
+- Kullanıcı koleksiyonları (owner_email, name, created_at, recipe_ids dizisi). Doküman ID'si Firestore auto-ID. Üyelik dizide tutuluyor. İlişki kuralı: koleksiyon üyeliği ⊆ favoriler.
 
 **Firebase Auth:** kullanıcılar (Faz 6'dan beri).
 
