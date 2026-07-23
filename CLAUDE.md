@@ -49,7 +49,8 @@
 - **Hafta 6:** Firebase Auth migrasyonu ✅ (`firebase-auth` branch'inde, 8 senaryo canlı doğrulandı)
 - **Hafta 7 — deploy hazırlığı:** torch'un kaldırılması ✅ (Faz 7), `recipes`'in image'a gömülmesi ✅ (Faz 8), favorites → Firestore + `chromadb` servisinin kaldırılması ✅ (Faz 9). Backend **stateless** hâle geldi.
 - **Hafta 8 — CANLI:** Backend → Render, frontend → Vercel ✅ (Faz 10). 4 blocker'ın 3'ü çözüldü, in-app tarayıcı Google girişi (④) bilinçli ertelendi.
-- **Hafta 9 (şu an buradayız) — performans:** Faz 11 ✅ — arama LLM'i beklemiyor (8.87sn → 0.32sn), favoriler N+1 kalktı, favori sırası düzeldi. Kalan: `main`'e merge, README/sunum hazırlığı.
+- **Hafta 9 — performans:** Faz 11 ✅ — arama LLM'i beklemiyor (8.87sn → 0.32sn), favoriler N+1 kalktı, favori sırası düzeldi.
+- **Hafta 10 (şu an buradayız) — kalite:** Faz 13 logging ✅, Faz 14 model güncellemesi ✅, **Faz 15 test altyapısı + girdi doğrulama ✅** (ilk otomatik testler: 126 test). Kalan: Katman 2 testleri, `main`'e merge, README/sunum hazırlığı.
 
 ## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
 ### Backend
@@ -64,6 +65,7 @@
 - `api/auth.py` — tek iş: Firebase Admin SDK ile `verify_id_token()` → e-posta. `get_current_user_email` dependency'si korumalı endpoint'lerde kullanılıyor. (Eskiden JWT + bcrypt + kullanıcı kayıt/giriş vardı; Firebase geçişiyle ~140 satırdan ~30 satıra düştü.)
 - `api/llm.py` — Gemini API ile LLM cevap üretimi + fotoğraftan malzeme tanıma (`gemini-2.5-flash`)
 - `api/filters.py` — kullanıcı sorgusundan diyet/süre/kalori filtresi çıkarımı
+- `api/validation.py` — **girdi doğrulama** (Faz 15). `validate_query()` saf fonksiyon: sorgu kullanılabilir değilse kullanıcıya gösterilecek mesajı, kullanılabilirse `None` döner. Kurallar dizginin **biçimine** bakıyor (harf içeriyor mu, uzunluk, tek harf tekrarı), anlamına değil — anlamsal eşik ölçümle elendi, bkz. Faz 15c.
 - `api/favorites.py` — favoriler sistemi (Repository Pattern'den esinlenmiş, kendi veri deposunu kendi yönetiyor). **Firestore** kullanıyor (Faz 9; öncesinde ChromaDB'ydi). `get_favorites` en son ekleneni üstte döner (Faz 11; sıralama bellekte — bkz. Faz 11 notu). Faz 6'daki Firebase Auth migrasyonunda **tek satır değişmemişti** — favoriler e-posta anahtarlı ve e-posta her iki auth sisteminde de aynı kimlik. Faz 9'da bunun tersi oldu: favoriler baştan yazıldı ama `main.py` hiç değişmedi (aynı fonksiyon imzaları, aynı `ValueError`'lar).
 - `Dockerfile` (**repo kökünde**, Faz 10'da `api/`'den taşındı) — `python:3.13-slim`, `uvicorn` `$PORT`'u (yoksa 8080) dinliyor. ONNX modelini build sırasında retry'lı indirip gömüyor, image'a sadece `api/` kopyalanıyor. Hem `docker-compose` hem Render bunu kullanıyor. Image **1.2GB** (Faz 7 öncesi 2.83GB → Faz 7 sonrası 1.14GB → Faz 8'de +35MB tarif verisi).
 - `.dockerignore` (**repo kökünde**) — `api/firebase-key.json` ve `.env`'i image dışında tutuyor (güvenlik), ayrıca `frontend/`, `ingestion/`, `*.csv`.
@@ -85,6 +87,15 @@
 - `frontend/js/recipe.js` — detay sayfası, `parseInstructions()` (R vector kalıntılarını filtreliyor)
 - `frontend/js/favorites.js` — favorileri tarif bilgileriyle **tek istekte** çekiyor (`?include_details=true`; Faz 11 öncesi her ID için ayrı istek atıyordu)
 - `frontend/Dockerfile` — `nginx:alpine`, statik dosyaları doğrudan sunuyor
+
+### Testler (Faz 15)
+- `pytest.ini` (**repo kökünde**) — `pythonpath = api ingestion` (importlar çıplak: `from filters import ...`) ve `testpaths = api/tests ingestion/tests`. **`testpaths` opsiyonel değil**, gerekçesi Faz 15a'da.
+- `api/requirements-dev.txt` — sadece `pytest`; image'a **kurulmuyor**.
+- `api/tests/test_filters.py` — 34 test, `extract_filters` (mock yok)
+- `api/tests/test_validation.py` — 59 test, `validate_query` (mock yok)
+- `ingestion/tests/test_clean_data.py` — 33 test + 1 `xfail`, temizleme fonksiyonları (mock yok)
+- Çalıştırma: `python -m pytest` (tümü ~0.5 sn) · `-v` test adlarını gösterir · `--lf` sadece son kırılanları çalıştırır.
+- Windows notu: konsol cp1254 olduğu için Türkçe karakterli mesajlar bozuk görünür (çökme değil). `$env:PYTHONIOENCODING = "utf-8"` düzeltiyor.
 
 ## Henüz Yapılmadı (güncel — Faz 10 sonrası kalanların TAMAMI, hepsi opsiyonel)
 
@@ -123,13 +134,115 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 - LLM cevabındaki `**bold**` markdown karakterlerinin HTML render'ı (şu an ham metin görünüyor)
 - Instructions'daki bazı adımların sonundaki tekil `\` backslash temizliği (dataset veri kalitesi kalıntısı)
 - `filters.py` iyileştirmeleri (malzeme çıkarımı, sayısal ifadeler "under 30 minutes", olumsuz ifadeler)
-- **`nut_free` etiketinde açık var** (Faz 7'de tesadüfen fark edildi): "nut free cookies for kids" araması `Pine Nut and Almond Cookies` ve `wheat free peanut butter cookies` döndürüyor — ikisi de `nut_free: True` etiketli, yani yanlış. `validate_tags.py` nut kontrolünde 0 çelişki verdiği için doğrulama scriptinin de gözden kaçırdığı bir durum var (muhtemelen "pine nut"/"peanut butter" gibi bileşik adlar kural listesine takılmıyor). Sunumda sorulabilecek türden; `clean_data.py` + `validate_tags.py` birlikte gözden geçirilmeli.
+- **`nut_free` etiketinde açık var** (Faz 7'de tesadüfen fark edildi): "nut free cookies for kids" araması `Pine Nut and Almond Cookies` ve `wheat free peanut butter cookies` döndürüyor — ikisi de `nut_free: True` etiketli, yani yanlış. **KÖK SEBEP FAZ 15'TE BULUNDU** (eski tahmin "bileşik adlar kural listesine takılmıyor" YANLIŞTI) — ayrıntı için Faz 15b. Hata henüz **düzeltilmedi**; `xfail(strict=True)` testi olarak kayıtlı (`ingestion/tests/test_clean_data.py`), düzeltilince test XPASS verip suite'i kırar ve işaretin kaldırılmasını zorlar.
 
 ## Şu An Üzerinde Çalışılıyor
 - **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Faz 6–11'in tamamı bu branch'te. `main` el değmemiş durumda. **Canlı deploy `firebase-auth` dalından yapılıyor** (hem Render hem Vercel bu dalı izliyor), dolayısıyla merge sonrası deploy dalını `main`'e çevirmek gerekecek.
 - Repo **GitHub'da**: `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private). Sırlar (`firebase-key.json`, `.env`) gitignored, repoda yok — Render'da env var olarak duruyor.
 
-## Güncel Durum: Faz 14 (Yeni Gemini modelleri + vision sırasının düzeltilmesi) ✅
+## Güncel Durum: Faz 15 (Test altyapısı + girdi doğrulama) ✅
+
+### Faz 15a — İlk otomatik testler (Katman 1) ✅
+**Öncesi:** projede **hiç otomatik test yoktu**. `filters.py`, `llm.py`, `logger.py` içindeki `if __name__ == "__main__"` blokları demo — çıktıyı insan okuyor, hiçbir şey assert etmiyor. CLAUDE.md'deki onlarca "doğrulandı" ifadesinin tamamı elle yapılmış ve tekrarlanabilir değildi.
+
+**Test edilebilirliğin önündeki engel — import anındaki yan etkiler.** Bu, test stratejisinin tamamını belirledi:
+
+| Dosya | Import anında ne oluyor |
+|---|---|
+| `auth.py:19` | `firebase_admin.initialize_app()` — kimlik dosyası arıyor |
+| `favorites.py:18` | `firestore.client()` |
+| `llm.py:13` | `genai.Client(api_key=...)` |
+| `main.py:36` | 35MB ChromaDB açılıyor + `get_collection("recipes")` |
+
+Yani `import main` = Firebase kimliği + veritabanı + Gemini istemcisi. Bu yüzden testler katmanlara ayrıldı: **saf fonksiyonlar (mock gerekmez) önce**, HTTP sözleşme testleri (mock gerekir) sonraya bırakıldı.
+
+**`testpaths` neden opsiyonel değil:** sınırlanmazsa pytest `ingestion/test_search.py`'yi de toplar. O dosya test değil, elle çalıştırılan bir script ve **import anında `PersistentClient` açıyor** — ChromaDB bir klasörü açarken bile `chroma.sqlite3`'e yazdığı için commit'li 35MB'lık veritabanı kirlenir ve git'te sahte bir değişiklik çıkar. (Doğrulandı: test çalıştırmalarından sonra `api/chroma_data/` temiz kaldı.)
+
+**`clean_data.py` refactor'ü zorunluydu:** pipeline modül seviyesindeydi, yani `import clean_data` demek 522k satır okuyup `recipes_cleaned.csv`'yi **üzerine yazmak** demekti. `main()` içine alınıp `if __name__ == "__main__"` guard'ı eklendi (`filters.py` ve `llm.py`'de bu guard zaten vardı). Çalıştırma şekli değişmedi — `pd.read_csv` tuzaklanarak script yolunun hâlâ `main()`'i çağırdığı doğrulandı. Bu arada satır 188'deki `✓` → `[OK]`: `load_to_chromadb.py`'de aynı karakter Windows'ta (cp1254) `UnicodeEncodeError` verip script'i tam bitmişken çöktürüyordu, burada aynı bomba duruyordu.
+
+**Sonuç:** 126 test + 1 xfail, ~0.5 sn, container/ağ gerekmiyor.
+
+### Faz 15b — `nut_free` açığının KÖK SEBEBİ ✅ (bulundu, düzeltilmedi)
+Önceki tahmin — *"muhtemelen 'pine nut'/'peanut butter' gibi bileşik adlar kural listesine takılmıyor"* — **yanlıştı**.
+
+Gerçek sebep: `extract_diet_tags` ada bakan güvenlik ağını **yalnızca ET için** kurmuş.
+- `clean_data.py:77-80` → `name_has_land_meat`, `name_has_seafood` **var**
+- `clean_data.py:121-122` → `has_nuts` sadece `ingredients_text` ve `category_lower`'a bakıyor, **tarif adı hiç kontrol edilmiyor**. Aynı açık `has_dairy` ve `has_gluten` için de geçerli.
+
+Kanıt (fonksiyon izole edilip çalıştırıldı):
+```
+extract_diet_tags(['flour','sugar'], 'Cookie', 'Pine Nut and Almond Cookies')
+  -> ['vegetarian','dairy_free','vegan','nut_free']   YANLIŞ (ad açıkça söylüyor)
+extract_diet_tags(['lettuce','tomato'], 'Salad', 'Chicken Salad')
+  -> vegetarian YOK                                    DOĞRU (et için ad kontrolü var)
+```
+
+**`validate_tags.py` neden "0 çelişki" diyordu:** Çelişki 4 (`validate_tags.py:48-51`) sadece `RecipeCategory`'ye bakıyor. "Pine Nut and Almond Cookies"in kategorisi `Cookie` — içinde nut kelimesi yok, o yüzden yakalanmıyor. **İki dosya aynı kör noktayı paylaşıyor**, dolayısıyla doğrulama scripti kendi ürettiği hatayı göremiyor.
+
+Test `xfail(strict=True)` olarak yazıldı — düzeltilince XPASS verip suite'i kırar, işaretin kaldırılmasını zorlar. Sunumda anlatılabilir: *"test yazdım, bilinen bir hatanın gerçek sebebi tahmin edilenden farklı çıktı."*
+
+### Faz 15c — Girdi doğrulama (`api/validation.py`) ✅
+**Tetikleyici (kullanıcı sorusu):** *"search bar'a 1235533443 girilirse boşuna AI kotası yenip boşuna veritabanına bakılmıyor mu?"* — evet, ama mekanizma dolaylı.
+
+**Zincir:** arama Gemini'yi çağırmıyor (Faz 11'de ayrılmıştı). `search.js:172` sonuçlar gelir gelmez `loadCommentary`'yi tetikliyor; oradaki tek koruma `recipes.length === 0` (`search.js:73`). **Vektör araması her zaman 5 komşu döndürdüğü için bu koruma saçma sorguda hiç devreye girmiyor** → `/api/recipes/commentary` çağrılıyor → kota yanıyor.
+
+Saçma bir sorgunun canlıdaki maliyeti: token doğrulama ~150 ms + ChromaDB **~5.4 sn** (Render 0.1 vCPU, Faz 13c ölçümü) + ikinci token doğrulaması + Gemini 0.7–2.8 sn + **günlük 100 hakkın 1'i**. Kullanıcı karşılığında 5 alakasız tarif görüyordu.
+
+**Asıl mesele:** vektör araması **"eşleşme yok" DİYEMEZ** — eşleşme kalitesine bakmadan her zaman en yakın *n* komşuyu döndürür. Sistemde "sonuç yok" diye bir durum yok (tek istisna: metadata filtresi her şeyi elerse).
+
+#### Mesafe eşiği denendi ve ÖLÇÜMLE ELENDİ
+ChromaDB `distances`'ı zaten döndürüyor, `main.py:96` onu okumadan atıyordu — yani eşik ek hesap maliyeti getirmezdi. 55 sorgulu kalibrasyon (L2; koleksiyonda `hnsw:space` ayarlı değil → ChromaDB varsayılanı):
+
+| grup | n | min | medyan | max |
+|---|---:|---:|---:|---:|
+| anlamlı | 30 | 0.336 | 0.605 | 0.958 |
+| saçma | 15 | 1.240 | 1.597 | 1.732 |
+| konu dışı | 10 | 1.230 | 1.625 | 1.792 |
+
+İlk 12 sorgulu ölçümde boşluk temiz görünmüştü (0.892 → 1.566) ve eşik 1.3 önerilmişti. **Örneklem genişletilince çöktü** — "anlamlı" sorgular elle yazılmıştı ve hepsi çok kelimeli, dataset'in güçlü olduğu şeylerdi. Gerçek kullanıcı sorguları eklenince:
+
+| sorgu | mesafe | eşik 1.1'de |
+|---|---:|---|
+| `dinner` | 1.185 | ❌ reddedilir |
+| `food` | 1.157 | ❌ reddedilir |
+| `borscht` | 1.141 | ❌ reddedilir |
+| `pad kee mao` | 1.177 | ❌ reddedilir |
+| `pierogi ruskie` | 1.315 | ❌ reddedilir |
+| `zxcvbnm` (klavye ezmesi) | 1.240 | meşrulardan **daha yakın** |
+
+İki sebep: **(1) en yakın komşu mesafesi genelliği cezalandırıyor** — `dinner` kümenin merkezine yakın ama hiçbir *tekil* tarife yakın değil; **(2) dataset 522k'dan rastgele seçilmiş 4886 tarif**, `borscht`/`pierogi ruskie` karşılığı zayıf. İkisi de kullanıcı hatası değil.
+
+**Sonuç: hiçbir eşik iki sınıfı temiz ayıramıyor; mesafe hard-reject olarak kullanılamaz.** (Yazım hataları sorun değil: `chiken dinner` 0.986, `vegitarian pasta` 0.804 — embedding tolere ediyor.)
+
+#### Uygulanan çözüm: biçimsel kurallar
+`validate_query(text) -> str | None` — saf fonksiyon (`filters.py` deseni), sorun varsa kullanıcıya gösterilecek mesajı döner.
+
+| kural | öldürdüğü | neden yanlış red riski yok |
+|---|---|---|
+| `len < 2` | `""`, `"a"` | tek harfli tarif sorgusu yok |
+| harf içermiyor | `1235533443`, `!!!???...`, `-----`, `12 34 56 78` | her tarif sorgusunda kelime vardır |
+| tek farklı harf | `aaaaaaaaaa` | — |
+| `len > 200` | kopyala-yapıştır metin | ayrıca commentary prompt'unu sınırlıyor |
+
+`str.isalpha()` Unicode farkında → `börek`, `crème brûlée` geçer. Çağrı `extract_filters`'tan **önce**, yani embedding ve ChromaDB hiç çalışmıyor.
+
+**Neden 422 değil, 200 + `{"error": ...}`:** `api.js:151` 401 dışındaki durumlarda gövdeyi olduğu gibi döndürüyor ve `search.js:168` zaten `data.error`'ı `showError`'a veriyor — Faz 11b'de kurulan kalıp. **Frontend'de tek satır değişmedi.**
+
+**Aynı aileden ek sınırlar:** `n_results` → `Field(5, ge=1, le=20)` (öncesinde sınırsızdı, istemci 100000 isteyebilirdi); `CommentaryRequest.query` → `max_length=500` (bu metin doğrudan Gemini prompt'una giriyor — `main.py:138`'deki *"tarif bilgisi ID'lerden okunuyor"* koruması `query` alanını **kapsamıyordu**); `recipe_ids` → `max_length=50`; `additional_text` → `max_length=200`.
+
+**`from-image`'a `validate_query` UYGULANMADI** (bilinçli): alan opsiyonel, asıl sorguyu fotoğraftan tanınan malzemeler taşıyor ve vision çağrısı bu noktada zaten yapılmış — erken reddetmenin tasarruf ettireceği bir şey yok. Yalnızca uzunluk sınırlandı.
+
+**Doğrulama:** 126 test geçiyor. Ayrıca **gerçek `search_recipes` fonksiyonu** çağrıldı (dış servisler `sys.modules` üzerinden sahtelendi): reddedilen 5 sorguda `collection.query` **çağrı sayısı 0** — ChromaDB'ye hiç gidilmiyor, endpoint 0.1 ms'de dönüyor; `dinner` / `borscht` / `up` geçiyor ve sorgu ChromaDB'ye ulaşıyor. Pydantic kısıtları sınır değerleriyle ayrıca doğrulandı (n_results 20 ✓ / 21 ✗, query 500 ✓ / 501 ✗, 50 id ✓ / 51 ✗).
+
+**Log tutarlılığı:** `Text search:` INFO satırı artık sorguyu `[:100]` ile kırpıyor — uzunluk kontrolü o noktada henüz yapılmadığı için 200+ karakterlik bir sorguyu olduğu gibi basabilirdi. `%r` (log injection) koruması korundu.
+
+### Faz 15d — Değerlendirilip yapılmayanlar
+- **B′ — mesafe eşiği "soft gate" olarak.** Fikir: eşiği sonucu reddetmek için değil, **yalnızca yorumu atlamak** için kullanmak. Asimetrik maliyet: sonuç kaybı zararlı (kullanıcı borscht'unu kaybediyor), yorum kaybı zaten tasarlanmış bir durum (`search.js:96`, kota dolunca kutu gizleniyor). Eşik 1.3'te `dinner`/`borscht` yorumlarını **alır**, 2 saçma sorgu kaçar, 1 meşru sorgu (`pierogi ruskie`) yorumsuz kalır. **Uygulanırsa doğru yer arama yanıtı:** `/commentary` `collection.get(ids=...)` yapıyor, ortada sorgu vektörü olmadığı için mesafeyi göremez → arama yanıtına `commentary_eligible` alanı eklenip `search.js:172`'de kontrol edilmeli (ikinci HTTP isteği hiç kurulmaz).
+- **Katman 2 (HTTP sözleşme testleri)** — `conftest.py` + `TestClient` + `dependency_overrides`. Yukarıdaki doğrulamada kullanılan `sys.modules` sahteleme yöntemi çalıştığı için yol açık. **`conftest.py` ChromaDB'yi de sahtelemeli**, yoksa her `pytest` çalıştırması commit'li `chroma.sqlite3`'ü kirletir.
+- **Frontend'de aynı kuralların aynası** — anında geri bildirim verir ve bir ağ turu + token doğrulaması kurtarır, ama kuralların iki dilde kopyalanması drift riski taşıyor. Yapılmadı.
+- Kalibrasyon scriptleri repoda **değil** (scratchpad'de üretildi). Sayılar bu belgede kayıtlı; tekrar gerekirse `api/chroma_data`'nın bir **kopyası** üzerinde çalıştırılmalı (repodaki klasör açılınca kirlenir).
+
+## Faz 14 (Yeni Gemini modelleri + vision sırasının düzeltilmesi) ✅
 
 **Tetikleyici:** Google'ın duyuru maili — `gemini-3.6-flash` ve `gemini-3.5-flash-lite` API'de kullanılabilir hâle geldi. Model adları **tahmin edilmedi**, `client.models.list()` ile doğrulandı (Faz 11b'de `gemini-2.5-flash-lite` 404 vermişti; API'ye sormak alışkanlık hâline geldi).
 
