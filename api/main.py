@@ -7,6 +7,16 @@ from validation import validate_query
 from llm import generate_answer, detect_ingredients_from_image, is_food_request
 from auth import get_current_user_email
 from favorites import add_favorite, get_favorites, remove_favorite
+from collections_store import (
+    create_collection,
+    get_collections,
+    get_collection_detail,
+    rename_collection,
+    delete_collection,
+    add_recipe_to_collection,
+    remove_recipe_from_collection,
+    remove_recipe_from_all_collections,
+)
 from logger import get_logger, timed, timed_block
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -399,7 +409,165 @@ def list_favorites_endpoint(
 def remove_favorite_endpoint(recipe_id: str, user_email: str = Depends(get_current_user_email)):
     try:
         remove_favorite(user_email, recipe_id)
+        # İlişki kuralı: favoriden çıkan tarif tüm koleksiyonlardan da düşer
+        # (koleksiyon üyeliği ⊆ favoriler değişmezliği). remove_favorite
+        # başarılı olduysa çağrılıyor — tarif favori değilse zaten koleksiyonda
+        # da olmamalı (auto-favorite kuralının tersi).
+        remove_recipe_from_all_collections(user_email, recipe_id)
         return {"message": "Recipe removed from favorites", "recipe_id": recipe_id}
     except ValueError as e:
         log.warning("Remove favorite rejected (%r): %s", recipe_id, e)
+        return {"error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════
+#  COLLECTIONS — favorilerin üstüne binen düzenleme katmanı.
+#  Veri erişimi collections_store.py'de (dosya adı stdlib'i gölgelememek için
+#  `collections.py` DEĞİL). Endpoint deseni favorilerinkiyle aynı: @timed +
+#  ValueError → 200 + {"error": ...}.
+# ═══════════════════════════════════════════════════════════
+
+class CreateCollectionRequest(BaseModel):
+    # Sınır 200: asıl (anlaşılır mesajlı) 60 karakter kuralı
+    # validate_collection_name'de. Pydantic sadece devasa gövdeleri eliyor.
+    name: str = Field(..., max_length=200)
+
+
+class RenameCollectionRequest(BaseModel):
+    name: str = Field(..., max_length=200)
+
+
+class CollectionRecipeRequest(BaseModel):
+    recipe_id: str
+
+
+@app.post("/api/collections")
+@timed
+def create_collection_endpoint(
+    request: CreateCollectionRequest,
+    user_email: str = Depends(get_current_user_email),
+):
+    try:
+        return create_collection(user_email, request.name)
+    except ValueError as e:
+        # Boş/uzun ad ya da aynı isim — beklenen ret, WARNING.
+        log.warning("Create collection rejected (%r): %s", request.name[:60], e)
+        return {"error": str(e)}
+
+
+@app.get("/api/collections")
+@timed
+def list_collections_endpoint(user_email: str = Depends(get_current_user_email)):
+    # recipe_ids de dönüyor: favoriler sayfası tarif SAYISINI, recipe.html'deki
+    # "add to collection" seçici ise ÜYELİĞİ (bu tarif hangi koleksiyonlarda)
+    # bundan hesaplıyor. Diziler küçük olduğu için tek istekte göndermek ucuz.
+    return {"collections": get_collections(user_email)}
+
+
+@app.get("/api/collections/{collection_id}")
+@timed
+def get_collection_endpoint(
+    collection_id: str,
+    include_details: bool = False,
+    user_email: str = Depends(get_current_user_email),
+):
+    """Tek bir koleksiyon. include_details=true ile içindeki tariflerin kartları da
+    gelir — favorilerdeki ?include_details=true ile birebir aynı mantık (tek
+    ChromaDB `get`, sıra korunur, silinmiş tarif None).
+    """
+    try:
+        coll = get_collection_detail(user_email, collection_id)
+    except ValueError as e:
+        log.warning("Get collection rejected (%r): %s", collection_id, e)
+        return {"error": str(e)}
+
+    if not include_details:
+        return coll
+
+    ids = coll["recipe_ids"]
+    if not ids:
+        return {**coll, "recipes": []}
+
+    with timed_block(f"chromadb get ({len(ids)} recipes)"):
+        results = collection.get(ids=ids)
+
+    # ChromaDB sırayı garanti etmiyor ve olmayan ID'leri sessizce atlıyor;
+    # id -> kart eşlemesiyle koleksiyon sırasını koruyoruz (favoriler gibi).
+    cards = {
+        recipe_id: _recipe_card(recipe_id, meta, doc)
+        for recipe_id, meta, doc in zip(
+            results["ids"], results["metadatas"], results["documents"]
+        )
+    }
+    return {
+        **coll,
+        "recipes": [cards.get(rid) for rid in ids],  # silinmiş tarif → None
+    }
+
+
+@app.patch("/api/collections/{collection_id}")
+@timed
+def rename_collection_endpoint(
+    collection_id: str,
+    request: RenameCollectionRequest,
+    user_email: str = Depends(get_current_user_email),
+):
+    try:
+        return rename_collection(user_email, collection_id, request.name)
+    except ValueError as e:
+        log.warning("Rename collection rejected (%r): %s", collection_id, e)
+        return {"error": str(e)}
+
+
+@app.delete("/api/collections/{collection_id}")
+@timed
+def delete_collection_endpoint(
+    collection_id: str,
+    user_email: str = Depends(get_current_user_email),
+):
+    try:
+        delete_collection(user_email, collection_id)
+        return {"message": "Collection deleted", "id": collection_id}
+    except ValueError as e:
+        log.warning("Delete collection rejected (%r): %s", collection_id, e)
+        return {"error": str(e)}
+
+
+@app.post("/api/collections/{collection_id}/recipes")
+@timed
+def add_recipe_to_collection_endpoint(
+    collection_id: str,
+    request: CollectionRecipeRequest,
+    user_email: str = Depends(get_current_user_email),
+):
+    try:
+        add_recipe_to_collection(user_email, collection_id, request.recipe_id)
+    except ValueError as e:
+        log.warning("Add to collection rejected (%r): %s", collection_id, e)
+        return {"error": str(e)}
+
+    # İlişki kuralı: koleksiyondaki her tarif aynı zamanda favoridir
+    # (koleksiyon = favorilerin alt kümesi). Zaten favoriyse add_favorite
+    # ValueError atıyor — beklenen, yutuluyor.
+    try:
+        add_favorite(user_email, request.recipe_id)
+    except ValueError:
+        pass
+
+    return {"message": "Recipe added to collection", "recipe_id": request.recipe_id}
+
+
+@app.delete("/api/collections/{collection_id}/recipes/{recipe_id}")
+@timed
+def remove_recipe_from_collection_endpoint(
+    collection_id: str,
+    recipe_id: str,
+    user_email: str = Depends(get_current_user_email),
+):
+    # Koleksiyondan çıkarma favoriyi ETKİLEMEZ (tarif "All Saved"da kalır).
+    try:
+        remove_recipe_from_collection(user_email, collection_id, recipe_id)
+        return {"message": "Recipe removed from collection", "recipe_id": recipe_id}
+    except ValueError as e:
+        log.warning("Remove from collection rejected (%r): %s", collection_id, e)
         return {"error": str(e)}

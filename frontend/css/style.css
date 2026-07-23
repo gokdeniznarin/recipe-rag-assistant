@@ -1101,3 +1101,331 @@ body {
 .dropdown-item:hover {
   background: var(--bg);
 }
+
+
+/* ═══════════════════════════════════════════════════════ */
+/*  COLLECTIONS                                            */
+/* ═══════════════════════════════════════════════════════ */
+
+.section-heading {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--olive);
+  margin: 2rem 0 1rem;
+}
+
+.collections-section {
+  margin-bottom: 1rem;
+}
+
+.collections-section .section-heading {
+  margin-top: 0;
+}
+
+.collections-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.85rem;
+}
+
+/* Koleksiyon kartı — datasette görsel yok, o yüzden metin bazlı (mevcut
+   estetikle tutarlı): isim + tarif sayısı. */
+.collection-tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 96px;
+  padding: 1rem 1.1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: 'Inter', sans-serif;
+  text-align: left;
+}
+
+.collection-tile:hover {
+  border-color: var(--olive-mid);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+.collection-tile-name {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--olive);
+  line-height: 1.25;
+}
+
+.collection-tile-count {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* "New collection" kutucuğu — kesikli çerçeveyle eylem daveti */
+.collection-tile--new {
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border-style: dashed;
+  color: var(--olive-mid);
+}
+
+.collection-tile--new:hover {
+  border-color: var(--accent);
+  color: var(--accent-dk);
+}
+
+.collection-tile-plus {
+  font-size: 1.6rem;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.collection-tile--new .collection-tile-name {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: inherit;
+}
+
+/* Yeni koleksiyon / yeniden adlandırma satır formu */
+.new-collection-form {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  margin-top: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.new-collection-form .search-input {
+  flex: 1;
+  min-width: 180px;
+}
+
+.inline-error {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--error);
+}
+
+/* ── Tek koleksiyon sayfası ─────────────────────────────── */
+.collection-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.collection-title-row .page-title {
+  margin-bottom: 0;
+  flex: 1;
+}
+
+.collection-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  margin-top: 0.35rem;
+}
+
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  color: var(--olive-mid);
+  transition: all 0.2s;
+}
+
+.icon-btn:hover {
+  border-color: var(--olive-mid);
+  color: var(--olive);
+}
+
+.icon-btn--danger:hover {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+/* Koleksiyon içindeki tarif satırı: tıklanır kart + "Remove" butonu */
+.collection-recipe-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.6rem;
+}
+
+.collection-recipe-row .recipe-card {
+  flex: 1;
+}
+
+.remove-from-collection {
+  flex-shrink: 0;
+  padding: 0 1rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.remove-from-collection:hover {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.remove-from-collection:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Silme onay modalı ──────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 26, 26, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 200;
+}
+
+.modal {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 1.75rem;
+  max-width: 400px;
+  width: 100%;
+}
+
+.modal-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--olive);
+  margin-bottom: 0.5rem;
+}
+
+.modal-text {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  margin-bottom: 1.5rem;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+}
+
+/* ── recipe.html "Add to collection" seçici ─────────────── */
+.recipe-actions {
+  margin-top: 0.5rem;
+}
+
+.collection-picker-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.collection-picker {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  z-index: 100;
+  width: 280px;
+  max-width: 90vw;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.12);
+  padding: 0.75rem;
+}
+
+.picker-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+  overflow-y: auto;
+  margin-bottom: 0.5rem;
+}
+
+.picker-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.4rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.picker-row:hover { background: var(--bg); }
+
+.picker-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.picker-name {
+  font-size: 0.9rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-empty {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  padding: 0.4rem;
+}
+
+.picker-new {
+  display: flex;
+  gap: 0.4rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+}
+
+.picker-new input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.85rem;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+
+.picker-new input:focus { border-color: var(--olive-mid); }
+
+.collection-picker .inline-error { margin-top: 0.5rem; }
+
+/* ── Collections responsive ─────────────────────────────── */
+@media (max-width: 600px) {
+  .collections-grid {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  }
+  .remove-from-collection { padding: 0 0.7rem; font-size: 0.78rem; }
+}

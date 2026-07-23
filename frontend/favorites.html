@@ -36,8 +36,8 @@
 
   <main class="page">
     <section class="search-hero">
-      <h1 class="page-title">Your favorites</h1>
-      <p class="page-sub">Recipes you've saved to come back to.</p>
+      <h1 class="page-title">Your recipes</h1>
+      <p class="page-sub">Everything you've saved, organized your way.</p>
     </section>
 
     <!-- Yükleniyor -->
@@ -47,10 +47,34 @@
       <div class="loading-dot"></div>
     </div>
 
+    <!-- Koleksiyonlar -->
+    <section id="collections-section" class="collections-section hidden">
+      <h2 class="section-heading">Collections</h2>
+      <div id="collections-grid" class="collections-grid">
+        <!-- Koleksiyon kartları buraya + "New collection" kutucuğu -->
+        <button id="new-collection-tile" class="collection-tile collection-tile--new">
+          <span class="collection-tile-plus">＋</span>
+          <span class="collection-tile-name">New collection</span>
+        </button>
+      </div>
+
+      <!-- Yeni koleksiyon adı girişi (kutucuğa tıklayınca açılır) -->
+      <form id="new-collection-form" class="new-collection-form hidden">
+        <input id="new-collection-input" class="search-input" type="text"
+               maxlength="60" placeholder="Collection name (e.g. Breakfast)" />
+        <button type="submit" class="btn-accent btn-sm">Create</button>
+        <button type="button" id="new-collection-cancel" class="btn-outline btn-sm">Cancel</button>
+      </form>
+      <p id="new-collection-error" class="inline-error hidden"></p>
+    </section>
+
+    <!-- All Saved başlığı (favori varken görünür) -->
+    <h2 id="saved-heading" class="section-heading hidden">All saved</h2>
+
     <!-- Boş durum -->
     <div id="empty-state" class="empty-state hidden">
       <div class="empty-icon">♡</div>
-      <h2 class="empty-title">No favorites yet</h2>
+      <h2 class="empty-title">No saved recipes yet</h2>
       <p class="empty-text">Save recipes from search results to see them here.</p>
       <a href="search.html" class="btn-accent empty-btn">Start searching</a>
     </div>

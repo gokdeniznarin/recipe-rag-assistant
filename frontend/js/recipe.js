@@ -18,6 +18,13 @@ const descEl       = document.getElementById('recipe-description');
 const instructionsEl = document.getElementById('recipe-instructions');
 const favoriteBtn  = document.getElementById('favorite-btn');
 
+const addCollectionBtn = document.getElementById('add-collection-btn');
+const collectionPicker = document.getElementById('collection-picker');
+const pickerList       = document.getElementById('picker-list');
+const pickerNewForm    = document.getElementById('picker-new-form');
+const pickerNewInput   = document.getElementById('picker-new-input');
+const pickerError      = document.getElementById('picker-error');
+
 const infoTime     = document.getElementById('info-time');
 const infoCalories = document.getElementById('info-calories');
 const infoProtein  = document.getElementById('info-protein');
@@ -118,6 +125,9 @@ favoriteBtn.addEventListener('click', async () => {
         method: 'DELETE',
       });
       isFavorited = false;
+      // Favoriden çıkmak tarifi tüm koleksiyonlardan da düşürüyor (backend
+      // kuralı). Seçici açıksa checkbox'lar bayatlamasın diye tazele.
+      if (!collectionPicker.classList.contains('hidden')) loadCollectionsPicker();
     } else {
       await apiRequest('/api/favorites/add', {
         method: 'POST',
@@ -133,6 +143,124 @@ favoriteBtn.addEventListener('click', async () => {
     setTimeout(() => errorEl.classList.add('hidden'), 3000);
   } finally {
     favoriteBtn.disabled = false;
+  }
+});
+
+// ── Koleksiyona ekleme seçicisi ──────────────────────────
+// Seçiciyi aç/kapat
+addCollectionBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const willOpen = collectionPicker.classList.contains('hidden');
+  collectionPicker.classList.toggle('hidden');
+  if (willOpen) loadCollectionsPicker();
+});
+
+// Dışına tıklayınca kapat (seçicinin içine tıklamak kapatmasın)
+document.addEventListener('click', (e) => {
+  if (!collectionPicker.classList.contains('hidden') &&
+      !collectionPicker.contains(e.target) &&
+      e.target !== addCollectionBtn) {
+    collectionPicker.classList.add('hidden');
+  }
+});
+
+// Koleksiyon listesini bu tarifin üyeliğine göre kur (checkbox durumları).
+async function loadCollectionsPicker() {
+  try {
+    const data = await apiRequest('/api/collections');
+    const collections = data.collections || [];
+
+    pickerList.innerHTML = '';
+    if (collections.length === 0) {
+      pickerList.innerHTML = '<p class="picker-empty">No collections yet. Create one below.</p>';
+      return;
+    }
+
+    collections.forEach(coll => {
+      const inThisCollection = (coll.recipe_ids || []).includes(recipeId);
+
+      const row = document.createElement('label');
+      row.className = 'picker-row';
+      row.innerHTML = `
+        <input type="checkbox" ${inThisCollection ? 'checked' : ''} />
+        <span class="picker-name">${escapeHtml(coll.name)}</span>
+      `;
+
+      const checkbox = row.querySelector('input');
+      checkbox.addEventListener('change', async () => {
+        checkbox.disabled = true;
+        try {
+          await toggleCollectionMembership(coll.id, checkbox.checked);
+        } catch (err) {
+          checkbox.checked = !checkbox.checked;   // geri al
+          pickerError.textContent = 'Could not update the collection.';
+          pickerError.classList.remove('hidden');
+          setTimeout(() => pickerError.classList.add('hidden'), 3000);
+        } finally {
+          checkbox.disabled = false;
+        }
+      });
+
+      pickerList.appendChild(row);
+    });
+  } catch (err) {
+    pickerList.innerHTML = '<p class="picker-empty">Could not load collections.</p>';
+  }
+}
+
+async function toggleCollectionMembership(collId, nowChecked) {
+  if (nowChecked) {
+    await apiRequest(`/api/collections/${encodeURIComponent(collId)}/recipes`, {
+      method: 'POST',
+      body: JSON.stringify({ recipe_id: recipeId }),
+    });
+    // Koleksiyona eklemek tarifi otomatik favoriye de ekler (backend kuralı) —
+    // kalbi buna göre güncelle.
+    if (!isFavorited) {
+      isFavorited = true;
+      updateFavoriteUI();
+    }
+  } else {
+    await apiRequest(
+      `/api/collections/${encodeURIComponent(collId)}/recipes/${encodeURIComponent(recipeId)}`,
+      { method: 'DELETE' }
+    );
+    // Koleksiyondan çıkarmak favoriyi ETKİLEMEZ — kalp olduğu gibi kalır.
+  }
+}
+
+// Yeni koleksiyon oluştur + bu tarifi hemen içine ekle
+pickerNewForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = pickerNewInput.value.trim();
+  if (!name) return;
+
+  const createBtn = pickerNewForm.querySelector('button[type="submit"]');
+  createBtn.disabled = true;
+
+  try {
+    const res = await apiRequest('/api/collections', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+
+    if (res.error) {
+      pickerError.textContent = res.error;
+      pickerError.classList.remove('hidden');
+      createBtn.disabled = false;
+      return;
+    }
+
+    // Yeni koleksiyona bu tarifi ekle (auto-favorite dahil)
+    await toggleCollectionMembership(res.id, true);
+    pickerNewInput.value = '';
+    pickerError.classList.add('hidden');
+    await loadCollectionsPicker();   // listeyi tazele (yeni koleksiyon işaretli gelir)
+  } catch (err) {
+    pickerError.textContent = 'Could not create the collection.';
+    pickerError.classList.remove('hidden');
+  } finally {
+    createBtn.disabled = false;
   }
 });
 

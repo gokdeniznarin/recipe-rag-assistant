@@ -55,6 +55,26 @@
           </button>
         </div>
         <div id="recipe-tags" class="recipe-tags-detail"></div>
+
+        <!-- Koleksiyona ekle -->
+        <div class="recipe-actions">
+          <div class="collection-picker-wrap">
+            <button id="add-collection-btn" class="btn-outline btn-sm" type="button">
+              ＋ Add to collection
+            </button>
+            <div id="collection-picker" class="collection-picker hidden">
+              <div id="picker-list" class="picker-list">
+                <p class="picker-empty">Loading…</p>
+              </div>
+              <form id="picker-new-form" class="picker-new">
+                <input id="picker-new-input" type="text" maxlength="60"
+                       placeholder="New collection…" />
+                <button type="submit" class="btn-accent btn-sm">Create</button>
+              </form>
+              <p id="picker-error" class="inline-error hidden"></p>
+            </div>
+          </div>
+        </div>
       </header>
 
       <!-- Bilgi çubuğu -->

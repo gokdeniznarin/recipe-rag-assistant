@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Collection — Recipe Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="app-header-inner">
+      <a href="search.html" class="brand">
+        <span class="brand-mark">✦</span>
+        <span class="brand-name">Recipe Assistant</span>
+      </a>
+      <nav class="app-nav">
+  <a href="favorites.html" class="nav-link">Favorites</a>
+
+  <div class="user-menu">
+    <button id="user-btn" class="user-btn">
+      <span id="user-email">…</span>
+      <span class="chevron">▾</span>
+    </button>
+    <div id="user-dropdown" class="user-dropdown hidden">
+      <button id="logout-btn" class="dropdown-item">Sign out</button>
+    </div>
+  </div>
+</nav>
+    </div>
+  </header>
+
+  <main class="page">
+    <a href="favorites.html" class="back-link">← Back to your recipes</a>
+
+    <!-- Yükleniyor -->
+    <div id="loading" class="loading">
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+    </div>
+
+    <!-- Koleksiyon -->
+    <section id="collection" class="hidden">
+      <div class="collection-head">
+        <!-- Başlık + düzenleme -->
+        <div id="title-view" class="collection-title-row">
+          <h1 id="collection-title" class="page-title"></h1>
+          <div class="collection-actions">
+            <button id="rename-btn" class="icon-btn" aria-label="Rename collection" title="Rename">✎</button>
+            <button id="delete-btn" class="icon-btn icon-btn--danger" aria-label="Delete collection" title="Delete">🗑</button>
+          </div>
+        </div>
+
+        <!-- Yeniden adlandırma formu (gizli, ✎ ile açılır) -->
+        <form id="rename-form" class="new-collection-form hidden">
+          <input id="rename-input" class="search-input" type="text" maxlength="60" />
+          <button type="submit" class="btn-accent btn-sm">Save</button>
+          <button type="button" id="rename-cancel" class="btn-outline btn-sm">Cancel</button>
+        </form>
+        <p id="rename-error" class="inline-error hidden"></p>
+      </div>
+
+      <p id="collection-count" class="page-sub"></p>
+
+      <!-- Boş koleksiyon -->
+      <div id="collection-empty" class="empty-state hidden">
+        <div class="empty-icon">✦</div>
+        <h2 class="empty-title">This collection is empty</h2>
+        <p class="empty-text">Open a recipe and use “Add to collection” to fill it up.</p>
+        <a href="search.html" class="btn-accent empty-btn">Find recipes</a>
+      </div>
+
+      <!-- Tarifler -->
+      <div id="collection-list" class="recipe-list"></div>
+    </section>
+
+    <!-- Hata -->
+    <div id="collection-error" class="page-error hidden"></div>
+  </main>
+
+  <!-- Silme onayı -->
+  <div id="delete-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h3 class="modal-title">Delete this collection?</h3>
+      <p class="modal-text">The collection will be removed. Your saved recipes stay in “All saved”.</p>
+      <div class="modal-actions">
+        <button id="delete-cancel" class="btn-outline btn-sm">Cancel</button>
+        <button id="delete-confirm" class="btn-accent btn-sm">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase (compat SDK) -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="js/firebase.js"></script>
+  <script src="js/logger.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/collection.js"></script>
+</body>
+</html>
