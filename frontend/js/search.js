@@ -13,6 +13,7 @@ const llmSkeleton    = document.getElementById('llm-skeleton');
 const recipeList     = document.getElementById('recipe-list');
 const resultsCount   = document.getElementById('results-count');
 const searchError    = document.getElementById('search-error');
+const weakMatchNote  = document.getElementById('weak-match-note');
 
 // Kamera elemanları
 const startCameraBtn = document.getElementById('start-camera-btn');
@@ -69,8 +70,13 @@ function showError(msg) {
 // yalnızca en son aramanın cevabını ekrana yazıyoruz.
 let commentarySeq = 0;
 
-async function loadCommentary(query, recipes) {
-  if (recipes.length === 0) return;
+async function loadCommentary(query, recipes, weakMatch) {
+  // İki durumda hiç istek atmıyoruz: sonuç yoksa (yorumlanacak bir şey yok) ve
+  // eşleşme zayıfsa. İkincisi kotayı koruyor — ölçülen 12 klavye ezmesinin hepsi
+  // bu kapıya takılıyor. İstek HİÇ KURULMUYOR, yani ağ turu + token doğrulaması
+  // + Gemini çağrısı birlikte gidiyor. Karar tek yerde dursun diye kontrol
+  // çağıranlarda değil burada.
+  if (recipes.length === 0 || weakMatch) return;
 
   const seq = ++commentarySeq;
 
@@ -109,6 +115,14 @@ const renderResults = Logger.timed(function (data) {
   llmBox.classList.add('hidden');   // önceki aramanın yorumu kalmasın
   recipeList.innerHTML = '';
   resultsCount.textContent = `${data.results.length} matches`;
+
+  // Backend en yakın sonucun bile uzak olduğunu söylüyorsa not göster.
+  // Sonuçlar yine listeleniyor — bkz. validation.is_weak_match.
+  // Null kontrolü: tarayıcı search.html'i önbellekten eski haliyle sunarsa bu
+  // eleman olmaz; kozmetik bir not yüzünden render'ın tamamı patlamasın.
+  if (weakMatchNote) {
+    weakMatchNote.classList.toggle('hidden', !data.weak_match || data.results.length === 0);
+  }
 
   data.results.forEach(recipe => {
     const card = document.createElement('a');
@@ -169,7 +183,7 @@ textForm.addEventListener('submit', async (e) => {
       showError(data.error);
     } else {
       renderResults(data);
-      loadCommentary(query, data.results);   // bilerek await edilmiyor
+      loadCommentary(query, data.results, data.weak_match);   // bilerek await edilmiyor
     }
   } catch (err) {
     showError('Could not reach the server.');
@@ -261,7 +275,7 @@ cameraForm.addEventListener('submit', async (e) => {
       detectedList.textContent = data.detected_ingredients.join(', ');
       detectedBox.classList.remove('hidden');
       renderResults(data);
-      loadCommentary(data.combined_query, data.results);   // bilerek await edilmiyor
+      loadCommentary(data.combined_query, data.results, data.weak_match);   // bilerek await edilmiyor
     }
   } catch (err) {
     showError('Could not reach the server.');

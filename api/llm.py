@@ -92,8 +92,12 @@ def _generate(models: tuple[str, ...], contents):
 
 
 @timed(slow_ms=5000)
-def generate_answer(user_query: str, recipes: list) -> str:
-    """Bulunan tarifleri LLM'e verip doğal bir öneri cevabı üretir."""
+def generate_answer(user_query: str, recipes: list) -> str | None:
+    """Bulunan tarifleri LLM'e verip doğal bir öneri cevabı üretir.
+
+    Sorgu gerçek bir yemek isteği değilse None döner — çağıran taraf bunu
+    zaten "yorum yok" olarak ele alıyor ve frontend kutuyu gizliyor.
+    """
 
     recipes_text = "\n".join([
         f"- {r['name']}: {r['total_time_min']} min, {r['calories']} calories, "
@@ -101,18 +105,34 @@ def generate_answer(user_query: str, recipes: list) -> str:
         for r in recipes
     ])
 
+    # IRRELEVANT kuralı, mesafe eşiğinin (validation.is_weak_match) kaçırdığı
+    # sınır durumlar için: eşiğin hemen altında kalan saçma sorgularda model
+    # eskiden "bu rastgele harf dizisi gibi görünüyor, yine de şunu deneyin..."
+    # diyen bir kutu üretiyordu. Modelin bu yargıyı zaten yaptığı canlıda
+    # gözlendi; tek eksik onu yapılandırılmış biçimde istemekti.
+    # Ek maliyeti YOK: aynı çağrının içinde, ek token/gecikme getirmiyor.
     prompt = f"""
 You are a helpful recipe assistant. The user asked: "{user_query}"
 
 Here are some matching recipes found in the database:
 {recipes_text}
 
-Pick the best matching recipe(s) and explain briefly why they fit the user's request.
-Keep your answer concise (2-4 sentences). Respond in English.
+If the user's request is not a genuine food or recipe request (for example random
+letters, keyboard mashing, or a question about an unrelated topic), reply with
+exactly IRRELEVANT and nothing else.
+
+Otherwise pick the best matching recipe(s) and explain briefly why they fit the
+user's request. Keep your answer concise (2-4 sentences). Respond in English.
 """
 
     response = _generate(COMMENTARY_MODELS, prompt)
-    return response.text
+    answer = (response.text or "").strip()
+
+    if answer.upper().startswith("IRRELEVANT"):
+        log.warning("Model judged the query irrelevant: %r", user_query[:100])
+        return None
+
+    return answer
 
 
 @timed(slow_ms=5000)

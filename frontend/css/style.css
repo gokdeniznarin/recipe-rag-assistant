@@ -510,6 +510,19 @@ body {
   font-size: 1rem;
 }
 
+/* ── Zayıf eşleşme notu ────────────────────────────────── */
+/* Uyarı değil bilgi: sonuçlar duruyor, sadece "tam isabet olmayabilir" diyor.
+   Bu yüzden --error değil --text-muted ve sakin bir zemin. */
+.weak-match-note {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  background: rgba(232, 130, 74, 0.08);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+}
+
 /* ── AI yorumu iskeleti ────────────────────────────────── */
 /* Yorum aramadan ayrı bir istekle geldiği için sonuçlar ekrandayken bu görünür.
    Yükseklik gerçek metne yakın tutuldu ki cevap gelince sayfa zıplamasın. */

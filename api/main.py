@@ -3,7 +3,7 @@ import os
 from pydantic import BaseModel, Field
 import chromadb
 from filters import extract_filters
-from validation import validate_query
+from validation import is_weak_match, validate_query
 from llm import generate_answer, detect_ingredients_from_image
 from auth import get_current_user_email
 from favorites import add_favorite, get_favorites, remove_favorite
@@ -128,6 +128,17 @@ def search_recipes(request: SearchRequest, user_email: str = Depends(get_current
     if not recipes:
         log.warning("No results for %r (filters: %s)", request.query, where_filter)
 
+    # Sonuçlar sorguyla alakasızsa: tarifler YİNE DÖNÜYOR (gizlemek "borscht"u
+    # da öldürürdü), ama frontend yorum istemiyor ve not düşüyor.
+    weak = is_weak_match(
+        results["distances"][0] if results.get("distances") else None,
+        request.query,
+        results["documents"][0],
+    )
+    if weak:
+        log.warning("Weak match for %r (best distance: %.3f)",
+                    request.query[:100], results["distances"][0][0])
+
     # LLM burada BEKLENMİYOR. Tarifler ~0.3sn'de hazır oluyordu ama endpoint
     # Gemini'yi bekliyordu; Gemini yavaşladığında (503 + SDK retry) toplam süre
     # 10sn'yi buluyor ve kullanıcı elde hazır duran sonuçları göremiyordu.
@@ -135,7 +146,11 @@ def search_recipes(request: SearchRequest, user_email: str = Depends(get_current
     return {
         "query": request.query,
         "applied_filters": where_filter,
-        "results": recipes
+        "results": recipes,
+        # Politikayı değil OLGUYU bildiriyoruz ("yorum isteme" değil "eşleşme
+        # zayıf"): istemci buna bakarak hem yorumu atlıyor hem not gösteriyor,
+        # ileride politika değişirse alan anlamını koruyor.
+        "weak_match": weak,
     }
 
 
@@ -263,6 +278,19 @@ def search_recipes_from_image(
     if not recipes:
         log.warning("No results for image query %r (filters: %s)", combined_query, where_filter)
 
+    # Metin aramasıyla aynı sinyal — frontend tek bir kod yolu kullanabilsin.
+    # Malzeme listesinden kurulan sorgular genelde iyi eşleşiyor, ama fotoğrafta
+    # yemekle ilgisiz bir şey varsa (Gemini "no ingredients" demeden yanlış
+    # tanırsa) bu da yakalanır.
+    weak = is_weak_match(
+        results["distances"][0] if results.get("distances") else None,
+        combined_query,
+        results["documents"][0],
+    )
+    if weak:
+        log.warning("Weak match for image query %r (best distance: %.3f)",
+                    combined_query[:100], results["distances"][0][0])
+
     # Metin aramasındaki gibi: LLM yorumu beklenmiyor, ayrı istekle geliyor.
     # (Buradaki Gemini vision çağrısı zorunlu — malzemeler olmadan arama yapılamaz.)
     return {
@@ -270,7 +298,8 @@ def search_recipes_from_image(
         "additional_text": request.additional_text,
         "combined_query": combined_query,
         "applied_filters": where_filter,
-        "results": recipes
+        "results": recipes,
+        "weak_match": weak,
     }
 
 
