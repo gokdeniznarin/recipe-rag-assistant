@@ -110,7 +110,7 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 2. **README + sunum hazırlığı** — kökte bir `README.md` var (deploy odaklı); sunum/anlatım materyali yok.
 3. **④ In-app tarayıcılarda Google girişi** (`signInWithRedirect`) — bilinçli ertelendi, gerekçe "Deploy blocker'ları" bölümünde. **Not: normal mobil tarayıcıda (Chrome/Safari) giriş çalışıyor — kullanıcı gerçek telefonda doğruladı (2026-07-19).** Kalan risk yalnızca uygulama içi tarayıcılar.
 4. **`nut_free` etiket açığı** — aşağıdaki "Ertelenen küçük iyileştirmeler"e bakınız; sunumda sorulabilecek türden gerçek bir veri hatası.
-5. **Diğer küçük iyileştirmeler** — LLM cevabındaki `**bold**` render'ı, instructions'daki `\` kalıntıları, `filters.py` geliştirmeleri.
+5. **Diğer küçük iyileştirmeler** — ~~LLM cevabındaki `**bold**` render'ı~~ (✅ Faz 15h), instructions'daki `\` kalıntıları, `filters.py` geliştirmeleri.
 6. **Render uykusu** — ücretsiz katmanda 15dk sessizlikten sonra ilk istek 30-60sn. Faz 11 bunu ÇÖZMEZ (uygulama kodu değil, platform). Sunum öncesi bir kez uyandır.
 
 ### ✅ Artık YAPILDI (eski "yapılmadı" maddeleri)
@@ -136,7 +136,7 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
   Firebase'in bu durum için önerisi **`signInWithRedirect`** (cihaza göre seçim). **Ertelendi** çünkü: (1) çalışan masaüstü girişini + hesap bağlama akışını (`auth.js:137`) yeniden kurmayı gerektiriyor — redirect'te hata `catch` bloğuna değil, sayfa yeniden yüklendikten sonra `getRedirectResult()`'a düşer, dolayısıyla `pendingGoogleCredential` sayfa yenilendiği için sıfırlanır ve mantık olduğu gibi çalışmaz; (2) `firebase.js`'teki `authReady` ile `getRedirectResult()`'ın sırası doğru kurulmazsa Faz 6'da çözülen **giriş↔search sonsuz yönlendirme döngüsü** geri gelebilir. Mevcut kapsam (masaüstü + normal mobil tarayıcı çalışıyor) sunum için fazlasıyla yeterli.
 
 ### Ertelenen küçük iyileştirmeler
-- LLM cevabındaki `**bold**` markdown karakterlerinin HTML render'ı (şu an ham metin görünüyor)
+- ~~LLM cevabındaki `**bold**` markdown karakterlerinin HTML render'ı~~ ✅ **Faz 15h**: `search.js` `formatCommentary()` — önce `escapeHtml` (XSS), sonra `**...**` → `<strong>` ve `\n` → `<br>`. Tarif adları CSS'te zeytin yeşili. `textContent` → `innerHTML` değişti ama güvenli (escape sırası garantili, Python simülasyonuyla `<script>`/`<img onerror>` sızmadığı doğrulandı).
 - Instructions'daki bazı adımların sonundaki tekil `\` backslash temizliği (dataset veri kalitesi kalıntısı)
 - `filters.py` iyileştirmeleri (malzeme çıkarımı, sayısal ifadeler "under 30 minutes", olumsuz ifadeler)
 - **`nut_free` etiketinde açık var** (Faz 7'de tesadüfen fark edildi): "nut free cookies for kids" araması `Pine Nut and Almond Cookies` ve `wheat free peanut butter cookies` döndürüyor — ikisi de `nut_free: True` etiketli, yani yanlış. **KÖK SEBEP FAZ 15'TE BULUNDU** (eski tahmin "bileşik adlar kural listesine takılmıyor" YANLIŞTI) — ayrıntı için Faz 15b. Hata henüz **düzeltilmedi**; `xfail(strict=True)` testi olarak kayıtlı (`ingestion/tests/test_clean_data.py`), düzeltilince test XPASS verip suite'i kırar ve işaretin kaldırılmasını zorlar.

@@ -94,7 +94,7 @@ async function loadCommentary(query, recipes) {
 
     if (data.answer) {
       llmSkeleton.classList.add('hidden');
-      llmText.textContent = data.answer;
+      llmText.innerHTML = formatCommentary(data.answer);
     } else {
       llmBox.classList.add('hidden');   // yorum yok — kutuyu hiç gösterme
     }
@@ -153,6 +153,18 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+// LLM cevabındaki hafif markdown'ı HTML'e çevirir. SIRA GÜVENLİK İÇİN ÖNEMLİ:
+// önce metnin tamamı escape ediliyor (LLM çıktısı sayfaya HTML olarak giriyor,
+// escape edilmezse XSS açığı olur), SONRA yıldız/satır dönüşümü uygulanıyor.
+// Böylece enjekte edilen tek HTML bizim ürettiğimiz <strong>/<br> — yakalanan
+// grup zaten escape edilmiş olduğu için ham etiket taşıyamaz.
+//   **kalın** → <strong>   ·   satır sonu → <br>
+function formatCommentary(text) {
+  return escapeHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
 }
 
 // ── Metin araması ────────────────────────────────────────

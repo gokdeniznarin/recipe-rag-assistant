@@ -510,6 +510,13 @@ body {
   font-size: 1rem;
 }
 
+/* LLM cevabındaki **kalın** kısımlar tarif adları oluyor — koyu zeytin yeşiliyle
+   öne çıkararak yorumu taranabilir yapıyor (göz önce önerilen tarifleri görüyor). */
+.llm-text strong {
+  color: var(--olive);
+  font-weight: 600;
+}
+
 /* ── AI yorumu iskeleti ────────────────────────────────── */
 /* Yorum aramadan ayrı bir istekle geldiği için sonuçlar ekrandayken bu görünür.
    Yükseklik gerçek metne yakın tutuldu ki cevap gelince sayfa zıplamasın. */
