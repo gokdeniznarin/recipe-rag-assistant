@@ -63,9 +63,9 @@
 - `api/chroma_data/` — **git'e commit edilmiş** gömülü tarif veritabanı (35MB: `chroma.sqlite3` + HNSW indeks dosyaları). `load_to_chromadb.py` üretiyor, Dockerfile `COPY . .` ile image'a alıyor.
 - `api/logger.py` — **merkezi logging + süre ölçümü** (Faz 13). Renkli seviye formatter'ı (`ColorFormatter`), `@timed` decorator'ı ve `timed_block` context manager'ı. Uygulamada `print` kalmadı. `python api/logger.py` ile seviyeleri/renkleri tek başına gösteren bir demo bloğu var.
 - `api/auth.py` — tek iş: Firebase Admin SDK ile `verify_id_token()` → e-posta. `get_current_user_email` dependency'si korumalı endpoint'lerde kullanılıyor. (Eskiden JWT + bcrypt + kullanıcı kayıt/giriş vardı; Firebase geçişiyle ~140 satırdan ~30 satıra düştü.)
-- `api/llm.py` — Gemini API ile LLM cevap üretimi + fotoğraftan malzeme tanıma (`gemini-2.5-flash`)
+- `api/llm.py` — Gemini API ile LLM cevap üretimi (`generate_answer`) + fotoğraftan malzeme tanıma (`detect_ingredients_from_image`) + **sorgu sınıflandırma** (`is_food_request`, Faz 15f — non-food sorguları aramadan önce eliyor, fail-open). Çoklu model fallback zinciri.
 - `api/filters.py` — kullanıcı sorgusundan diyet/süre/kalori filtresi çıkarımı
-- `api/validation.py` — **girdi doğrulama** (Faz 15). İki saf fonksiyon: `validate_query()` sorgu kullanılabilir değilse kullanıcıya gösterilecek mesajı döner (kurallar dizginin **biçimine** bakıyor — harf var mı, uzunluk, tek harf tekrarı); `is_weak_match()` ChromaDB'nin zaten hesapladığı mesafeye bakıp en yakın sonucun uzak olup olmadığını söyler (`COMMENTARY_MAX_DISTANCE = 1.3`). Biri hiç iş yapılmadan reddediyor, diğeri sonuçları göstermeye devam edip yalnızca AI yorumunu kesiyor. Bkz. Faz 15c ve 15e.
+- `api/validation.py` — **girdi doğrulama** (Faz 15). Tek saf fonksiyon: `validate_query()` sorgu kullanılabilir değilse kullanıcıya gösterilecek mesajı döner (kurallar dizginin **biçimine** bakıyor — harf var mı, uzunluk, tek harf tekrarı). Aramadan önce çağrılıyor, `1235533443` gibi girdiler hiç iş yapılmadan reddediliyor. (Faz 15f'de buradaki mesafe eşiği `is_weak_match` kaldırıldı — anlamsal karar artık `llm.is_food_request`'te.)
 - `api/favorites.py` — favoriler sistemi (Repository Pattern'den esinlenmiş, kendi veri deposunu kendi yönetiyor). **Firestore** kullanıyor (Faz 9; öncesinde ChromaDB'ydi). `get_favorites` en son ekleneni üstte döner (Faz 11; sıralama bellekte — bkz. Faz 11 notu). Faz 6'daki Firebase Auth migrasyonunda **tek satır değişmemişti** — favoriler e-posta anahtarlı ve e-posta her iki auth sisteminde de aynı kimlik. Faz 9'da bunun tersi oldu: favoriler baştan yazıldı ama `main.py` hiç değişmedi (aynı fonksiyon imzaları, aynı `ValueError`'lar).
 - `Dockerfile` (**repo kökünde**, Faz 10'da `api/`'den taşındı) — `python:3.13-slim`, `uvicorn` `$PORT`'u (yoksa 8080) dinliyor. ONNX modelini build sırasında retry'lı indirip gömüyor, image'a sadece `api/` kopyalanıyor. Hem `docker-compose` hem Render bunu kullanıyor. Image **1.2GB** (Faz 7 öncesi 2.83GB → Faz 7 sonrası 1.14GB → Faz 8'de +35MB tarif verisi).
 - `.dockerignore` (**repo kökünde**) — `api/firebase-key.json` ve `.env`'i image dışında tutuyor (güvenlik), ayrıca `frontend/`, `ingestion/`, `*.csv`.
@@ -141,6 +141,8 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 - Repo **GitHub'da**: `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private). Sırlar (`firebase-key.json`, `.env`) gitignored, repoda yok — Render'da env var olarak duruyor.
 
 ## Güncel Durum: Faz 15 (Test altyapısı + girdi doğrulama) ✅
+
+> **⚠️ MİMARİ DEĞİŞİKLİK — Faz 15f (2026-07-23):** Faz 15c-15e'de kurulan **mesafe eşiği (`is_weak_match`) KALDIRILDI**, yerine **LLM sınıflandırıcı (`is_food_request`)** geldi. Sebep: mesafe yöntemi tutarsızdı — `what is the capital of switzerland?` (1.265) geçerken `where is the capital of france?` (1.31) yakalanıyordu, çünkü karar ülke adının bir yemek kelimesiyle çakışıp çakışmamasına bağlıydı. Aşağıdaki 15c-15e bölümleri **tarihsel kayıt** olarak duruyor (mesafe kalibrasyonu, örtüşme sinyali vb. hâlâ öğretici) ama **kod artık öyle çalışmıyor**. Güncel davranış için Faz 15f'ye bak. **Kapı 1 (`validate_query`) DEĞİŞMEDİ** — hâlâ ilk kontrol.
 
 ### Faz 15a — İlk otomatik testler (Katman 1) ✅
 **Öncesi:** projede **hiç otomatik test yoktu**. `filters.py`, `llm.py`, `logger.py` içindeki `if __name__ == "__main__"` blokları demo — çıktıyı insan okuyor, hiçbir şey assert etmiyor. CLAUDE.md'deki onlarca "doğrulandı" ifadesinin tamamı elle yapılmış ve tekrarlanabilir değildi.
@@ -337,6 +339,81 @@ Hepsi `api/validation.py`'de, hepsi tek sayı/liste:
 - **Katman 2 (HTTP sözleşme testleri)** — `conftest.py` + `TestClient` + `dependency_overrides`. Yukarıdaki doğrulamada kullanılan `sys.modules` sahteleme yöntemi çalıştığı için yol açık. **`conftest.py` ChromaDB'yi de sahtelemeli**, yoksa her `pytest` çalıştırması commit'li `chroma.sqlite3`'ü kirletir.
 - **Frontend'de aynı kuralların aynası** — anında geri bildirim verir ve bir ağ turu + token doğrulaması kurtarır, ama kuralların iki dilde kopyalanması drift riski taşıyor. Yapılmadı.
 - Kalibrasyon scriptleri repoda **değil** (scratchpad'de üretildi). Sayılar bu belgede kayıtlı; tekrar gerekirse `api/chroma_data`'nın bir **kopyası** üzerinde çalıştırılmalı (repodaki klasör açılınca kirlenir).
+
+### Faz 15f — Mesafe eşiği KALDIRILDI, LLM sınıflandırıcı geldi ✅
+**Tetikleyici:** kullanıcı canlıda mesafe yönteminin tutarsızlığını gördü. İki neredeyse aynı sorgu, iki farklı davranış:
+
+| sorgu | mesafe | 15e davranışı |
+|---|---:|---|
+| `where is the capital of france?` | 1.31 | not çıktı (weak) |
+| `what is the capital of switzerland?` | 1.265 | **kaçtı** — kutu çaktı, Swiss tarifleri |
+| `what is the capital of Turkey` | 1.052 | **kaçtı** — roast turkey tarifleri |
+
+Karar tamamen keyfi: ülke adının bir yemek kelimesiyle (`swiss`→peynir, `turkey`→hindi) çakışıp çakışmamasına bağlıydı. **Bu eşikle çözülemez** — eşiği `switzerland`'i (1.265) yakalayacak kadar indirmek `borscht` (1.141), `dinner` (1.185), `food` (1.157) dahil yarım listeyi keserdi.
+
+**Kullanıcı kararı:** (1) non-food sorguları **tamamen reddet** (sonuç bile gösterme), (2) kotanın 2x'e çıkması kabul, (3) Gemini çökerse **fail-open**.
+
+#### Çözüm: `llm.is_food_request(query) -> bool`
+Aramadan **önce** çalışan bir LLM sınıflandırıcı. Non-food ise arama hiç yapılmıyor, `{"results": [], "error": "This doesn't look like a food search..."}` dönüyor (Kapı 1 ve Faz 11b ile aynı kalıp → frontend `data.error`'ı gösteriyor, sonuç yok).
+
+**Prompt canlıda 4 modelde doğrulandı (2026-07-23).** İlk deneme (basit prompt, lite model) 3 sorguyu kaçırdı: Switzerland, Turkey, `can you fix my car`. **İki değişiklik hepsini çözdü:**
+1. *"genel NİYETE bak, tek kelimeye değil"* — yoksa lite model `turkey`i hindi sanıyor
+2. açık örnek: *"'what is the capital of Turkey' is NO (turkey is the country here)"*
+
+Sonuç (aynı 6 zor sorgu, 4 model — `gemini-3.1-flash-lite` dahil hepsi):
+
+| sorgu | beklenen | sonuç |
+|---|---|---|
+| `what is the capital of switzerland?` | NO | ✅ NO |
+| `what is the capital of Turkey` | NO | ✅ NO |
+| `can you fix my car` | NO | ✅ NO |
+| `borscht` | YES | ✅ YES |
+| `easy` | YES | ✅ YES |
+| `roast turkey for thanksgiving` | YES | ✅ YES |
+
+Son satır kritik: `roast turkey` YES kalıyor — model kelimeye değil niyete bakıyor. Ve en hızlı lite model çalışıyor, yani hız/ucuzluk korundu.
+
+**Mesafeye karşı katıksız kazanç:** ilk (basit prompt) canlı testte bile sınıflandırıcı **yemek sorgularında 0/14 yanlış red** verdi (mesafe 6/16 idi). `easy`, `borscht`, `simple`, `cheap`, `pierogi ruskie` — mesafenin yanlış reddettiği her şey artık doğru geçiyor.
+
+#### Karar mimarisi (güncel)
+```
+Kapı 1  validate_query   biçim (harf var mı, uzunluk)      "1235533443" → RED, hiç iş yok
+   │                                                        (LLM'e bile gitmeden)
+Kapı 2  is_food_request  LLM: yemek mi? (aramadan ÖNCE)     "capital of France" → RED, arama yok
+   │                     FAIL-OPEN: Gemini çökerse True
+ChromaDB araması
+   │
+commentary               yemek sorgusu → normal AI yorumu
+```
+- **Kapı sırası önemli:** `validate_query` önce → `1235533443` sınıflandırıcıya bile gitmiyor (boşa Gemini çağrısı yok, doğrulandı: sınıflandırıcı çağrı sayısı 0).
+- **Non-food ChromaDB'yi de atlıyor:** Render'da ~5.4 sn embedding harcanmıyor, sınıflandırıcı ~0.7 sn'de reddediyor.
+- **Fail-open:** `is_food_request` içinde `try/except` → Gemini kota/çökme durumunda `True` (arama çalışmaya devam eder, sadece eleme devre dışı). Doğrulandı: `_generate` patlatıldığında `True` dönüyor.
+
+#### Maliyet (kullanıcı kabul etti)
+- **Kota:** meşru sorgu = 2 çağrı (sınıflandırma + yorum), non-food = 1 (sınıflandırma), `1235533443` gibi = 0. Mesafe yöntemi 1/0/0 idi. Sunum için sorun değil (20-30 arama × 2 < 100); sürekli kullanımda günlük kapasite yarıya iner.
+- **Gecikme:** sınıflandırma aramadan önce (~0.7 sn lite model). Non-food sorgu bundan **kârlı** çıkıyor (6 sn ChromaDB'yi atlıyor); meşru sorgu 6 sn'ye ~0.7 sn ekliyor. Paralel çalıştırma düşünüldü ama sıra basitliği için sequential seçildi (CLAUDE.md "basit tut" ilkesi).
+
+#### Kaldırılanlar (15c-15e'den)
+- `validation.py`: `is_weak_match`, `_has_lexical_overlap`, `COMMENTARY_MAX_DISTANCE`, `OVERLAP_DOCS`, `MIN_TOKEN_LENGTH`, `_STOPWORDS`, `import re` — hepsi silindi. `validate_query` + sabitleri **kaldı**.
+- `llm.py`: `generate_answer`'daki **IRRELEVANT kuralı** silindi (artık gereksiz — non-food sorgu buraya hiç ulaşmıyor), dönüş tipi `str | None` → `str`.
+- `main.py`: iki `weak = is_weak_match(...)` bloğu ve yanıtlardaki `"weak_match"` alanı silindi.
+- `search.js`: `weakMatchNote`, `loadCommentary`'nin 3. parametresi, not gösterimi silindi.
+- `search.html` + `style.css`: `#weak-match-note` ve `.weak-match-note` silindi.
+- `test_validation.py`: `TestIsWeakMatch*` sınıfları ve `is_weak_match`/`COMMENTARY_MAX_DISTANCE` importları silindi (159 → 126 test).
+
+#### Bilinen sınırlar
+- **`is_food_request` birim testi YOK** — Gemini ağ çağrısı yapıyor, saf değil (`generate_answer`/`detect_ingredients` gibi). Canlı doğrulama en güçlü kanıt (yukarıdaki tablo). Katman 2'de `llm._generate` mock'lanarak test edilebilir.
+- **Prompt kırılganlığı:** model davranışı değişirse (Faz 14'te tam bunu yaptık) sınıflandırma sessizce bozulabilir. Fail-open sayesinde "bozulma" = eleme devre dışı, arama yine çalışıyor — yani güvenli tarafta bozuluyor.
+- **%100 değil:** LLM de nadir sınır durumlarda yanılır. Ama kullanıcının gördüğü tüm tutarsızlıklar (France/Switzerland/Turkey) çözüldü ve **tutarlı** — aynı cümle kalıbı artık ülkeye göre farklı davranmıyor.
+
+#### Yerelde test
+`docker compose up -d --build api` (backend rebuild şart). Sonra:
+- `easy`, `borscht`, `dinner` → 🟢 sonuç + AI yorumu
+- `what is the capital of france`, `can you fix my car`, `lkjhgfdsa` → 🔴 "This doesn't look like a food search", sonuç yok
+- Log: `INFO | llm | Classifier rejected non-food query: '...'`
+
+#### Geri almak için (mesafe yöntemine dönmek istenirse)
+`git revert` yerine 15c-15e commit'lerine bakılabilir; ama daha temizi `is_food_request`'i `main.py`'den çıkarıp yerine eski `is_weak_match` bloğunu geri koymak. Mesafe yöntemi tutarsız olduğu için **önerilmez** — bu bölüm neden döndüğümüzü kayda geçiriyor.
 
 ## Faz 14 (Yeni Gemini modelleri + vision sırasının düzeltilmesi) ✅
 
