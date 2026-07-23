@@ -1,8 +1,9 @@
 from fastapi import FastAPI, Depends
 import os
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import chromadb
 from filters import extract_filters
+from validation import validate_query
 from llm import generate_answer, detect_ingredients_from_image
 from auth import get_current_user_email
 from favorites import add_favorite, get_favorites, remove_favorite
@@ -43,7 +44,9 @@ log.info("Ready! Collection has %s recipes.", collection.count())
 
 class SearchRequest(BaseModel):
     query: str
-    n_results: int = 5
+    # Üst sınır olmadan istemci n_results=100000 isteyebiliyordu. Frontend her
+    # zaman 5 gönderiyor; sınır elle kurulmuş isteklere karşı.
+    n_results: int = Field(5, ge=1, le=20)
 
 
 def _recipe_card(recipe_id: str, meta: dict, doc: str) -> dict:
@@ -84,7 +87,26 @@ def root():
 @app.post("/api/recipes/search")
 @timed  # dış ölçüm: endpoint'in ucundan ucuna süresi
 def search_recipes(request: SearchRequest, user_email: str = Depends(get_current_user_email)):
-    log.info("Text search: %r (n=%s)", request.query, request.n_results)
+    # [:100] — uzunluk kontrolü henüz yapılmadığı için bu satır 200+ karakterlik
+    # bir sorguyu olduğu gibi basabilirdi. %r log injection'a karşı (satır sonunu
+    # kaçırıyor); aşağıdaki WARNING de aynı şekilde kırpıyor.
+    log.info("Text search: %r (n=%s)", request.query[:100], request.n_results)
+
+    # 0. Sorgu kullanılabilir mi? En pahalı adımlardan (embedding + ChromaDB,
+    #    Render'da ~5.4 sn) ve frontend'in ardından tetikleyeceği Gemini
+    #    çağrısından ÖNCE. Bkz. validation.py.
+    #    422 değil 200 + {"error": ...} dönüyoruz: from-image'daki yerleşik
+    #    kalıp bu (Faz 11b) ve search.js zaten data.error'ı showError'a veriyor,
+    #    yani frontend'de tek satır değişmeden düzgün mesaj gösteriliyor.
+    invalid = validate_query(request.query)
+    if invalid:
+        log.warning("Rejected query %r: %s", request.query[:100], invalid)
+        return {
+            "query": request.query,
+            "applied_filters": None,
+            "results": [],
+            "error": invalid,
+        }
 
     # 1. Kullanıcı sorgusundan filtre çıkar
     with timed_block("extract_filters"):
@@ -118,8 +140,15 @@ def search_recipes(request: SearchRequest, user_email: str = Depends(get_current
 
 
 class CommentaryRequest(BaseModel):
-    query: str
-    recipe_ids: list[str]
+    # Bu metin doğrudan Gemini prompt'una giriyor (llm.generate_answer). Tarif
+    # bilgisi bilinçli olarak ID'lerden okunuyor ama `query` istemciden geliyor,
+    # yani sınırsız bırakılırsa prompt'a sınırsız metin sokulabilirdi.
+    # Sınır 200 değil 500: kamera aramasında bu alan "malzemeler + kullanıcı notu"
+    # birleşimi (combined_query) olarak geliyor, doğal olarak daha uzun.
+    query: str = Field(..., max_length=500)
+    # Zaten [:10] ile dilimleniyor; sınır, devasa gövdelerin JSON parse edilip
+    # bellekte tutulmasını en baştan engelliyor.
+    recipe_ids: list[str] = Field(..., max_length=50)
 
 
 @app.post("/api/recipes/commentary")
@@ -168,8 +197,14 @@ def get_me(user_email: str = Depends(get_current_user_email)):
 
 class ImageSearchRequest(BaseModel):
     image_base64: str
-    additional_text: str = ""
-    n_results: int = 5
+    # validate_query BURADA UYGULANMIYOR: alan opsiyonel (boş olabilir) ve asıl
+    # sorguyu fotoğraftan tanınan malzemeler taşıyor — kullanıcının notu saçma
+    # olsa bile arama malzemelerle anlamlı kalıyor. Ayrıca vision çağrısı bu
+    # noktada zaten yapılmış oluyor, yani erken reddetmenin tasarruf ettireceği
+    # bir şey yok. Yalnızca uzunluk sınırlanıyor: bu metin combined_query'ye,
+    # oradan da Gemini prompt'una giriyor.
+    additional_text: str = Field("", max_length=200)
+    n_results: int = Field(5, ge=1, le=20)
 
 
 @app.post("/api/recipes/from-image")
