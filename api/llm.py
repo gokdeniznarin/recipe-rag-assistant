@@ -92,11 +92,49 @@ def _generate(models: tuple[str, ...], contents):
 
 
 @timed(slow_ms=5000)
-def generate_answer(user_query: str, recipes: list) -> str | None:
+def is_food_request(query: str) -> bool:
+    """Sorgu bir yemek/tarif arayışı mı? Değilse arama hiç yapılmadan reddedilir.
+
+    FAIL-OPEN: kota dolması, ağ hatası ya da model belirsiz bir cevap verirse
+    True döner (yemek say) — yani sınıflandırıcı çökse bile arama çalışmaya
+    devam eder, sadece eleme devre dışı kalır. Yanlışlıkla meşru bir sorguyu
+    reddetmektense, nadiren saçma bir sorguyu geçirmeyi tercih ediyoruz.
+    """
+    # Prompt 4 modelde 6 zor sorguyla doğrulandı (2026-07-23). İki anahtar:
+    #   1. "genel NİYETE bak, tek kelimeye değil" — yoksa lite model "turkey"i
+    #      hindi, "swiss"i peynir sanıp coğrafya sorusunu yemek sayıyordu.
+    #   2. açık örnek ("capital of Turkey" → NO) — bu tek satır Switzerland/
+    #      Turkey/France sınıfının hepsini çözdü. "roast turkey for thanksgiving"
+    #      YES kalıyor, yani kelimeye değil niyete bakıyor.
+    prompt = f"""You are a filter for a recipe search app. Decide whether the user is trying to find food or recipes, based on the OVERALL INTENT of the message — not just individual words.
+
+Answer YES if the user wants something to cook or eat: a dish, ingredient, cuisine, meal, or dietary preference. Vague ("easy", "dinner") and misspelled ("chiken") inputs still count as YES.
+
+Answer NO if the message is a question or request about something OTHER than cooking — geography, general knowledge, technology, or random letters — EVEN IF it contains a word that can also be a food. For example "what is the capital of Turkey" is NO (turkey is the country here), "can you fix my car" is NO.
+
+Reply with only the single word YES or NO.
+
+Input: "{query}"
+"""
+    try:
+        response = _generate(COMMENTARY_MODELS, prompt)
+        answer = (response.text or "").strip().upper()
+        # Kesin "NO" değilse yemek say — belirsizlikte de kullanıcının lehine.
+        is_food = not answer.startswith("NO")
+        if not is_food:
+            log.info("Classifier rejected non-food query: %r", query[:100])
+        return is_food
+    except Exception as e:
+        log.warning("Food classifier unavailable, allowing query through: %s", e)
+        return True
+
+
+@timed(slow_ms=5000)
+def generate_answer(user_query: str, recipes: list) -> str:
     """Bulunan tarifleri LLM'e verip doğal bir öneri cevabı üretir.
 
-    Sorgu gerçek bir yemek isteği değilse None döner — çağıran taraf bunu
-    zaten "yorum yok" olarak ele alıyor ve frontend kutuyu gizliyor.
+    Not: "bu sorgu yemek mi?" kontrolü artık burada değil — is_food_request
+    aramadan önce yapıyor ve non-food sorgular buraya hiç ulaşmıyor.
     """
 
     recipes_text = "\n".join([
@@ -105,34 +143,18 @@ def generate_answer(user_query: str, recipes: list) -> str | None:
         for r in recipes
     ])
 
-    # IRRELEVANT kuralı, mesafe eşiğinin (validation.is_weak_match) kaçırdığı
-    # sınır durumlar için: eşiğin hemen altında kalan saçma sorgularda model
-    # eskiden "bu rastgele harf dizisi gibi görünüyor, yine de şunu deneyin..."
-    # diyen bir kutu üretiyordu. Modelin bu yargıyı zaten yaptığı canlıda
-    # gözlendi; tek eksik onu yapılandırılmış biçimde istemekti.
-    # Ek maliyeti YOK: aynı çağrının içinde, ek token/gecikme getirmiyor.
     prompt = f"""
 You are a helpful recipe assistant. The user asked: "{user_query}"
 
 Here are some matching recipes found in the database:
 {recipes_text}
 
-If the user's request is not a genuine food or recipe request (for example random
-letters, keyboard mashing, or a question about an unrelated topic), reply with
-exactly IRRELEVANT and nothing else.
-
-Otherwise pick the best matching recipe(s) and explain briefly why they fit the
-user's request. Keep your answer concise (2-4 sentences). Respond in English.
+Pick the best matching recipe(s) and explain briefly why they fit the user's request.
+Keep your answer concise (2-4 sentences). Respond in English.
 """
 
     response = _generate(COMMENTARY_MODELS, prompt)
-    answer = (response.text or "").strip()
-
-    if answer.upper().startswith("IRRELEVANT"):
-        log.warning("Model judged the query irrelevant: %r", user_query[:100])
-        return None
-
-    return answer
+    return response.text
 
 
 @timed(slow_ms=5000)

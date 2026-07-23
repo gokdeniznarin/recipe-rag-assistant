@@ -3,8 +3,8 @@ import os
 from pydantic import BaseModel, Field
 import chromadb
 from filters import extract_filters
-from validation import is_weak_match, validate_query
-from llm import generate_answer, detect_ingredients_from_image
+from validation import validate_query
+from llm import generate_answer, detect_ingredients_from_image, is_food_request
 from auth import get_current_user_email
 from favorites import add_favorite, get_favorites, remove_favorite
 from logger import get_logger, timed, timed_block
@@ -108,6 +108,21 @@ def search_recipes(request: SearchRequest, user_email: str = Depends(get_current
             "error": invalid,
         }
 
+    # 0.5 Sorgu bir yemek/tarif isteği mi? Non-food sorgular (coğrafya soruları,
+    #     klavye ezmesi vb.) burada TAMAMEN reddediliyor — sonuç bile
+    #     gösterilmiyor. Kapı 1 yalnızca biçime bakıyordu ("lkjhgfdsa" harf
+    #     içerdiği için geçiyordu); bu adım anlama bakıyor. is_food_request
+    #     FAIL-OPEN: Gemini çökerse True döner, arama çalışmaya devam eder.
+    #     ChromaDB'den ÖNCE: non-food sorgu Render'daki ~5.4 sn embedding'i de
+    #     harcamıyor (sınıflandırıcı ~0.7 sn'de reddediyor).
+    if not is_food_request(request.query):
+        return {
+            "query": request.query,
+            "applied_filters": None,
+            "results": [],
+            "error": "This doesn't look like a food search. Try naming a dish or its ingredients.",
+        }
+
     # 1. Kullanıcı sorgusundan filtre çıkar
     with timed_block("extract_filters"):
         where_filter = extract_filters(request.query)
@@ -128,17 +143,6 @@ def search_recipes(request: SearchRequest, user_email: str = Depends(get_current
     if not recipes:
         log.warning("No results for %r (filters: %s)", request.query, where_filter)
 
-    # Sonuçlar sorguyla alakasızsa: tarifler YİNE DÖNÜYOR (gizlemek "borscht"u
-    # da öldürürdü), ama frontend yorum istemiyor ve not düşüyor.
-    weak = is_weak_match(
-        results["distances"][0] if results.get("distances") else None,
-        request.query,
-        results["documents"][0],
-    )
-    if weak:
-        log.warning("Weak match for %r (best distance: %.3f)",
-                    request.query[:100], results["distances"][0][0])
-
     # LLM burada BEKLENMİYOR. Tarifler ~0.3sn'de hazır oluyordu ama endpoint
     # Gemini'yi bekliyordu; Gemini yavaşladığında (503 + SDK retry) toplam süre
     # 10sn'yi buluyor ve kullanıcı elde hazır duran sonuçları göremiyordu.
@@ -147,10 +151,6 @@ def search_recipes(request: SearchRequest, user_email: str = Depends(get_current
         "query": request.query,
         "applied_filters": where_filter,
         "results": recipes,
-        # Politikayı değil OLGUYU bildiriyoruz ("yorum isteme" değil "eşleşme
-        # zayıf"): istemci buna bakarak hem yorumu atlıyor hem not gösteriyor,
-        # ileride politika değişirse alan anlamını koruyor.
-        "weak_match": weak,
     }
 
 
@@ -278,28 +278,16 @@ def search_recipes_from_image(
     if not recipes:
         log.warning("No results for image query %r (filters: %s)", combined_query, where_filter)
 
-    # Metin aramasıyla aynı sinyal — frontend tek bir kod yolu kullanabilsin.
-    # Malzeme listesinden kurulan sorgular genelde iyi eşleşiyor, ama fotoğrafta
-    # yemekle ilgisiz bir şey varsa (Gemini "no ingredients" demeden yanlış
-    # tanırsa) bu da yakalanır.
-    weak = is_weak_match(
-        results["distances"][0] if results.get("distances") else None,
-        combined_query,
-        results["documents"][0],
-    )
-    if weak:
-        log.warning("Weak match for image query %r (best distance: %.3f)",
-                    combined_query[:100], results["distances"][0][0])
-
     # Metin aramasındaki gibi: LLM yorumu beklenmiyor, ayrı istekle geliyor.
     # (Buradaki Gemini vision çağrısı zorunlu — malzemeler olmadan arama yapılamaz.)
+    # Not: is_food_request BURADA yok — malzemeler zaten fotoğraftan tanınmış
+    # yemek öğeleri, non-food sorgu diye bir durum oluşmuyor.
     return {
         "detected_ingredients": detected_ingredients,
         "additional_text": request.additional_text,
         "combined_query": combined_query,
         "applied_filters": where_filter,
         "results": recipes,
-        "weak_match": weak,
     }
 
 
