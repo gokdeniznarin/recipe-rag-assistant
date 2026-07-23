@@ -50,7 +50,7 @@
 - **Hafta 7 — deploy hazırlığı:** torch'un kaldırılması ✅ (Faz 7), `recipes`'in image'a gömülmesi ✅ (Faz 8), favorites → Firestore + `chromadb` servisinin kaldırılması ✅ (Faz 9). Backend **stateless** hâle geldi.
 - **Hafta 8 — CANLI:** Backend → Render, frontend → Vercel ✅ (Faz 10). 4 blocker'ın 3'ü çözüldü, in-app tarayıcı Google girişi (④) bilinçli ertelendi.
 - **Hafta 9 — performans:** Faz 11 ✅ — arama LLM'i beklemiyor (8.87sn → 0.32sn), favoriler N+1 kalktı, favori sırası düzeldi.
-- **Hafta 10 (şu an buradayız) — kalite:** Faz 13 logging ✅, Faz 14 model güncellemesi ✅, **Faz 15 test altyapısı + girdi doğrulama ✅** (ilk otomatik testler: 126 test). Kalan: Katman 2 testleri, `main`'e merge, README/sunum hazırlığı.
+- **Hafta 10 (şu an buradayız) — kalite:** Faz 13 logging ✅, Faz 14 model güncellemesi ✅, **Faz 15 test altyapısı + girdi doğrulama + LLM sınıflandırıcı ✅** (Katman 1 + Katman 2: 148 test). Kalan: `main`'e merge, README/sunum hazırlığı.
 
 ## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
 ### Backend
@@ -91,10 +91,15 @@
 ### Testler (Faz 15)
 - `pytest.ini` (**repo kökünde**) — `pythonpath = api ingestion` (importlar çıplak: `from filters import ...`) ve `testpaths = api/tests ingestion/tests`. **`testpaths` opsiyonel değil**, gerekçesi Faz 15a'da.
 - `api/requirements-dev.txt` — sadece `pytest`; image'a **kurulmuyor**.
-- `api/tests/test_filters.py` — 34 test, `extract_filters` (mock yok)
-- `api/tests/test_validation.py` — 59 test, `validate_query` (mock yok)
-- `ingestion/tests/test_clean_data.py` — 33 test + 1 `xfail`, temizleme fonksiyonları (mock yok)
-- Çalıştırma: `python -m pytest` (tümü ~0.5 sn) · `-v` test adlarını gösterir · `--lf` sadece son kırılanları çalıştırır.
+- **Katman 1 — saf fonksiyonlar (mock yok):**
+  - `api/tests/test_filters.py` — 34 test, `extract_filters`
+  - `api/tests/test_validation.py` — 33 test, `validate_query` (Faz 15f'de `is_weak_match` testleri kalktı)
+  - `ingestion/tests/test_clean_data.py` — 33 test + 1 `xfail`, temizleme fonksiyonları
+- **Katman 2 — HTTP sözleşme testleri (Faz 15g):**
+  - `api/tests/conftest.py` — dış servisleri (Firebase/Firestore/Gemini/ChromaDB) `sys.modules` + `patch` ile sahteliyor. `client` (gerçek auth) ve `auth_client` (bypass) fixture'ları.
+  - `api/tests/test_api_contract.py` — 22 test: auth (422/401/200), is_food_request bağlantısı, CORS, decorator sırası, Faz 11b 200+CORS, sınır yolları.
+- **Toplam: 148 test + 1 xfail**, ~1.5 sn, container/ağ gerekmiyor.
+- Çalıştırma: `python -m pytest` · `-v` test adlarını gösterir · `--lf` sadece son kırılanları çalıştırır.
 - Windows notu: konsol cp1254 olduğu için Türkçe karakterli mesajlar bozuk görünür (çökme değil). `$env:PYTHONIOENCODING = "utf-8"` düzeltiyor.
 
 ## Henüz Yapılmadı (güncel — Faz 10 sonrası kalanların TAMAMI, hepsi opsiyonel)
@@ -336,9 +341,32 @@ Hepsi `api/validation.py`'de, hepsi tek sayı/liste:
 - Doğrulama: `docker compose logs api --tail 50` içinde `WARNING | main | Weak match for '...' (best distance: ...)` satırı görünmeli
 
 ### Faz 15d — Değerlendirilip yapılmayanlar
-- **Katman 2 (HTTP sözleşme testleri)** — `conftest.py` + `TestClient` + `dependency_overrides`. Yukarıdaki doğrulamada kullanılan `sys.modules` sahteleme yöntemi çalıştığı için yol açık. **`conftest.py` ChromaDB'yi de sahtelemeli**, yoksa her `pytest` çalıştırması commit'li `chroma.sqlite3`'ü kirletir.
+- ~~**Katman 2 (HTTP sözleşme testleri)**~~ → **YAPILDI, Faz 15g.**
 - **Frontend'de aynı kuralların aynası** — anında geri bildirim verir ve bir ağ turu + token doğrulaması kurtarır, ama kuralların iki dilde kopyalanması drift riski taşıyor. Yapılmadı.
 - Kalibrasyon scriptleri repoda **değil** (scratchpad'de üretildi). Sayılar bu belgede kayıtlı; tekrar gerekirse `api/chroma_data`'nın bir **kopyası** üzerinde çalıştırılmalı (repodaki klasör açılınca kirlenir).
+
+### Faz 15g — Katman 2: HTTP sözleşme testleri ✅
+**Öncesi:** CLAUDE.md'de "doğrulandı" diye geçen onlarca endpoint davranışı (422 vs 401, CORS, decorator sırası, Faz 11b'nin 200+CORS kuralı) elle, TestClient'la bir kez kontrol edilmiş ama **tekrarlanabilir test yoktu**. Katman 1 saf fonksiyonları kapsıyordu; bu katman endpoint'in kendisini kapsıyor.
+
+**`api/tests/conftest.py` — işin zor kısmı.** `import main` tek başına dört dış servise bağlanıyor (`auth.py:19` firebase init, `favorites.py:18` firestore.client, `llm.py:13` genai.Client, `main.py:36` ChromaDB açılışı). conftest bunları import ZİNCİRİ BAŞLAMADAN `sys.modules` üzerinden sahteliyor:
+- `firebase_admin` (→ credentials, auth, firestore alt-modülleri), `google.cloud.firestore_v1`, `google.genai`, `google` namespace.
+- **ChromaDB `PersistentClient` `patch` ile sahteleniyor** — bu OPSİYONEL DEĞİL: gerçek client bir klasörü açarken bile `chroma.sqlite3`'e yazıyor, sahtelenmezse her `pytest` commit'li 35MB'lık dosyayı kirletir. **Doğrulandı: tüm suite sonrası `git status api/chroma_data` temiz.**
+
+**İki fixture, iki auth stratejisi:**
+- `client` — auth OVERRIDE'sız, gerçek `get_current_user_email` çalışıyor. Auth sözleşme testleri (422/401) bunu kullanıyor; token doğrulamasının kendisini test ettikleri için bypass edilmemeli. `auth.firebase_auth.verify_id_token` test içinde monkeypatch'leniyor.
+- `auth_client` — `dependency_overrides` ile auth bypass'lı, endpoint mantığı testleri için. **Teardown'da `dependency_overrides.clear()`** — global sözlük, temizlenmezse bir testin bypass'ı diğerine sızıp 401 testlerini sahte yeşil yapardı.
+
+**`api/tests/test_api_contract.py` — 22 test:**
+- **Auth sözleşmesi (5):** header yok → 422 (Header zorunlu, endpoint gövdesi çalışmadan), `Basic` → 401, bozuk token → 401 (verify_id_token fırlatıyor), geçerli → 200 + email, email'siz token → 401. En sade korumalı endpoint `/api/auth/me` üzerinden (yalnızca auth'a bağlı).
+- **is_food_request bağlantısı (4, Faz 15f):** yemek sorgusu → aramaya ulaşıyor; non-food → arama HİÇ yapılmadan reddediliyor (`collection.query.called == False`); `1235533443` → validate_query'de ölüyor, sınıflandırıcı **çağrılmıyor** (kapı sırası doğru); yanıtta `weak_match` alanı YOK.
+- **Faz 11b 200+CORS (3):** vision hatası → 500 değil **200 + CORS header** (kritik: 500 middleware'e uğramaz, tarayıcıda sahte CORS hatası görünür); kota hatası → "quota" mesajı; malzeme yok → error.
+- **CORS (4):** izinli origin + Vercel preview yansıyor, `evil.com` ve suffix-spoof (`...vercel.app.evil.com`) yansımıyor.
+- **Decorator sırası (2):** OpenAPI şemasında `SearchRequest` gövdesi + zorunlu `authorization` header duruyor → `functools.wraps` imzayı koruyor, `@timed` `@app.post` altında.
+- **Sınır yolları (4):** olmayan tarif → 200 + error (404 değil), commentary boş id → Gemini çağrılmadan `{answer: None}`, n_results 21 → 422, commentary query 501 → 422.
+
+**Sonuç:** 126 → **148 test** (+22), hâlâ ~1.5 sn, container/ağ gerekmiyor. `pytest.ini`'ye Starlette/httpx deprecation uyarısı susturuldu (davranışsal değil, gürültü).
+
+**`is_food_request` için birim testi hâlâ YOK** (Gemini ağ çağrısı, saf değil) ama artık **bağlantısı** test ediliyor: main'de `is_food_request` monkeypatch'lenip True/False'a göre aramanın yapılıp yapılmadığı doğrulanıyor. Fonksiyonun kendi doğruluğu canlıda doğrulandı (Faz 15f tablosu).
 
 ### Faz 15f — Mesafe eşiği KALDIRILDI, LLM sınıflandırıcı geldi ✅
 **Tetikleyici:** kullanıcı canlıda mesafe yönteminin tutarsızlığını gördü. İki neredeyse aynı sorgu, iki farklı davranış:
