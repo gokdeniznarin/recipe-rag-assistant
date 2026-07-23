@@ -1,0 +1,5 @@
+# Sadece geliştirme/test bağımlılıkları — image'a KURULMUYOR.
+# Kurulum: pip install -r api/requirements-dev.txt
+# Çalıştırma: python -m pytest
+-r requirements.txt
+pytest

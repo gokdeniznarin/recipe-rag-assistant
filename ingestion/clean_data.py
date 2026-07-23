@@ -142,47 +142,62 @@ def build_description(row):
 
 # ============ MAIN PIPELINE ============
 
-print("Loading recipes.csv ...")
-df = pd.read_csv("recipes.csv")
-print(f"Total recipes in dataset: {len(df)}")
+# Pipeline bir fonksiyonun içinde ve `if __name__ == "__main__"` ile korunuyor.
+# Önceden modül seviyesindeydi, yani `import clean_data` demek tüm pipeline'ı
+# çalıştırmak demekti: 522k satır okunuyor ve recipes_cleaned.csv ÜZERİNE
+# yazılıyordu. Testler yukarıdaki saf fonksiyonları import edebilsin diye
+# ayrıldı. (filters.py ve llm.py'de bu guard zaten vardı.)
+# Çalıştırma şekli değişmedi: python clean_data.py
 
-df_sample = df.sample(n=5000, random_state=42).reset_index(drop=True)
-print(f"Sampled {len(df_sample)} recipes for processing")
+def main():
+    print("Loading recipes.csv ...")
+    df = pd.read_csv("recipes.csv")
+    print(f"Total recipes in dataset: {len(df)}")
 
-print("Cleaning fields...")
-df_sample["name_clean"] = df_sample["Name"].apply(clean_text)
-df_sample["ingredients_clean"] = df_sample["RecipeIngredientParts"].apply(parse_ingredients)
-df_sample["instructions_clean"] = df_sample["RecipeInstructions"].apply(parse_instructions)
-df_sample["cook_time_min"] = df_sample["CookTime"].apply(parse_duration_to_minutes)
-df_sample["prep_time_min"] = df_sample["PrepTime"].apply(parse_duration_to_minutes)
-df_sample["total_time_min"] = df_sample["TotalTime"].apply(parse_duration_to_minutes)
-df_sample["diet_tags"] = df_sample.apply(
-        lambda row: extract_diet_tags(row["ingredients_clean"], row["RecipeCategory"], row["name_clean"]),
-        axis=1
-    )
-df_sample["description_for_embedding"] = df_sample.apply(build_description, axis=1)
+    df_sample = df.sample(n=5000, random_state=42).reset_index(drop=True)
+    print(f"Sampled {len(df_sample)} recipes for processing")
 
-before = len(df_sample)
-df_sample = df_sample[df_sample["ingredients_clean"].apply(len) >= 2].reset_index(drop=True)
-after = len(df_sample)
-print(f"Removed {before - after} recipes with empty ingredients")
+    print("Cleaning fields...")
+    df_sample["name_clean"] = df_sample["Name"].apply(clean_text)
+    df_sample["ingredients_clean"] = df_sample["RecipeIngredientParts"].apply(parse_ingredients)
+    df_sample["instructions_clean"] = df_sample["RecipeInstructions"].apply(parse_instructions)
+    df_sample["cook_time_min"] = df_sample["CookTime"].apply(parse_duration_to_minutes)
+    df_sample["prep_time_min"] = df_sample["PrepTime"].apply(parse_duration_to_minutes)
+    df_sample["total_time_min"] = df_sample["TotalTime"].apply(parse_duration_to_minutes)
+    df_sample["diet_tags"] = df_sample.apply(
+            lambda row: extract_diet_tags(row["ingredients_clean"], row["RecipeCategory"], row["name_clean"]),
+            axis=1
+        )
+    df_sample["description_for_embedding"] = df_sample.apply(build_description, axis=1)
 
-print(f"\n=== Summary ===")
-print(f"Final recipe count: {len(df_sample)}")
-print(f"With cook time: {df_sample['cook_time_min'].notna().sum()}")
-print()
-print("Diet tag distribution:")
-for tag in ["gluten_free", "dairy_free", "nut_free", "vegetarian", "pescatarian", "vegan"]:
-    count = df_sample["diet_tags"].apply(lambda x: tag in x).sum()
-    percentage = (count / len(df_sample)) * 100
-    print(f"  {tag:15} : {count:5} ({percentage:.1f}%)")
+    before = len(df_sample)
+    df_sample = df_sample[df_sample["ingredients_clean"].apply(len) >= 2].reset_index(drop=True)
+    after = len(df_sample)
+    print(f"Removed {before - after} recipes with empty ingredients")
 
-print("\n=== Sample descriptions ===")
-for i in range(3):
-    print(f"\n--- Recipe {i+1} ---")
-    print(df_sample["description_for_embedding"].iloc[i])
-    print(f"Tags: {df_sample['diet_tags'].iloc[i]}")
+    print(f"\n=== Summary ===")
+    print(f"Final recipe count: {len(df_sample)}")
+    print(f"With cook time: {df_sample['cook_time_min'].notna().sum()}")
+    print()
+    print("Diet tag distribution:")
+    for tag in ["gluten_free", "dairy_free", "nut_free", "vegetarian", "pescatarian", "vegan"]:
+        count = df_sample["diet_tags"].apply(lambda x: tag in x).sum()
+        percentage = (count / len(df_sample)) * 100
+        print(f"  {tag:15} : {count:5} ({percentage:.1f}%)")
 
-output_path = "recipes_cleaned.csv"
-df_sample.to_csv(output_path, index=False)
-print(f"\n✓ Cleaned data saved to: {output_path} ({len(df_sample)} recipes)")
+    print("\n=== Sample descriptions ===")
+    for i in range(3):
+        print(f"\n--- Recipe {i+1} ---")
+        print(df_sample["description_for_embedding"].iloc[i])
+        print(f"Tags: {df_sample['diet_tags'].iloc[i]}")
+
+    output_path = "recipes_cleaned.csv"
+    df_sample.to_csv(output_path, index=False)
+    # Düz metin: Windows konsolu (cp1254) '✓' karakterinde UnicodeEncodeError
+    # veriyor ve script tam bitmişken çöküyordu. Aynı sorun load_to_chromadb.py'de
+    # de yaşanmıştı.
+    print(f"\n[OK] Cleaned data saved to: {output_path} ({len(df_sample)} recipes)")
+
+
+if __name__ == "__main__":
+    main()
