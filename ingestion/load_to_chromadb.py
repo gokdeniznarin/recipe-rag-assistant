@@ -72,6 +72,17 @@ for start in range(0, total, batch_size):
             "pescatarian": "pescatarian" in row["diet_tags"],
             "vegan": "vegan" in row["diet_tags"],
             "instructions": str(row["instructions_clean"])[:1000],  # çok uzunsa kısalt
+            # Malzeme listesi (Faz 17 — Pantry). Önceden malzemeler YALNIZCA
+            # description_for_embedding metninin içindeydi, yani yapılandırılmamış
+            # düz yazıydı; "bu tarif dolabımdaki kaç malzemeyi kullanıyor"
+            # sorusunu ancak metin ayrıştırarak, kusurlu biçimde cevaplayabilirdik.
+            #
+            # ChromaDB metadata'sı yalnızca SKALER kabul ediyor (str/int/float/bool),
+            # liste konulamıyor — bu yüzden ayraçlı metin olarak saklanıyor.
+            # Ayraç `|`: gerçek veride ölçüldü (400 tariflik örneklemde 3230
+            # malzemenin 7'si virgül içeriyor, HİÇBİRİ `|` içermiyor), yani virgül
+            # kullanılsaydı o malzemeler bölünüp veri bozulacaktı.
+            "ingredients": "|".join(row["ingredients_clean"]),
         })
 
     collection.add(
