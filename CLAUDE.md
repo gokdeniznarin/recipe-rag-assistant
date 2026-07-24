@@ -211,8 +211,12 @@ POST   /api/recipes/from-pantry dolaptakilerle ara (+opsiyonel ek metin)
 
 **Bilinen yanlılık:** eşleşme sayısı, çok malzemeli tarifleri ve dolaptaki temel gıdaları (`salt`, `water`, `black pepper`) kayırır — 20 malzemeli bir tarif 5 malzemeliye göre daha çok eşleşme yakalar. Alternatif ölçü *tarif kapsamı* olurdu (`eşleşen / tarifin toplam malzemesi`, yani "kaçı eksik"), ama o zaman rozet ile sıralama farklı şeyleri ölçerdi ve sıra yine keyfi görünürdü. Gösterilen sayı ile sıralanan sayı **aynı** tutuldu.
 
-### Rozet neden YALNIZCA `from-pantry`'de
-Metin/kamera aramasına eklemek **her aramaya bir Firestore okuması** bindirirdi — ölçüldü: ~100–250 ms sıcak, container yeniden başladıktan sonraki ilk çağrıda **6.12 sn** (Faz 16 doğrulamasındaki tembel-bağlantı bedeli). Faz 11'de kazanılan "arama LLM'i beklemiyor" hızını aşındırırdı. `from-pantry`'de dolap zaten okunmuş oluyor → rozet **bedava**. Frontend'de hesaplamak da elendi: kural iki dile kopyalanırdı (Faz 15d'deki drift gerekçesi). Genişletmek istenirse tek yer: `search_recipes` içine `get_pantry` + `count_pantry_matches`.
+### Rozet neden YALNIZCA `from-pantry`'de — ve gerekçenin canlıda ZAYIFLADIĞI
+**Karar anındaki gerekçe (YEREL ölçüme dayanıyordu):** metin/kamera aramasına eklemek her aramaya bir Firestore okuması bindirir; yerelde bu ~100–250 ms sıcak, container yeniden başladıktan sonraki ilk çağrıda **6.12 sn** (Faz 16'daki tembel-bağlantı bedeli). Faz 11'de kazanılan hızı aşındırır görünüyordu.
+
+**⚠️ CANLI ÖLÇÜM BU GEREKÇEYİ ZAYIFLATTI:** Render'da `get_pantry` **32–58 ms** (aşağıdaki canlı ölçüm bölümüne bak) — yerelden ~3 kat HIZLI, çünkü Render (Frankfurt) Google altyapısına yakın, yereldeki istek ise ev bağlantısı üzerinden gidiyor. Canlıda arama zaten ~6.4 sn sürdüğü için 50 ms **binde 8** eder, yani "hızı aşındırır" argümanı orada geçerli değil.
+
+**Karar şimdilik korunuyor** ama sebebi artık maliyet değil: (1) sıcak yolu gereksiz bağımlılıkla yüklememek, (2) rozetin en anlamlı olduğu yer zaten dolaptan arama. Genişletmek **ucuz ve savunulabilir** — tek yer: `search_recipes` içine `get_pantry` + `count_pantry_matches`. Frontend'de hesaplamak yine elenmeli: kural iki dile kopyalanırdı (Faz 15d'deki drift gerekçesi).
 
 ### Frontend
 - **`pantry.html`/`pantry.js` (yeni)** — yönetim sayfası: malzeme çipleri (× ile çıkar), ekleme kutusu, "Find recipes with these →" (`search.html?mode=pantry`), boş durum.
@@ -240,6 +244,40 @@ Auth bypass'lı TestClient ile gerçek endpoint'ler çağrıldı, test verisi so
 Rozet gerçek veride doğrulandı: `roma tomatoes` + `sweet onions` + `garlic cloves` → **3/5** (çoğul ve alt-dizi birlikte çalışıyor).
 
 **İlginç bulgu:** "Savory Creamed Onions" **0/5** aldı — adında soğan var ama malzeme listesinde YOK (dataset kusuru, Faz 15b'deki `nut_free` açığıyla aynı aile). Rozet dürüst davranıyor ama kullanıcıya tuhaf görünebilir.
+
+### Canlı ölçüm (Render) — darboğaz kesin olarak bulundu ✅
+Kullanıcı canlıda test etti, Render loglarından **ölçülmüş** kırılım (tahmin değil):
+
+```
+pantry | get_pantry took 32.2 ms
+timing | extract_filters took 0.0 ms
+timing | chromadb query took 6.39 s   (slow)
+main   | search_recipes_from_pantry took 6.42 s
+```
+
+| Bileşen | Süre | Pay |
+|---|---:|---:|
+| Firestore dolap okuması | **32 ms** | %0.5 |
+| Filtre çıkarımı | 0 ms | — |
+| **ChromaDB query (embedding dahil)** | **6.39 sn** | **%99.5** |
+| Eşleştirme + sıralama | ~30 ms | %0.5 |
+
+**Pantry'nin eklediği toplam maliyet ~50 ms.** 6.4 saniyenin tamamı, Faz 13c'de metin araması için zaten ölçülmüş olan embedding maliyeti — Pantry yeni bir yavaşlık getirmiyor, var olanı **miras alıyor**.
+
+**En net kanıt — aynı container, aynı veritabanı, aynı istek:**
+
+| İşlem | Süre |
+|---|---:|
+| `chromadb get (16 recipes)` — ID ile, **embedding YOK** | **2.6 ms** |
+| `chromadb query` — metinle, **embedding VAR** | **6390 ms** |
+
+~2400 kat fark. Darboğaz kesin olarak **ONNX embedding'in 0.1 vCPU'da çalışması**; ne Firestore, ne ağ, ne uygulama kodu.
+
+**Bir tahmin düzeltmesi (kayda değer):** ilk analizde Firestore'a ~400–600 ms atfedilmişti, çünkü TARAYICIDAKİ `GET /api/pantry → 677 ms` ölçümü sunucu işi sanılmıştı. Sunucu logu aynı isteği **54.8 ms** gösteriyor — aradaki fark tamamen ağ + token + istemci. Ders: iki uçtan ölçüm varken, birini diğerinin yerine koymamak gerekiyor (Faz 13b'nin kurulma sebebi de buydu).
+
+**Over-fetch'in payı AYRIŞTIRILAMADI:** aynı iş iki ölçümde 5.50 sn ve 6.39 sn verdi, yani ~0.9 sn doğal oynama var; over-fetch'in teorik maliyeti bunun çok altında kaldığı için gürültüde kayboluyor. "Neredeyse bedava" iddiası veriyle **tutarlı ama kanıtlanmış değil**.
+
+**Diğer endpoint'ler canlıda hızlı:** `get_recipe_detail` 1.1 ms · `get_favorites` 37–83 ms · `get_collections` 25–87 ms · `add_pantry_items` 89–113 ms · `verify token` 1.1–2.0 ms · Gemini yorumu 666–743 ms. Yani sorun tek bir yerde toplanmış durumda.
 
 ### Gözden geçirmede bulunan ve düzeltilen 3 hata (hepsi teste bağlandı)
 Kod yazıldıktan sonra yapılan ikinci okumada çıktılar — üçü de ileride canlıda patlayacak türdendi:
