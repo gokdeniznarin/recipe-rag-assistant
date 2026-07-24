@@ -19,6 +19,7 @@
         <span class="brand-name">Recipe Assistant</span>
       </a>
       <nav class="app-nav">
+  <a href="plan.html" class="nav-link">Plan</a>
   <a href="pantry.html" class="nav-link">Pantry</a>
   <a href="favorites.html" class="nav-link">Favorites</a>
   
@@ -57,7 +58,7 @@
         </div>
         <div id="recipe-tags" class="recipe-tags-detail"></div>
 
-        <!-- Koleksiyona ekle -->
+        <!-- Koleksiyona ekle / plana ekle -->
         <div class="recipe-actions">
           <div class="collection-picker-wrap">
             <button id="add-collection-btn" class="btn-outline btn-sm" type="button">
@@ -75,7 +76,12 @@
               <p id="picker-error" class="inline-error hidden"></p>
             </div>
           </div>
+
+          <button id="add-plan-btn" class="btn-outline btn-sm" type="button">
+            ＋ Add to plan
+          </button>
         </div>
+        <p id="plan-status" class="plan-status hidden"></p>
       </header>
 
       <!-- Bilgi çubuğu -->
@@ -121,6 +127,34 @@
 
     <div id="recipe-error" class="page-error hidden"></div>
   </main>
+
+  <!-- Plana ekle: gün + öğün seçimi -->
+  <div id="plan-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h3 class="modal-title">Add to your plan</h3>
+      <p class="modal-text">Pick a day and a meal.</p>
+
+      <div class="plan-modal-field">
+        <label for="plan-day">Day</label>
+        <select id="plan-day" class="plan-select"></select>
+      </div>
+
+      <div class="plan-modal-field">
+        <label for="plan-slot">Meal</label>
+        <select id="plan-slot" class="plan-select">
+          <option value="breakfast">Breakfast</option>
+          <option value="lunch">Lunch</option>
+          <option value="dinner">Dinner</option>
+        </select>
+      </div>
+
+      <p id="plan-modal-error" class="inline-error hidden"></p>
+      <div class="modal-actions">
+        <button id="plan-cancel" class="btn-outline btn-sm">Cancel</button>
+        <button id="plan-confirm" class="btn-accent btn-sm">Add to plan</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Firebase (compat SDK) -->
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>

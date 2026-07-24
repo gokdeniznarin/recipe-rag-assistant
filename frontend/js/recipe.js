@@ -26,6 +26,15 @@ const pickerNewForm    = document.getElementById('picker-new-form');
 const pickerNewInput   = document.getElementById('picker-new-input');
 const pickerError      = document.getElementById('picker-error');
 
+const addPlanBtn     = document.getElementById('add-plan-btn');
+const planModal      = document.getElementById('plan-modal');
+const planDaySelect  = document.getElementById('plan-day');
+const planSlotSelect = document.getElementById('plan-slot');
+const planCancel     = document.getElementById('plan-cancel');
+const planConfirm    = document.getElementById('plan-confirm');
+const planModalError = document.getElementById('plan-modal-error');
+const planStatus     = document.getElementById('plan-status');
+
 const infoTime     = document.getElementById('info-time');
 const infoCalories = document.getElementById('info-calories');
 const infoProtein  = document.getElementById('info-protein');
@@ -270,6 +279,83 @@ pickerNewForm.addEventListener('submit', async (e) => {
     pickerError.classList.remove('hidden');
   } finally {
     createBtn.disabled = false;
+  }
+});
+
+// ── Plana ekleme ─────────────────────────────────────────
+// Plana eklemek favoriye EKLEMEZ (koleksiyonların aksine): plan bir takvim,
+// düzenleme katmanı değil — bir tarifi bir kez denemek için planlamak onu
+// kalıcı kaydetmek anlamına gelmiyor.
+
+// Tarihler YEREL üretiliyor; `toISOString()` UTC'ye çevirip Istanbul'da gece
+// yarısından sonra günü bir geri kaydırırdı.
+function localISO(d) {
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function fillDayOptions() {
+  planDaySelect.innerHTML = '';
+  const today = new Date();
+  // Önümüzdeki 14 gün yetiyor: daha uzak bir plan için plan sayfasındaki hafta
+  // gezinmesi var (orada boş slota tıklayarak seçiliyor).
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
+    const iso = localISO(d);
+    const opt = document.createElement('option');
+    opt.value = iso;
+    opt.textContent = i === 0
+      ? `Today · ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+      : i === 1
+        ? `Tomorrow · ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+        : d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    planDaySelect.appendChild(opt);
+  }
+}
+
+addPlanBtn.addEventListener('click', () => {
+  fillDayOptions();
+  planModalError.classList.add('hidden');
+  planModal.classList.remove('hidden');
+});
+
+planCancel.addEventListener('click', () => planModal.classList.add('hidden'));
+planModal.addEventListener('click', (e) => {
+  if (e.target === planModal) planModal.classList.add('hidden');
+});
+
+planConfirm.addEventListener('click', async () => {
+  planConfirm.disabled = true;
+  try {
+    const res = await apiRequest('/api/meal-plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        date: planDaySelect.value,
+        slot: planSlotSelect.value,
+        recipe_id: recipeId,
+      }),
+    });
+
+    if (res.error) {
+      planModalError.textContent = res.error;
+      planModalError.classList.remove('hidden');
+      return;
+    }
+
+    planModal.classList.add('hidden');
+    const dayText = planDaySelect.options[planDaySelect.selectedIndex].textContent;
+    const slotText = planSlotSelect.options[planSlotSelect.selectedIndex].textContent;
+    planStatus.innerHTML = `
+      Planned for ${escapeHtml(slotText.toLowerCase())} on ${escapeHtml(dayText)}.
+      <a href="plan.html?week=${encodeURIComponent(planDaySelect.value)}">View plan →</a>
+    `;
+    planStatus.classList.remove('hidden');
+  } catch (err) {
+    planModalError.textContent = 'Could not update your plan.';
+    planModalError.classList.remove('hidden');
+  } finally {
+    planConfirm.disabled = false;
   }
 });
 

@@ -25,6 +25,15 @@ from pantry import (
     count_pantry_matches,
     build_pantry_query,
 )
+from meal_plan import (
+    validate_date,
+    validate_slot,
+    validate_week,
+    get_week,
+    set_entry,
+    remove_entry,
+    clear_week,
+)
 from logger import get_logger, timed, timed_block
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -759,3 +768,146 @@ def search_recipes_from_pantry(
         "applied_filters": where_filter,
         "results": recipes,
     }
+
+
+# ═══════════════════════════════════════════════════════════
+#  MEAL PLANNER — haftalık yemek takvimi.
+#  Pantry "şu an elimde ne var", plan "ne pişireceğim" — alışveriş listesinin
+#  önkoşulu. Veri erişimi meal_plan.py'de.
+# ═══════════════════════════════════════════════════════════
+
+class PlanEntryRequest(BaseModel):
+    # Sınırlar cömert: biçim kararını validate_date/validate_slot veriyor ve
+    # kullanıcıya anlaşılır bir mesaj dönüyor. Dar bir max_length (10) boşluklu
+    # bir tarihi ham 422 ile keserdi, oysa validate_date onu zaten trim'liyor.
+    date: str = Field(..., max_length=32)     # YYYY-MM-DD
+    slot: str = Field(..., max_length=32)
+    recipe_id: str = Field(..., max_length=50)
+
+
+def _week_payload(week_start: str, entries: list[dict], include_details: bool):
+    """Hafta yanıtını kurar; include_details=true ise tarif kartlarını da ekler.
+
+    Kart bilgileri plan dokümanında SAKLANMIYOR, ID'lerden okunuyor —
+    favoriler/koleksiyonlardaki `?include_details=true` deseninin aynısı.
+    Denormalizasyon (adı dokümana kopyalamak) ÖLÇÜMLE elendi: canlıda
+    `chromadb get` = 2.6 ms (embedding olmadığı için; 6.4 sn olan `query` yolu
+    bu değil) ve bir hafta en fazla 21 girdi. Kazanacağı hız yok, karşılığında
+    "hangisi doğru kaynak" sorunu getirirdi.
+    """
+    payload = {"week_start": week_start, "entries": entries}
+    if not include_details:
+        return payload
+
+    ids = list({e["recipe_id"] for e in entries})   # aynı tarif iki slotta olabilir
+    if not ids:
+        return payload      # boş hafta → ChromaDB'ye hiç gidilmiyor
+
+    with timed_block(f"chromadb get ({len(ids)} recipes)"):
+        results = collection.get(ids=ids)
+
+    cards = {
+        recipe_id: _recipe_card(recipe_id, meta, doc)
+        for recipe_id, meta, doc in zip(
+            results["ids"], results["metadatas"], results["documents"]
+        )
+    }
+    # Kart girdinin İÇİNE gömülüyor (koleksiyonlardaki ayrı `recipes` listesi
+    # yerine): ızgarada her slot kendi tarifini gösteriyor, ayrı bir liste
+    # frontend'de yeniden eşleştirme gerektirirdi.
+    return {
+        **payload,
+        "entries": [
+            {**e, "recipe": cards.get(e["recipe_id"])}   # silinmiş tarif → None
+            for e in entries
+        ],
+    }
+
+
+@app.get("/api/meal-plan")
+@timed
+def get_meal_plan_endpoint(
+    week: str,
+    include_details: bool = False,
+    user_email: str = Depends(get_current_user_email),
+):
+    """Bir haftanın planı. `week` haftanın herhangi bir günü olabilir —
+    validate_week onu pazartesiye normalize ediyor, yoksa aynı hafta iki ayrı
+    dokümana bölünürdü."""
+    try:
+        week_start = validate_week(week)
+    except ValueError as e:
+        log.warning("Get meal plan rejected (%r): %s", week, e)
+        return {"error": str(e)}
+
+    entries = get_week(user_email, week_start)
+    return _week_payload(week_start, entries, include_details)
+
+
+@app.post("/api/meal-plan")
+@timed
+def set_meal_plan_entry_endpoint(
+    request: PlanEntryRequest,
+    user_email: str = Depends(get_current_user_email),
+):
+    """Slota tarif koyar; slot doluysa ÜZERİNE YAZAR (frontend'in "önce sil,
+    sonra ekle" diye iki tur atmasına gerek kalmasın).
+
+    Plana eklemek favoriye EKLEMEZ (koleksiyonların aksine — gerekçesi
+    meal_plan.py'nin başında).
+    """
+    try:
+        date_str = validate_date(request.date)
+        slot = validate_slot(request.slot)
+    except ValueError as e:
+        log.warning("Set meal plan rejected (%r %r): %s", request.date, request.slot, e)
+        return {"error": str(e)}
+
+    result = set_entry(user_email, date_str, slot, request.recipe_id)
+    log.info("Planned %r for %s %s", request.recipe_id, date_str, slot)
+    return result
+
+
+@app.delete("/api/meal-plan/week")
+@timed
+def clear_meal_plan_week_endpoint(
+    week: str,
+    user_email: str = Depends(get_current_user_email),
+):
+    """Haftanın tamamını temizler.
+
+    AYRI BİR LİTERAL YOL (`/api/pantry/all` ile aynı gerekçe): yıkıcı işlem,
+    "parametre boşsa hepsini sil" tuzağına düşmemeli. Tek okuma + tek yazma —
+    21 slotu tek tek silmek 21 istek demekti.
+    """
+    try:
+        week_start = validate_week(week)
+    except ValueError as e:
+        log.warning("Clear meal plan week rejected (%r): %s", week, e)
+        return {"error": str(e)}
+
+    removed = clear_week(user_email, week_start)
+    log.info("Meal plan week %s cleared (%s entries)", week_start, removed)
+    return {"message": "Week cleared", "week_start": week_start, "removed": removed}
+
+
+@app.delete("/api/meal-plan")
+@timed
+def remove_meal_plan_entry_endpoint(
+    # Tarih ve öğün YOL parametresi DEĞİL sorgu parametresi — pantry'de
+    # öğrenildi (ASGI `scope["path"]`'i yüzde-çözüyor), ayrıca bileşik anahtar
+    # için de doğrusu bu.
+    date: str,
+    slot: str,
+    user_email: str = Depends(get_current_user_email),
+):
+    try:
+        # bounded=False: sınır yeni doküman açılmasını engellemek için, silmeyi
+        # değil. Bir yıldan eski bir planı silemeyecek olmak saçma olurdu.
+        date_str = validate_date(date, bounded=False)
+        slot_name = validate_slot(slot)
+        remove_entry(user_email, date_str, slot_name)
+        return {"message": "Removed from your plan", "date": date_str, "slot": slot_name}
+    except ValueError as e:
+        log.warning("Remove from meal plan rejected (%r %r): %s", date, slot, e)
+        return {"error": str(e)}

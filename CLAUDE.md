@@ -5,7 +5,7 @@
 
 ## Teknoloji Kararları
 - **Backend:** Python, FastAPI
-- **Veritabanı:** İki yer, ama **rolleri kesin ayrı** (Faz 8–9'da netleşti): **ChromaDB** yalnızca tarifler için — semantic search + metadata filtreleme aynı yerde yapılıyor (MongoDB kullanılmadı), veri salt-okunur ve image'a gömülü, ortada sunucu yok. **Firestore** ise çalışma anında değişen kullanıcı verisi için — favoriler, koleksiyonlar (Faz 16) ve dolap/pantry (Faz 17). Eski "sadece ChromaDB" kararı favorileri de oraya koyuyordu; bu yanlıştı — her favori kaydına sahte bir `[[0.0] * 384]` embedding yazılıyordu, yani vektör veritabanı anahtar-değer deposu gibi kullanılıyordu. Ayrıca kalıcı disk ihtiyacının tek sebebi buydu ve deploy'u kilitliyordu.
+- **Veritabanı:** İki yer, ama **rolleri kesin ayrı** (Faz 8–9'da netleşti): **ChromaDB** yalnızca tarifler için — semantic search + metadata filtreleme aynı yerde yapılıyor (MongoDB kullanılmadı), veri salt-okunur ve image'a gömülü, ortada sunucu yok. **Firestore** ise çalışma anında değişen kullanıcı verisi için — favoriler, koleksiyonlar (Faz 16), dolap/pantry (Faz 17) ve yemek planı (Faz 18). Eski "sadece ChromaDB" kararı favorileri de oraya koyuyordu; bu yanlıştı — her favori kaydına sahte bir `[[0.0] * 384]` embedding yazılıyordu, yani vektör veritabanı anahtar-değer deposu gibi kullanılıyordu. Ayrıca kalıcı disk ihtiyacının tek sebebi buydu ve deploy'u kilitliyordu.
 - **Embedding modeli:** `all-MiniLM-L6-v2` (İngilizce arayüz kararı verildiği için çok dilli model şart değil). Model **ChromaDB'nin kendi varsayılan embedding fonksiyonu** (`DefaultEmbeddingFunction`) üzerinden, **ONNX** motoruyla çalışıyor — `sentence-transformers` + `torch` kurulumu kaldırıldı (bkz. Faz 7). Kod artık embedding'i elle üretmiyor: `collection.query(query_texts=[...])` ile metni doğrudan ChromaDB'ye veriyor, embedding'i o üretiyor.
 - **LLM:** Google Gemini API, **çoklu model** (Faz 11b — kota model başına olduğu için sırayla denenen liste; **Faz 14'te 5 modele çıkarıldı ve vision sırası düzeltildi**; bkz. `llm.py` `COMMENTARY_MODELS` / `VISION_MODELS`), `google-genai` kütüphanesi (eski `google-generativeai` deprecated olduğu için güncel kütüphaneye geçildi). Model seçimi iki kez değişti: önce `gemini-2.5-flash` → `gemini-flash-latest` (ikinci API key'in projesinde 2.5'e erişim kapalıydı + alias deprecation'a karşı güvenliydi), sonra **geri `gemini-2.5-flash`'a** — çünkü alias'ın işaret ettiği model free tier'da sürekli **503 (overloaded)** veriyordu, SDK retry'ları her aramayı ~20sn'ye çıkarıyordu. Ölçüm: alias 20.1sn, `gemini-2.5-flash` ort. 3.5sn (**~6x**). Ödünleşim kabul edildi: sabit sürüm ileride deprecate olabilir, o zaman güncel sürüme taşınır (hata mesajı net gelir).
 - **Frontend:** Sade HTML/CSS/JS (React/Next.js tercih edilmedi — React öğrenme eğrisi kalan sürede risk yaratıyordu, projenin asıl değeri backend RAG pipeline'ında). Sayfa başına ayrı HTML dosyaları, ortak CSS tek dosyada, her sayfanın kendi JS dosyası. Sayfa yönlendirme klasik `<a href>` ile — SPA değil, MPA. Vercel'e statik site olarak deploy edilebilir yapıda.
@@ -51,7 +51,7 @@
 - **Hafta 8 — CANLI:** Backend → Render, frontend → Vercel ✅ (Faz 10). 4 blocker'ın 3'ü çözüldü, in-app tarayıcı Google girişi (④) bilinçli ertelendi.
 - **Hafta 9 — performans:** Faz 11 ✅ — arama LLM'i beklemiyor (8.87sn → 0.32sn), favoriler N+1 kalktı, favori sırası düzeldi.
 - **Hafta 10 — kalite:** Faz 13 logging ✅, Faz 14 model güncellemesi ✅, **Faz 15 test altyapısı + girdi doğrulama + LLM sınıflandırıcı ✅** (Katman 1 + Katman 2: 148 test).
-- **Hafta 11 (şu an buradayız) — zenginleştirme + gelir modeli:** rakip özelliklerini (Samsung Food / ReciMe) ekleyip gelir hikayesi kurma. **Faz 16 Koleksiyonlar ✅** (175 test), **Faz 17 Pantry + yapılandırılmış malzeme verisi ✅** (235 test). Sıradaki: Meal Planner → Alışveriş listesi (affiliate). Kalan (Faz 15'ten devir): `main`'e merge, README/sunum hazırlığı.
+- **Hafta 11 (şu an buradayız) — zenginleştirme + gelir modeli:** rakip özelliklerini (Samsung Food / ReciMe) ekleyip gelir hikayesi kurma. **Faz 16 Koleksiyonlar ✅** (175 test), **Faz 17 Pantry + yapılandırılmış malzeme verisi ✅** (235 test), **Faz 18 Meal Planner ✅** (316 test). Sıradaki: Alışveriş listesi (affiliate) — plan + pantry artık ikisi de hazır, "eksikler = plandaki tariflerin malzemeleri − dolap". Kalan (Faz 15'ten devir): `main`'e merge, README/sunum hazırlığı.
 
 ## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
 ### Backend
@@ -60,7 +60,7 @@
 - `ingestion/validate_tags.py` — diyet etiketi ve veri kalitesi doğrulama scripti
 - `ingestion/load_to_chromadb.py` — ChromaDB'ye yükleme. Embedding'i artık elle üretmiyor: `collection.add()`'e sadece `documents` veriliyor, ChromaDB kendi varsayılan fonksiyonuyla (ONNX) embed ediyor. `PersistentClient` ile `api/chroma_data/` klasörüne yazıyor (sunucuya değil). **Linux'ta çalıştırılmalı** — bkz. Faz 8'deki Windows/HNSW bulgusu. Faz 17'de `ingredients` metadata alanı eklendi (`|` ayraçlı metin — ChromaDB liste tutamıyor); yeniden çalıştırılırsa **yetim segment klasörü kontrol edilmeli**, bkz. Faz 17.
 - `ingestion/test_search.py` — arama testleri. Gömülü veritabanını okuyor (sunucu yok). `CHROMA_PATH` env var'ıyla image'daki kopyaya yöneltilebilir — **repodaki `api/chroma_data`'ya yöneltirsen commit'li dosyayı kirletir** (bkz. Faz 8 notları).
-- `api/main.py` — FastAPI backend + CORS middleware (Faz 10'dan beri kendi origin'lerimizle sınırlı): /api/recipes/search, /api/recipes/from-image, **/api/recipes/commentary** (Faz 11), /api/recipes/{recipe_id}, /api/favorites/*, **/api/collections/*** (Faz 16), **/api/pantry/*** + **/api/recipes/from-pantry** (Faz 17) endpoint'leri. Tarifleri image'a gömülü `chroma_data/` klasöründen `PersistentClient` ile okuyor (Faz 8). Arama endpoint'leri LLM'i beklemiyor (Faz 11).
+- `api/main.py` — FastAPI backend + CORS middleware (Faz 10'dan beri kendi origin'lerimizle sınırlı): /api/recipes/search, /api/recipes/from-image, **/api/recipes/commentary** (Faz 11), /api/recipes/{recipe_id}, /api/favorites/*, **/api/collections/*** (Faz 16), **/api/pantry/*** + **/api/recipes/from-pantry** (Faz 17), **/api/meal-plan*** (Faz 18) endpoint'leri. Tarifleri image'a gömülü `chroma_data/` klasöründen `PersistentClient` ile okuyor (Faz 8). Arama endpoint'leri LLM'i beklemiyor (Faz 11).
 - `api/chroma_data/` — **git'e commit edilmiş** gömülü tarif veritabanı (35MB: `chroma.sqlite3` + HNSW indeks dosyaları). `load_to_chromadb.py` üretiyor, Dockerfile `COPY . .` ile image'a alıyor.
 - `api/logger.py` — **merkezi logging + süre ölçümü** (Faz 13). Renkli seviye formatter'ı (`ColorFormatter`), `@timed` decorator'ı ve `timed_block` context manager'ı. Uygulamada `print` kalmadı. `python api/logger.py` ile seviyeleri/renkleri tek başına gösteren bir demo bloğu var.
 - `api/auth.py` — tek iş: Firebase Admin SDK ile `verify_id_token()` → e-posta. `get_current_user_email` dependency'si korumalı endpoint'lerde kullanılıyor. (Eskiden JWT + bcrypt + kullanıcı kayıt/giriş vardı; Firebase geçişiyle ~140 satırdan ~30 satıra düştü.)
@@ -70,6 +70,7 @@
 - `api/favorites.py` — favoriler sistemi (Repository Pattern'den esinlenmiş, kendi veri deposunu kendi yönetiyor). **Firestore** kullanıyor (Faz 9; öncesinde ChromaDB'ydi). `get_favorites` en son ekleneni üstte döner (Faz 11; sıralama bellekte — bkz. Faz 11 notu). Faz 6'daki Firebase Auth migrasyonunda **tek satır değişmemişti** — favoriler e-posta anahtarlı ve e-posta her iki auth sisteminde de aynı kimlik. Faz 9'da bunun tersi oldu: favoriler baştan yazıldı ama `main.py` hiç değişmedi (aynı fonksiyon imzaları, aynı `ValueError`'lar).
 - `api/collections_store.py` — **koleksiyonlar** (Faz 16), favorilerin ÜSTÜNE binen düzenleme katmanı. Firestore `collections` koleksiyonu, auto-ID doküman, üyelik `recipe_ids` dizisinde. Saf `validate_collection_name` + CRUD. Aynı isim yasağı bellekte (bileşik indeks yok). **Dosya adı `collections.py` DEĞİL** — stdlib `collections`'ı gölgelerdi (`logger.py`/`logging.py` tuzağının aynısı). İlişki kuralı (koleksiyon ⊆ favoriler) `main.py`'de kurulu; `favorites.py`'den habersiz.
 - `api/pantry.py` — **dolap** (Faz 17). Firestore `pantry` koleksiyonu, doküman ID'si = e-posta, malzemeler `items` dizisinde. Üç saf fonksiyon (`validate_ingredient_name`, `count_pantry_matches` — rozetin doğruluğu buna bağlı, `build_pantry_query`) + Firestore CRUD. Toplu ekleme duplikeleri sessizce atlıyor (kamera 8 malzeme gönderiyor, 3'ü zaten varsa bu hata değil).
+- `api/meal_plan.py` — **haftalık yemek planı** (Faz 18). Firestore `meal_plans` koleksiyonu, doküman ID'si bileşik: `{email}_{hafta_pazartesisi}`. Saf fonksiyonlar: `week_start_for` (**doküman ID'sini belirliyor — okuma/yazma ayrışırsa plan kaybolur**), `validate_date` (`bounded=False` okuma/silmede), `validate_slot`, `validate_week`, `upsert_entry` (dolu slotu değiştirir), `sort_entries` + Firestore CRUD. Favorilerden ve koleksiyonlardan **habersiz** — plana eklemek favoriye eklemiyor (bilinçli, bkz. Faz 18).
 - `Dockerfile` (**repo kökünde**, Faz 10'da `api/`'den taşındı) — `python:3.13-slim`, `uvicorn` `$PORT`'u (yoksa 8080) dinliyor. ONNX modelini build sırasında retry'lı indirip gömüyor, image'a sadece `api/` kopyalanıyor. Hem `docker-compose` hem Render bunu kullanıyor. Image **1.2GB** (Faz 7 öncesi 2.83GB → Faz 7 sonrası 1.14GB → Faz 8'de +35MB tarif verisi).
 - `.dockerignore` (**repo kökünde**) — `api/firebase-key.json` ve `.env`'i image dışında tutuyor (güvenlik), ayrıca `frontend/`, `ingestion/`, `*.csv`.
 - `docker-compose.yml` — **2 servis**: `api`, `frontend` (Faz 9'da `chromadb` kaldırıldı). `api` kökteki Dockerfile'ı context=kök ile build ediyor.
@@ -82,6 +83,7 @@
 - `frontend/favorites.html` — "Your recipes": üstte koleksiyon grid'i (Faz 16), altta "All saved" listesi (boş durum ekranı ile)
 - `frontend/collection.html` — **tek koleksiyon görünümü** (Faz 16): yeniden adlandır / sil (onay modalı) / tariften çıkar
 - `frontend/pantry.html` — **dolap yönetimi** (Faz 17): malzeme çipleri, ekleme kutusu, "Find recipes with these →"
+- `frontend/plan.html` — **haftalık plan** (Faz 18): 7×3 ızgara, hafta gezinme, boş slotta tarif seçici, "Clear week"
 - `frontend/css/style.css` — tüm sayfalar için ortak CSS (design tokens, layout, components, user menu dropdown)
 - `frontend/js/firebase.js` — Firebase init + `authReady` promise'i (oturum durumu **kesinleşene** kadar bekler). Her sayfada compat SDK script'lerinden sonra, diğer JS'lerden önce yüklenir.
 - `frontend/js/logger.js` — **frontend logging + süre ölçümü** (Faz 13). `api/logger.py`'nin tarayıcı tarafındaki eşi: aynı satır biçimi, aynı seviyeler, aynı "yavaşsa sarı" kuralı. `Logger.get(scope)`, `Logger.timed(fn, ...)` (decorator'ın JS'teki higher-order function karşılığı), `Logger.duration(...)`. Ayarlar `localStorage` üzerinden (`log_level`, `slow_ms`) — tarayıcıda ortam değişkeni yok. Her sayfada, kendisini kullanan dosyalardan önce yüklenir.
@@ -92,6 +94,7 @@
 - `frontend/js/recipe.js` — detay sayfası, `parseInstructions()` (R vector kalıntılarını filtreliyor) + Faz 16 koleksiyon seçicisi (lazy-load checkbox listesi, kalp↔koleksiyon senkronu)
 - `frontend/js/collection.js` — tek koleksiyon sayfası (Faz 16): rename/delete/remove akışları
 - `frontend/js/pantry.js` — dolap sayfası (Faz 17): çip render, ekleme, çıkarma
+- `frontend/js/plan.js` — plan sayfası (Faz 18): hafta ızgarası, slot ekleme/çıkarma, hafta gezinme, favorilerden lazy seçici. **Tarihler yerel üretiliyor** (`toISOString()` YOK — UTC'ye çevirip günü kaydırırdı). `SLOTS` sabiti backend'in kopyası; ayrışmaya karşı Katman 1'de test var.
 - `frontend/js/favorites.js` — koleksiyonları ve favorileri **paralel** çekiyor (Faz 16); favoriler tarif bilgileriyle **tek istekte** (`?include_details=true`; Faz 11 öncesi her ID için ayrı istek atıyordu)
 - `frontend/Dockerfile` — `nginx:alpine`, statik dosyaları doğrudan sunuyor
 
@@ -109,7 +112,9 @@
   - `api/tests/test_collections.py` — 27 test: Katman 1 `validate_collection_name` (saf) + Katman 2 endpoint sözleşmesi (auth, create/rename biçim doğrulama, `include_details` kart eşleme, ilişki kuralı bağlantıları, delete).
 - **Pantry (Faz 17):**
   - `api/tests/test_pantry.py` — 60 test: Katman 1 `validate_ingredient_name` / `count_pantry_matches` (kelime sınırı, çoğul iki yön) / `build_pantry_query` + toplu ekleme mantığı (sahte Firestore) + Katman 2 endpoint sözleşmesi (duplike, boş dolap, rozet bağlantısı, `ingredients` alanı, `/` içeren ad).
-- **Toplam: 235 test + 1 xfail**, ~5 sn, container/ağ gerekmiyor.
+- **Meal Planner (Faz 18):**
+  - `api/tests/test_meal_plan.py` — 81 test: Katman 1 `week_start_for` (10 test — doküman ID'sini belirlediği için off-by-one'a en açık yer) / `validate_date` (artık gün regresyonu, `bounded=False`) / `validate_slot` (**frontend kopyasına karşı drift koruması**) / `upsert_entry` / `sort_entries` + Katman 1.5 Firestore yazma mantığı (sahte doküman) + Katman 2 endpoint sözleşmesi (kart eşleme, boş hafta → ChromaDB atlanıyor, tekilleştirme, hafta normalizasyonu, `/week` yolunun gölgelenmemesi, **favorilere dokunulmaması**).
+- **Toplam: 316 test + 1 xfail**, ~3 sn, container/ağ gerekmiyor.
 - Çalıştırma: `python -m pytest` · `-v` test adlarını gösterir · `--lf` sadece son kırılanları çalıştırır.
 - Windows notu: konsol cp1254 olduğu için Türkçe karakterli mesajlar bozuk görünür (çökme değil). `$env:PYTHONIOENCODING = "utf-8"` düzeltiyor.
 
@@ -153,10 +158,132 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 - **`nut_free` etiketinde açık var** (Faz 7'de tesadüfen fark edildi): "nut free cookies for kids" araması `Pine Nut and Almond Cookies` ve `wheat free peanut butter cookies` döndürüyor — ikisi de `nut_free: True` etiketli, yani yanlış. **KÖK SEBEP FAZ 15'TE BULUNDU** (eski tahmin "bileşik adlar kural listesine takılmıyor" YANLIŞTI) — ayrıntı için Faz 15b. Hata henüz **düzeltilmedi**; `xfail(strict=True)` testi olarak kayıtlı (`ingestion/tests/test_clean_data.py`), düzeltilince test XPASS verip suite'i kırar ve işaretin kaldırılmasını zorlar.
 
 ## Şu An Üzerinde Çalışılıyor
-- **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Faz 6–16'nın tamamı bu branch'te. `main` el değmemiş durumda. **Canlı deploy `firebase-auth` dalından yapılıyor** (hem Render hem Vercel bu dalı izliyor), dolayısıyla merge sonrası deploy dalını `main`'e çevirmek gerekecek.
+- **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Faz 6–18'in tamamı bu branch'te. `main` el değmemiş durumda. **Canlı deploy `firebase-auth` dalından yapılıyor** (hem Render hem Vercel bu dalı izliyor), dolayısıyla merge sonrası deploy dalını `main`'e çevirmek gerekecek.
 - Repo **GitHub'da**: `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private). Sırlar (`firebase-key.json`, `.env`) gitignored, repoda yok — Render'da env var olarak duruyor.
 
-## Güncel Durum: Faz 17 (Pantry "Dolabım" + yapılandırılmış malzeme verisi) ✅
+## Güncel Durum: Faz 18 (Meal Planner — haftalık yemek takvimi) ✅
+
+**Tetikleyici:** Yol haritasının 3. adımı ve asıl önemi **4. adımın (alışveriş listesi, affiliate geliri) ÖNKOŞULU olması**: "ne almam lazım?" sorusu ancak "ne pişireceğim?" bilinirse hesaplanabilir. Üç özelliğin zinciri:
+
+```
+Pantry (elimde ne var)  +  Plan (ne pişireceğim)  →  Eksikler  →  Alışveriş listesi
+```
+
+Yapışkanlık açısından da en güçlü adım: **Pantry şu anın fotoğrafı, Plan geleceğe verilmiş bir söz.** Kullanıcı dolabını ayda bir güncelleyebilir ama planı her hafta açar. Genel bir AI'a salı akşamı ne pişireceğini sorabilirsin, ama o cumaya kadar hatırlamaz.
+
+### Veri modeli — birim **HAFTA** (dördüncü Firestore deseni)
+Projedeki her Firestore şeması okuma biçiminden çıktı; plan'ınki de öyle: ekranda **her zaman tek bir hafta** var.
+
+| Özellik | Şema | Neden |
+|---|---|---|
+| Favoriler | kayıt başına doküman, `{email}_{recipe_id}` | tek tek eklenip çıkarılan bağımsız kayıtlar |
+| Koleksiyonlar | auto-ID doküman + `recipe_ids` dizisi | grubun kendi kimliği var |
+| Pantry | kullanıcı başına tek doküman | her zaman bütün olarak okunuyor |
+| **Plan** | **hafta başına doküman, `{email}_{hafta}`** | **ekranda her zaman tek hafta → tek okuma** |
+
+```
+meal_plans/{email}_{2026-07-27} → {
+    owner_email, week_start,          # week_start hep PAZARTESİ (ISO 8601)
+    entries: [ {date, slot, recipe_id, added_at}, ... ]
+}
+```
+
+**Bileşik ID favorilerdeki desenin aynısı** ve sahiplik ID'nin içinde olduğu için koleksiyonlardaki `_owned_doc` kontrolüne gerek yok. Elenen iki alternatif: **tüm haftalar tek dokümanda** (bir haftayı göstermek için bütün geçmişi okumak gerekirdi), **girdi başına doküman** (owner + tarih aralığı sorgusu **bileşik indeks** isterdi — bu projede dördüncü kez kaçınıldı).
+
+### Tarif adı dokümanda SAKLANMIYOR — ölçüme dayanan karar
+Izgarayı çizmek için tarif adları lazım; adı plan dokümanına kopyalamak (denormalizasyon) düşünüldü ve **elendi**. Canlı ölçüm (Faz 17): `chromadb get` = **2.6 ms** (embedding olmadığı için; 6.4 sn olan `query` yolu bu değil), bir hafta en fazla 21 girdi. Yerel doğrulamada da **`chromadb get (3 recipes) took 7.3 ms`**. Kazanacağı hız yok, karşılığında "hangisi doğru kaynak" sorunu getirirdi → favoriler/koleksiyonlardaki **`?include_details=true`** deseni aynen kullanılıyor. Kart, girdinin **içine** gömülüyor (koleksiyonlardaki ayrı `recipes` listesi yerine): ızgarada her slot kendi tarifini gösteriyor, ayrı liste frontend'de yeniden eşleştirme gerektirirdi.
+
+### İlişki kuralı: plana eklemek favoriye EKLEMİYOR (koleksiyonların TERSİ)
+Koleksiyonlarda "koleksiyon ⊆ favoriler" değişmezi vardı. Burada bilinçli olarak yok:
+- **Koleksiyon bir düzenleme katmanıydı** — favorilerin adlandırılmış alt kümesi; bağımsız olsaydı "kayıtlı ama hiçbir yerde görünmeyen tarif" tutarsızlığı çıkardı.
+- **Plan bir takvim.** Bir tarifi bir kez denemek için planlamak onu kalıcı kaydetmek anlamına gelmez; otomatik favorileme listeyi tek seferlik denemelerle kirletirdi.
+- Ters yön daha da kötü olurdu: kural kurulsaydı **favoriden bir tarif silmek salı akşamını sessizce boşaltırdı.**
+
+**Sarkan kayıt riski yok** — bunu mümkün kılan şey: tarif verisi Firestore'da değil, **salt-okunur ve image'a gömülü** ChromaDB'de. Plan girdisi hiçbir zaman kırık ID'ye işaret edemez. (Koleksiyonlardaki değişmez veri bütünlüğü için değil arayüz tutarlılığı içindi, o yüzden farklı davranmak çelişki değil.) Teste bağlandı: `add_favorite` çağrılmıyor.
+
+### Zaman — sunucu "bugün"ü PLAN KARARI İÇİN kullanmıyor
+Render UTC'de çalışıyor, kullanıcı Istanbul'da. Pazartesi 01:00'de plan yapan kullanıcı için sunucuda hâlâ **pazar**; sunucu tarih hesaplasaydı "bu tarih haftanın dışında" gibi yanlış kararlar verirdi. **Tarih her zaman istemciden geliyor** (`YYYY-MM-DD` düz metin), sunucudaki tek iş takvim aritmetiği:
+
+```python
+def week_start_for(date_str):
+    d = date.fromisoformat(date_str)
+    return (d - timedelta(days=d.weekday())).isoformat()   # weekday(): Pazartesi = 0
+```
+
+**Bu fonksiyon doküman ID'sini belirlediği için kritik**: okuma ve yazma aynı sonucu vermezse veri iki ayrı dokümana bölünür ve kullanıcı planını kaybetmiş görünür. Katman 1'de 10 testle sarıldı (pazar → ISO 8601'de haftanın SON günü, yıl sınırı, artık gün, aynı haftanın 7 gününün TEK cevaba yönelmesi, idempotentlik).
+
+**Hafta pazartesi başlıyor** — karar doküman ID'sine **gömülü**, sonradan pazara çevirmek mevcut haftaları yetim bırakır.
+
+Frontend'de aynı tuzağın JS karşılığı: **`toISOString()` KULLANILMIYOR** (UTC'ye çevirip Istanbul'da gece yarısından sonra günü bir geri kaydırırdı), tarihler elle `padStart` ile kuruluyor. `new Date('2026-07-27')` yerine `new Date('2026-07-27T00:00:00')` — ilki UTC gece yarısı sayılır.
+
+### Endpoint'ler
+```
+GET    /api/meal-plan?week=...[&include_details=true]   haftayı getir
+POST   /api/meal-plan   {date, slot, recipe_id}         slota tarif koy (doluysa DEĞİŞTİRİR)
+DELETE /api/meal-plan?date=...&slot=...                 slotu boşalt
+DELETE /api/meal-plan/week?week=...                     haftayı temizle
+```
+- **Sorgu parametresi, yol parametresi değil** — Faz 17'deki `salt/pepper` dersi (ASGI `scope["path"]`'i yüzde-çözüyor), ayrıca bileşik anahtar (`date`+`slot`) için de doğrusu bu.
+- **`/week` ayrı literal yol** — `/api/pantry/all` ile aynı gerekçe: yıkıcı işlem "parametre boşsa hepsini sil" tuzağına düşmemeli. Onay modalı var. Teste bağlandı (tekil silme yoluna düşmüyor).
+- **`?week=` haftanın herhangi bir günü olabilir**, `validate_week` pazartesiye normalize ediyor — yoksa `?week=2026-07-29` ayrı doküman açar ve aynı hafta iki yere bölünürdü. Canlı doğrulandı: perşembe ve pazar sorguları aynı 3 girdiyi döndürüyor.
+- **POST replace davranışı**: frontend'in "önce sil, sonra ekle" diye iki tur atmasına gerek kalmıyor.
+
+**Slot başına tek tarif bir POLİTİKA, şema kısıtı DEĞİL** — `entries` bir dizi, aynı `(date, slot)` teknik olarak iki kez bulunabilir. Yani ileride "akşam yemeği = ana yemek + garnitür" istenirse **migrasyon gerekmez**, `upsert_entry`'deki tek satırlık kural değişir.
+
+### Frontend
+- **`plan.html` / `js/plan.js` (yeni)** — masaüstünde 7 sütun (gün) × 3 satır (öğün) ızgara; boş slot kesikli "＋" kutusu (favorilerdeki "New collection" kutucuğuyla aynı görsel dil); hafta gezinme (`← Back to this week →`); bugünün sütunu turuncu vurgulu.
+- **Seçici** favorilerden, **lazy** (seçici ilk açıldığında, sayfa açılışında değil — `recipe.js`'teki koleksiyon seçicisinin deseni).
+- **`recipe.html` / `recipe.js`** — kalp ve "Add to collection"ın yanına **"＋ Add to plan"**: gün (önümüzdeki 14 gün, "Today"/"Tomorrow" etiketli) + öğün seçimi, sonrasında "View plan →" linki.
+- **Mobil:** 7×3 ızgara telefona sığmıyor. 1000px altında **güne göre dikey listeye**, 620px altında **gün başlığı üstte, öğünler alt alta** düzenine geçiyor.
+- Tüm sayfalara "Plan" nav linki (artık Plan · Pantry · Favorites).
+
+### Öğün listesi neden İKİ YERDE (bilinçli kopya)
+Kısa süre `GET /api/meal-plan/slots` endpoint'i yazıldı, sonra **kaldırıldı**: 3 elemanlı bir sabit için her plan sayfası açılışına serileştirilmiş bir ağ turu bindiriyordu. Doğruluk kaynağı `meal_plan.SLOTS`; `plan.js` kopyayı taşıyor. **Sessiz ayrışmaya karşı Katman 1'de bir test listeyi sabitliyor** (`test_slots_match_the_frontend_copy`) — backend değişirse test kırılıp `plan.js`'in güncellenmesini zorluyor. Ayrıca yanlış slot gönderilse bile backend `validate_slot` ile reddediyor.
+
+### Test (235 → **316**, +81)
+- **Katman 1:** `week_start_for` (10 test — off-by-one'a en açık yer), `validate_date` (biçim, aralık, `bounded=False`), `validate_slot`, `validate_week` (normalizasyon), `upsert_entry` (replace / komşu slotlara dokunmama / saflık / ID'nin metne çevrilmesi), `sort_entries` (alfabetik değil **öğün** sırası).
+- **Katman 1.5 — sahte Firestore dokümanı:** doküman ID'sinin `{email}_{pazartesi}` olması, `owner_email`/`week_start` yazılması, replace'in tek girdi bırakması, silmenin yalnızca hedef slotu düşürmesi, olmayan dokümanda boşuna yazmama.
+- **Katman 2:** auth sözleşmesi (4 endpoint), `include_details` kart eşleme, **boş hafta → ChromaDB atlanıyor**, silinmiş tarif → `None`, aynı tarif iki slotta → **tek `get`** (tekilleştirme), hafta normalizasyonu, geçersiz girdide Firestore'a **hiç gidilmemesi**, `/week` yolunun tekil silmeye düşmemesi, **favorilere dokunulmaması**.
+
+### Gözden geçirmede bulunan ve düzeltilen 3 kusur
+Kod yazıldıktan sonraki ikinci okumada çıktılar, üçü de teste bağlandı:
+
+1. **`date.replace(year=...)` 29 ŞUBAT'ta patlıyordu.** Aralık sınırı `today.replace(year=today.year ± 1)` ile hesaplanıyordu; artık günde `ValueError: day is out of range for month` fırlatır ve o gün **hiçbir tarih kabul edilmezdi** — dört yılda bir uygulamayı kilitleyen tür bir hata. Gün aritmetiğine çevrildi (`timedelta(days=366)`). Test bugünü 2028-02-29'a dondurup normal bir tarihin geçtiğini doğruluyor.
+2. **Bir yıldan eski planlar ERİŞİLEMEZ hale geliyordu.** Aralık sınırı okuma ve silme yollarında da uygulanıyordu, yani eski bir plan ne görüntülenebilir ne silinebilirdi. Sınırın amacı `year=9999` gibi **çöp doküman açılmasını** engellemek, yani yalnızca yazmayla ilgili → `validate_date(..., bounded=False)` okuma/silme yollarında. Canlı doğrulandı: 2001 tarihli hafta okunuyor ve temizlenebiliyor, ama o tarihe **yazma hâlâ reddediliyor**.
+3. **Boş slotu silmek log'da ERROR (kırmızı) yakıyordu.** Çift tıklama ya da bayat sekme normal bir kullanıcı durumu, arıza değil — canlı loglarda gerçek hatalarla karışırdı. `@timed(expected=(ValueError,))` ile WARNING'e çevrildi (Faz 13'te token süresi dolması için kurulan ayrımın aynısı).
+
+Ayrıca `PlanEntryRequest`'teki `max_length=10` gevşetildi: boşluklu bir tarih ham **422** ile kesiliyordu, oysa `validate_date` onu zaten trim'liyor ve anlaşılır bir mesaj dönüyor.
+
+### Doğrulama (yerel Docker, GERÇEK Firestore + GERÇEK ChromaDB) ✅
+Auth bypass'lı TestClient ile gerçek endpoint'ler çağrıldı, test verisi sonra **temizlendi**:
+
+| Adım | Sonuç | Süre |
+|---|---|---:|
+| Boş hafta | `entries: []` | 136 ms |
+| Slota tarif koyma | girdi yazıldı | 245 ms |
+| Aynı slota başka tarif | **1 girdi**, `recipe_id=37913` (replace) | 263 ms |
+| Hafta + kart bilgileri | lunch/dinner/breakfast doğru sırada | 103 ms (`chromadb get` **7.3 ms**) |
+| Perşembe & pazar sorgusu | ikisi de `2026-07-27`, 3 girdi | 125/138 ms |
+| Geçersiz slot / tarih / uzak tarih | 200 + anlamlı `error`, Firestore'a **gidilmiyor** (0.1 ms) | — |
+| Olmayan slotu silme | `There is nothing planned for that slot.` (WARNING) | 95 ms |
+| **Favoriler** | **0 favori** — plana eklemek favoriye eklemiyor ✅ | — |
+| Hafta temizleme | `removed: 2`, boşken tekrar `removed: 0` | 253 ms |
+
+**JS syntax kontrolü artık OTOMATİK** (Faz 16'da "node kurulu değil" diye elle yapılmıştı): yerelde `node:alpine` image'ı mevcut olduğu için 11 frontend dosyasının hepsi `vm.Script` ile derlendi, hepsi geçti.
+
+### Bilinen sınırlar
+- **Porsiyon / kişi sayısı yok** — alışveriş listesi fazında anlamlı olacak.
+- **Otomatik plan önerisi ("haftamı sen doldur") yok** — 21 slot için Gemini çağrısı, günde 20 kotalık bir modelde ciddi maliyet. Premium özellik hikâyesinin doğal yeri.
+- **`recipe_id` ChromaDB'ye karşı doğrulanmıyor** (favorilerdeki davranışın aynısı): olmayan bir ID planlanabilir, ızgarada "Recipe unavailable" görünür.
+- **Seçici yalnızca favorilerden besleniyor.** Favoride olmayan bir tarifi planlamanın yolu tarif detay sayfasındaki "Add to plan" — bilinçli, çünkü seçiciye tüm veri setini koymak ayrı bir arama arayüzü demekti.
+- **Sürükle-bırak yok** (slotu değiştirmek = sil + yeniden ekle). Sade JS'te HTML5 drag-and-drop mobilde çalışmıyor, ayrı bir dokunma implementasyonu gerektirirdi.
+
+### Yerelde test
+`docker compose up -d --build api` (backend `COPY` ile image'a girdiği için rebuild şart) + `docker restart recipe_frontend` + tarayıcıda `Ctrl+Shift+R`.
+
+---
+
+## Faz 17 (Pantry "Dolabım" + yapılandırılmış malzeme verisi) ✅
 
 **Tetikleyici:** Yol haritasının 2. adımı. Kamera özelliği bugüne kadar **TEK SEFERLİKTİ** — fotoğraftan tanınan malzemeler ekranda gösterilip sayfa değişince uçuyordu. Pantry onları kalıcı hale getiriyor: kullanıcı ertesi gün fotoğraf çekmeden "bugün ne pişirebilirim?" diyebiliyor. Stratejik nokta: genel bir yapay zekaya dolabını her seferinde baştan anlatman gerekir; uygulama **hatırlıyor**.
 
@@ -1006,6 +1133,9 @@ Yani **model başına günde 20 istek**. Kritik ayrıntı `PerModel`: kota model
 
 **Firestore (`collections` koleksiyonu, Faz 16):**
 - Kullanıcı koleksiyonları (owner_email, name, created_at, recipe_ids dizisi). Doküman ID'si Firestore auto-ID. Üyelik dizide tutuluyor. İlişki kuralı: koleksiyon üyeliği ⊆ favoriler.
+
+**Firestore (`meal_plans` koleksiyonu, Faz 18):**
+- Haftalık yemek planı. Doküman ID'si bileşik: `{email}_{hafta_pazartesisi}` (hafta başına bir doküman), girdiler `entries` dizisinde (`date`, `slot`, `recipe_id`, `added_at`). **Favorilerle ilişkisi YOK** — plana eklemek favoriye eklemiyor.
 
 **Firebase Auth:** kullanıcılar (Faz 6'dan beri).
 
