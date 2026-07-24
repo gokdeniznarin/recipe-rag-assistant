@@ -1429,3 +1429,163 @@ body {
   }
   .remove-from-collection { padding: 0 0.7rem; font-size: 0.78rem; }
 }
+
+
+/* ═══════════════════════════════════════════════════════ */
+/*  PANTRY                                                 */
+/* ═══════════════════════════════════════════════════════ */
+
+.pantry-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.pantry-head .section-heading { margin-bottom: 0.75rem; }
+
+.pantry-head-right {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  flex-shrink: 0;
+}
+
+/* Yıkıcı ama nadir bir eylem: buton görünümü yerine sessiz bir bağlantı,
+   üstüne gelince kırmızıya dönüyor (onay modalı asıl freni koyuyor). */
+.pantry-clear-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-decoration: underline;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.pantry-clear-btn:hover { color: var(--error); }
+
+/* Malzeme çipleri — dolap kısa etiketlerden oluşuyor, liste yerine çip
+   düzeni hem yer kazandırıyor hem "envanter" hissi veriyor. */
+.pantry-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.pantry-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem 0.4rem 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.9rem;
+  color: var(--text);
+  transition: border-color 0.2s;
+}
+
+.pantry-chip:hover { border-color: var(--olive-mid); }
+
+.pantry-chip-name { line-height: 1; }
+
+.pantry-chip-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: var(--bg);
+  border: none;
+  border-radius: 50%;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.pantry-chip-remove:hover {
+  background: #FDECEA;
+  color: var(--error);
+}
+
+.pantry-chip-remove:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.pantry-cook-btn {
+  display: inline-block;
+  text-decoration: none;
+}
+
+/* ── Kamera/dolap kutusundaki satır düzeni ─────────────── */
+.detected-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.detected-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
+.detected-status {
+  font-size: 0.85rem;
+  color: var(--olive-mid);
+}
+
+.pantry-manage-link {
+  font-size: 0.85rem;
+  color: var(--olive-mid);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.pantry-manage-link:hover { color: var(--accent); }
+
+/* ── Eşleşme rozeti (dolaptan arama sonuçlarında) ──────── */
+/* Diyet etiketlerinden AYRIŞMALI: o etiketler tarifin özelliği, bu rozet
+   kullanıcıya özel bir ölçü. Bu yüzden aksan rengiyle dolu bir pill. */
+.pantry-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+  cursor: help;
+}
+
+/* ── Tarif detayı: malzeme listesi ─────────────────────── */
+.ingredients-list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.ingredients-list li {
+  padding: 0.4rem 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.ingredients-list .no-instructions {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 0.5rem 0;
+}

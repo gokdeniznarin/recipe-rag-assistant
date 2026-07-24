@@ -19,6 +19,7 @@
         <span class="brand-name">Recipe Assistant</span>
       </a>
       <nav class="app-nav">
+  <a href="pantry.html" class="nav-link">Pantry</a>
   <a href="favorites.html" class="nav-link">Favorites</a>
   
   <div class="user-menu">
@@ -41,10 +42,11 @@
       <p class="page-sub">Describe what you want, or show us what's in your fridge.</p>
     </section>
 
-    <!-- Metin / Kamera sekmeleri -->
+    <!-- Metin / Kamera / Dolap sekmeleri -->
     <div class="mode-tabs">
       <button class="mode-tab active" data-mode="text">Text search</button>
       <button class="mode-tab" data-mode="camera">Camera search</button>
+      <button class="mode-tab" data-mode="pantry">From my pantry</button>
     </div>
 
 <!-- Metin sekmesi -->
@@ -83,8 +85,17 @@
         </div>
 
         <div id="detected-ingredients" class="detected-box hidden">
-          <span class="detected-label">Detected:</span>
-          <span id="detected-list" class="detected-list"></span>
+          <div class="detected-row">
+            <span class="detected-label">Detected:</span>
+            <span id="detected-list" class="detected-list"></span>
+          </div>
+          <!-- Kamerayı kalıcı hale getiren adım: tanınanları dolaba kaydet -->
+          <div class="detected-actions">
+            <button type="button" id="add-detected-btn" class="btn-outline btn-sm">
+              ＋ Add to pantry
+            </button>
+            <span id="add-detected-status" class="detected-status"></span>
+          </div>
         </div>
 
         <form id="camera-form" class="search-form hidden">
@@ -95,6 +106,31 @@
             placeholder="Add optional text (e.g. 'quick and vegetarian')"
           />
           <button type="submit" class="btn-accent">Search with photo</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Dolap sekmesi -->
+    <section id="pantry-panel" class="search-panel hidden">
+      <div class="camera-block">
+        <div id="pantry-summary" class="detected-box">
+          <div class="detected-row">
+            <span class="detected-label">In your pantry:</span>
+            <span id="pantry-summary-list" class="detected-list">Loading…</span>
+          </div>
+          <div class="detected-actions">
+            <a href="pantry.html" class="pantry-manage-link">Manage pantry →</a>
+          </div>
+        </div>
+
+        <form id="pantry-form" class="search-form">
+          <input
+            type="text"
+            id="pantry-extra"
+            class="search-input"
+            placeholder="Add optional text (e.g. 'quick and vegetarian')"
+          />
+          <button type="submit" id="pantry-search-btn" class="btn-accent">Find recipes</button>
         </form>
       </div>
     </section>

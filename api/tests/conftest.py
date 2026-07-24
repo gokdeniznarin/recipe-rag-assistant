@@ -40,6 +40,8 @@ def _default_collection() -> MagicMock:
         "name": "Test Recipe", "category": "Chicken", "total_time_min": 20,
         "calories": 300.0, "protein_content": 25.0, "carbohydrate_content": 10.0,
         "fat_content": 5.0, "instructions": "1. Cook it.",
+        # ChromaDB metadata liste tutamıyor → `|` ile ayrılmış metin (Faz 17)
+        "ingredients": "chicken breast|tomatoes|olive oil|garlic",
         "gluten_free": True, "dairy_free": True, "nut_free": True,
         "vegetarian": False, "pescatarian": False, "vegan": False,
     }

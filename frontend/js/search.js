@@ -3,6 +3,7 @@ const searchLog = Logger.get('search');
 // ── DOM elemanları ───────────────────────────────────────
 const textPanel      = document.getElementById('text-panel');
 const cameraPanel    = document.getElementById('camera-panel');
+const pantryPanel    = document.getElementById('pantry-panel');
 const textForm       = document.getElementById('text-form');
 const textQuery      = document.getElementById('text-query');
 const loading        = document.getElementById('loading');
@@ -24,9 +25,19 @@ const cameraForm     = document.getElementById('camera-form');
 const cameraExtra    = document.getElementById('camera-extra');
 const detectedBox    = document.getElementById('detected-ingredients');
 const detectedList   = document.getElementById('detected-list');
+const addDetectedBtn = document.getElementById('add-detected-btn');
+const addDetectedStatus = document.getElementById('add-detected-status');
 
-let cameraStream    = null;
-let capturedBase64  = null;
+// Dolap elemanları
+const pantryForm        = document.getElementById('pantry-form');
+const pantryExtra       = document.getElementById('pantry-extra');
+const pantrySummaryList = document.getElementById('pantry-summary-list');
+const pantrySearchBtn   = document.getElementById('pantry-search-btn');
+
+let cameraStream     = null;
+let capturedBase64   = null;
+let detectedNames    = [];      // son fotoğrafta tanınanlar (dolaba eklemek için)
+let pantryLoaded     = false;   // dolap özeti bir kez çekilsin (lazy)
 
 // ── Mode tabs ────────────────────────────────────────────
 document.querySelectorAll('.mode-tab').forEach(btn => {
@@ -37,13 +48,26 @@ document.querySelectorAll('.mode-tab').forEach(btn => {
     const mode = btn.dataset.mode;
     textPanel.classList.toggle('hidden', mode !== 'text');
     cameraPanel.classList.toggle('hidden', mode !== 'camera');
+    pantryPanel.classList.toggle('hidden', mode !== 'pantry');
 
     // Kamera sekmesinden çıkıldığında stream'i kapat
     if (mode !== 'camera' && cameraStream) {
       stopCamera();
     }
+
+    // Dolap özetini yalnızca sekmeye ilk girişte çek (lazy — her sayfa
+    // yüklemesinde gereksiz bir Firestore okuması yapmayalım)
+    if (mode === 'pantry' && !pantryLoaded) loadPantrySummary();
   });
 });
+
+// pantry.html "Find recipes" ile buraya yönlendiriyor: search.html?mode=pantry
+(function applyModeFromUrl() {
+  const mode = new URLSearchParams(window.location.search).get('mode');
+  if (!mode) return;
+  const tab = document.querySelector(`.mode-tab[data-mode="${mode}"]`);
+  if (tab) tab.click();
+})();
 
 // ── Yardımcı fonksiyonlar ────────────────────────────────
 function showLoading() {
@@ -130,6 +154,17 @@ const renderResults = Logger.timed(function (data) {
       .map(t => `<span class="tag">${t}</span>`)
       .join('');
 
+    // Eşleşme rozeti: "bu tarif dolabındaki 4/6 malzemeyi kullanıyor".
+    // Backend bu alanı YALNIZCA /api/recipes/from-pantry yanıtına ekliyor
+    // (metin/kamera aramasına eklemek her aramaya bir Firestore okuması
+    // bindirirdi), o yüzden diğer modlarda sessizce yok sayılıyor.
+    // title ile hangi malzemelerin eşleştiği de gösteriliyor — sayı tek başına
+    // "hangileri?" sorusunu doğurur.
+    const pm = recipe.pantry_match;
+    const badgeHtml = pm && pm.count > 0
+      ? `<span class="pantry-badge" title="Uses from your pantry: ${escapeHtml(pm.matched.join(', '))}">${pm.count}/${pm.pantry_total} from pantry</span>`
+      : '';
+
     card.innerHTML = `
       <div class="recipe-card-body">
         <h3 class="recipe-name">${escapeHtml(recipe.name)}</h3>
@@ -138,7 +173,7 @@ const renderResults = Logger.timed(function (data) {
           ${recipe.total_time_min > 0 ? ` · ${recipe.total_time_min} min` : ''}
           ${recipe.calories > 0 ? ` · ${Math.round(recipe.calories)} cal` : ''}
         </p>
-        <div class="recipe-tags">${tagsHtml}</div>
+        <div class="recipe-tags">${badgeHtml}${tagsHtml}</div>
       </div>
       <span class="recipe-arrow">→</span>
     `;
@@ -273,7 +308,10 @@ cameraForm.addEventListener('submit', async (e) => {
       showError(data.error);
     } else {
       // Tanınan malzemeleri göster (asla input'a yazma!)
-      detectedList.textContent = data.detected_ingredients.join(', ');
+      detectedNames = data.detected_ingredients;
+      detectedList.textContent = detectedNames.join(', ');
+      addDetectedStatus.textContent = '';        // önceki fotoğrafın mesajı kalmasın
+      addDetectedBtn.disabled = false;
       detectedBox.classList.remove('hidden');
       renderResults(data);
       loadCommentary(data.combined_query, data.results);   // bilerek await edilmiyor
@@ -287,6 +325,95 @@ cameraForm.addEventListener('submit', async (e) => {
 
 // Sayfa kapatılırken kamerayı serbest bırak
 window.addEventListener('beforeunload', stopCamera);
+
+
+// ── Dolaba ekleme (kameradan) ────────────────────────────
+// Kamera özelliğini TEK SEFERLİK olmaktan çıkaran adım: tanınan malzemeler
+// kaydedilince kullanıcı ertesi gün fotoğraf çekmeden arama yapabiliyor.
+addDetectedBtn.addEventListener('click', async () => {
+  if (detectedNames.length === 0) return;
+
+  addDetectedBtn.disabled = true;
+  addDetectedStatus.textContent = 'Saving…';
+
+  try {
+    const data = await apiRequest('/api/pantry', {
+      method: 'POST',
+      body: JSON.stringify({ names: detectedNames }),
+    });
+
+    if (data.error) {
+      addDetectedStatus.textContent = data.error;
+      addDetectedBtn.disabled = false;
+      return;
+    }
+
+    const added   = (data.added || []).length;
+    const skipped = (data.skipped || []).length;
+    const invalid = (data.invalid || []).length;
+    // Zaten dolapta olanlar hata değil, normal durum — sayıyı dürüstçe söyle.
+    // invalid: Gemini'nin döndürdüğü kullanılamaz öğeler (boş/çok uzun); parti
+    // düşmüyor, sadece o öğeler atlanıyor.
+    const parts = [`${added} added to your pantry`];
+    if (skipped) parts.push(`${skipped} already there`);
+    if (invalid) parts.push(`${invalid} skipped`);
+    addDetectedStatus.textContent = parts.join(' · ');
+
+    pantryLoaded = false;   // özet bayatladı, dolap sekmesine girince tazelensin
+  } catch (err) {
+    addDetectedStatus.textContent = 'Could not save to your pantry.';
+    addDetectedBtn.disabled = false;
+  }
+});
+
+
+// ── Dolaptan arama ───────────────────────────────────────
+async function loadPantrySummary() {
+  try {
+    const data = await apiRequest('/api/pantry');
+    const items = data.items || [];
+    pantryLoaded = true;
+
+    if (items.length === 0) {
+      pantrySummaryList.textContent = 'Empty — add ingredients first.';
+      pantrySearchBtn.disabled = true;
+    } else {
+      pantrySummaryList.textContent = items.map(i => i.name).join(', ');
+      pantrySearchBtn.disabled = false;
+    }
+  } catch (err) {
+    pantrySummaryList.textContent = 'Could not load your pantry.';
+    pantrySearchBtn.disabled = true;
+  }
+}
+
+pantryForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  showLoading();
+  try {
+    // Malzemeler gönderilmiyor — backend dolabı Firestore'dan kendisi okuyor
+    // (istemcinin gönderdiği listeye göre arama kurulmuyor).
+    const data = await apiRequest('/api/recipes/from-pantry', {
+      method: 'POST',
+      body: JSON.stringify({
+        additional_text: pantryExtra.value.trim(),
+        n_results: 5,
+      }),
+    });
+
+    if (data.error) {
+      showError(data.error);
+    } else {
+      renderResults(data);
+      loadCommentary(data.combined_query, data.results);   // bilerek await edilmiyor
+    }
+  } catch (err) {
+    showError('Could not reach the server.');
+  } finally {
+    hideLoading();
+  }
+});
 
 
 // ── Web Speech API (voice search) ────────────────────────

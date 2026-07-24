@@ -17,6 +17,14 @@ from collections_store import (
     remove_recipe_from_collection,
     remove_recipe_from_all_collections,
 )
+from pantry import (
+    get_pantry,
+    add_pantry_items,
+    remove_pantry_item,
+    clear_pantry,
+    count_pantry_matches,
+    build_pantry_query,
+)
 from logger import get_logger, timed, timed_block
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -59,6 +67,13 @@ class SearchRequest(BaseModel):
     n_results: int = Field(5, ge=1, le=20)
 
 
+def _ingredients_list(meta: dict) -> list[str]:
+    """Malzeme listesi. ChromaDB metadata'sı liste tutamadığı için `|` ile
+    ayrılmış tek metin olarak saklanıyor (bkz. load_to_chromadb.py)."""
+    raw = meta.get("ingredients", "")
+    return [part.strip() for part in raw.split("|") if part.strip()] if raw else []
+
+
 def _recipe_card(recipe_id: str, meta: dict, doc: str) -> dict:
     """Liste kartlarının ihtiyaç duyduğu alanlar (detay sayfasınınkinden dar)."""
     return {
@@ -67,6 +82,7 @@ def _recipe_card(recipe_id: str, meta: dict, doc: str) -> dict:
         "category": meta["category"],
         "total_time_min": meta["total_time_min"],
         "calories": meta["calories"],
+        "ingredients": _ingredients_list(meta),
         "diet_tags": {
             "gluten_free": meta["gluten_free"],
             "dairy_free": meta["dairy_free"],
@@ -329,6 +345,9 @@ def get_recipe_detail(recipe_id: str, user_email: str = Depends(get_current_user
         "carbohydrate_content": meta["carbohydrate_content"],
         "fat_content": meta["fat_content"],
         "instructions": meta.get("instructions", ""),
+        # Faz 17'de eklendi: önceden malzemeler yalnızca gömme metninin içinde
+        # düz yazı olarak vardı, detay sayfası hiç gösteremiyordu.
+        "ingredients": _ingredients_list(meta),
         "diet_tags": {
             "gluten_free": meta["gluten_free"],
             "dairy_free": meta["dairy_free"],
@@ -571,3 +590,172 @@ def remove_recipe_from_collection_endpoint(
     except ValueError as e:
         log.warning("Remove from collection rejected (%r): %s", collection_id, e)
         return {"error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════
+#  PANTRY ("Dolabım") — kalıcı malzeme listesi.
+#  Kamera akışını tek seferlik olmaktan çıkarıp kalıcı kullanıcı verisine
+#  dönüştürüyor. Veri erişimi pantry.py'de.
+# ═══════════════════════════════════════════════════════════
+
+class PantryAddRequest(BaseModel):
+    # Liste olarak alıyoruz ki tek endpoint hem elle eklemeyi (1 malzeme) hem
+    # kameradan toplu eklemeyi karşılasın.
+    names: list[str] = Field(..., max_length=50)
+
+
+@app.get("/api/pantry")
+@timed
+def list_pantry_endpoint(user_email: str = Depends(get_current_user_email)):
+    return {"items": get_pantry(user_email)}
+
+
+@app.post("/api/pantry")
+@timed
+def add_pantry_endpoint(
+    request: PantryAddRequest,
+    user_email: str = Depends(get_current_user_email),
+):
+    try:
+        result = add_pantry_items(user_email, request.names)
+    except ValueError as e:
+        log.warning("Add to pantry rejected: %s", e)
+        return {"error": str(e)}
+
+    # Güncel listeyi de dönüyoruz: frontend ekleme sonrası ikinci bir GET
+    # atmasın (kamera akışında 8 malzeme eklenince fark ediliyor).
+    return {**result, "items": get_pantry(user_email)}
+
+
+@app.delete("/api/pantry/all")
+@timed
+def clear_pantry_endpoint(user_email: str = Depends(get_current_user_email)):
+    """Dolabı tamamen boşaltır.
+
+    AYRI BİR YOL, `?name` boş bırakılınca değil: silme parametresini opsiyonel
+    yapıp "yoksa hepsini sil" demek klasik bir tuzak olurdu — frontend'de
+    parametreyi düşüren tek bir hata bütün dolabı silerdi. Yıkıcı işlem açıkça
+    ayrı bir adres istiyor. (`/api/pantry/all` literal yol; `{name}` parametreli
+    bir rota kalmadığı için gölgeleme riski de yok.)
+    """
+    removed = clear_pantry(user_email)
+    log.info("Pantry cleared (%s items)", removed)
+    return {"message": "Pantry cleared", "removed": removed}
+
+
+@app.delete("/api/pantry")
+@timed
+def remove_pantry_endpoint(
+    # Malzeme adı YOL parametresi DEĞİL sorgu parametresi: ASGI `scope["path"]`
+    # yüzde-çözülmüş geliyor, yani "salt%2Fpepper" gerçek bölü işaretine dönüşüp
+    # tek segmentlik `/{name}` yolunu eşleştirmiyordu (404). Malzeme adları
+    # serbest metin olduğu için bu gerçek bir risk.
+    name: str,
+    user_email: str = Depends(get_current_user_email),
+):
+    try:
+        remove_pantry_item(user_email, name)
+        return {"message": "Ingredient removed from pantry", "name": name}
+    except ValueError as e:
+        log.warning("Remove from pantry rejected (%r): %s", name, e)
+        return {"error": str(e)}
+
+
+class PantrySearchRequest(BaseModel):
+    additional_text: str = Field("", max_length=200)
+    n_results: int = Field(5, ge=1, le=20)
+
+
+# Eşleşmeye göre yeniden sıralayabilmek için istenenden kaç kat fazla aday
+# çekileceği. 4 seçildi: 5 sonuç için 20 aday, ChromaDB'ye maliyeti ihmal
+# edilebilir ama semantik sırada geride kalmış yüksek eşleşmeli tarifleri
+# yakalamaya yetiyor. MAX_CANDIDATES üst sınır (n_results=20 istenirse 80
+# değil 50 aday çekilir).
+CANDIDATE_MULTIPLIER = 4
+MAX_CANDIDATES = 50
+
+
+@app.post("/api/recipes/from-pantry")
+@timed
+def search_recipes_from_pantry(
+    request: PantrySearchRequest,
+    user_email: str = Depends(get_current_user_email),
+):
+    """Dolaptakilerle tarif arama — /api/recipes/from-image'ın kardeşi.
+
+    YENİ BİR ARAMA MANTIĞI YOK: aynı RAG pipeline'ı (embedding → ChromaDB
+    semantic + metadata filtresi), yalnızca malzeme listesinin KAYNAĞI farklı
+    (Firestore vs Gemini vision).
+
+    Malzemeler istemciden DEĞİL Firestore'dan okunuyor — istemcinin gönderdiği
+    listeye göre arama kurmak, commentary endpoint'indeki "tarif bilgisi
+    ID'lerden okunur" korumasının aynı gerekçesiyle istenmez.
+
+    `is_food_request` BURADA YOK: dolaptakiler zaten yemek malzemesi, non-food
+    sorgu diye bir durum oluşmuyor (from-image'daki gerekçenin aynısı) — bir
+    Gemini çağrısı da tasarruf ediliyor.
+    """
+    pantry_items = get_pantry(user_email)
+    if not pantry_items:
+        log.warning("Pantry search with empty pantry")
+        return {
+            "pantry_items": [],
+            "results": [],
+            "error": "Your pantry is empty. Add some ingredients first.",
+        }
+
+    names = [i["name"] for i in pantry_items]
+    combined_query = build_pantry_query(names, request.additional_text)
+
+    with timed_block("extract_filters"):
+        where_filter = extract_filters(combined_query)
+
+    # ADAY HAVUZU: istenenden FAZLA sonuç çekiliyor (over-fetch), çünkü aşağıda
+    # eşleşme sayısına göre yeniden sıralayacağız. Yalnızca n_results kadar
+    # çekseydik sıralama elimizdeki 5'i karıştırmaktan ibaret kalırdı — semantik
+    # olarak 7. sırada olan ama dolapla 9/11 eşleşen bir tarif hiç görünmezdi.
+    # ChromaDB'ye 20 aday sormak 5 sormakla neredeyse aynı maliyette (mesafe
+    # hesabı zaten tüm koleksiyon üzerinde yapılıyor, fark sadece kaç tanesinin
+    # döndürüldüğü).
+    candidate_count = min(request.n_results * CANDIDATE_MULTIPLIER, MAX_CANDIDATES)
+
+    with timed_block("chromadb query"):
+        results = collection.query(
+            query_texts=[combined_query],
+            n_results=candidate_count,
+            where=where_filter,
+        )
+
+    recipes = _cards_from_query(results)
+
+    # Eşleşme rozeti ("dolabındaki 4/6 malzemeyi kullanıyor").
+    # Burada BEDAVA: dolap zaten yukarıda okundu, ek Firestore turu yok.
+    # Bilinçli olarak yalnızca bu endpoint'te — metin/kamera aramasına eklemek
+    # her aramaya bir Firestore okuması bindirirdi (ölçüldü: ~100-250 ms sıcak,
+    # container yeniden başladıktan sonraki ilk çağrıda 6.12 sn), yani Faz 11'de
+    # kazanılan "arama hızlı" özelliğini aşındırırdı.
+    for card in recipes:
+        matched = count_pantry_matches(names, card["ingredients"])
+        card["pantry_match"] = {
+            "matched": matched,
+            "count": len(matched),
+            "pantry_total": len(names),
+        }
+
+    # EN ÇOK EŞLEŞEN ÜSTTE. Bu modda kullanıcının sorduğu soru "elimdekilerle ne
+    # yapabilirim", dolayısıyla alaka ölçüsü eşleşme sayısı — rozeti gösterip
+    # 8/11'i 4/11'in altında bırakmak görünür bir tutarsızlıktı.
+    # sort STABLE: eşit sayıda eşleşen tarifler semantik sıralarını koruyor,
+    # yani eşleşme ayırt etmediğinde vektör benzerliği hâlâ karar veriyor.
+    recipes.sort(key=lambda c: c["pantry_match"]["count"], reverse=True)
+    recipes = recipes[:request.n_results]
+
+    if not recipes:
+        log.warning("No results for pantry query (filters: %s)", where_filter)
+
+    return {
+        "pantry_items": names,
+        "combined_query": combined_query,
+        "applied_filters": where_filter,
+        "results": recipes,
+    }

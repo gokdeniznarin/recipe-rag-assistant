@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pantry — Recipe Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="app-header-inner">
+      <a href="search.html" class="brand">
+        <span class="brand-mark">✦</span>
+        <span class="brand-name">Recipe Assistant</span>
+      </a>
+      <nav class="app-nav">
+  <a href="pantry.html" class="nav-link">Pantry</a>
+  <a href="favorites.html" class="nav-link">Favorites</a>
+
+  <div class="user-menu">
+    <button id="user-btn" class="user-btn">
+      <span id="user-email">…</span>
+      <span class="chevron">▾</span>
+    </button>
+    <div id="user-dropdown" class="user-dropdown hidden">
+      <button id="logout-btn" class="dropdown-item">Sign out</button>
+    </div>
+  </div>
+</nav>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="search-hero">
+      <h1 class="page-title">Your pantry</h1>
+      <p class="page-sub">What you have at home. Snap a photo on the search page or add items by hand.</p>
+    </section>
+
+    <!-- Ekleme formu -->
+    <form id="add-form" class="search-form">
+      <input
+        type="text"
+        id="add-input"
+        class="search-input"
+        maxlength="60"
+        placeholder="Add an ingredient (e.g. olive oil)"
+      />
+      <button type="submit" class="btn-accent">Add</button>
+    </form>
+    <p id="add-error" class="inline-error hidden"></p>
+
+    <!-- Yükleniyor -->
+    <div id="loading" class="loading">
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+    </div>
+
+    <!-- Dolap içeriği -->
+    <section id="pantry-section" class="hidden">
+      <div class="pantry-head">
+        <h2 class="section-heading">In your pantry</h2>
+        <div class="pantry-head-right">
+          <span id="pantry-count" class="results-count"></span>
+          <button id="clear-all-btn" class="pantry-clear-btn" type="button">Clear all</button>
+        </div>
+      </div>
+
+      <div id="pantry-items" class="pantry-chips"></div>
+
+      <a href="search.html?mode=pantry" class="btn-accent pantry-cook-btn">
+        Find recipes with these →
+      </a>
+    </section>
+
+    <!-- Boş durum -->
+    <div id="empty-state" class="empty-state hidden">
+      <div class="empty-icon">🧺</div>
+      <h2 class="empty-title">Your pantry is empty</h2>
+      <p class="empty-text">
+        Add ingredients above, or take a photo of your fridge on the search page
+        and save what we detect.
+      </p>
+      <a href="search.html" class="btn-accent empty-btn">Open camera search</a>
+    </div>
+
+    <!-- Hata -->
+    <div id="pantry-error" class="page-error hidden"></div>
+  </main>
+
+  <!-- Boşaltma onayı (yıkıcı işlem — koleksiyon silmedeki desenin aynısı) -->
+  <div id="clear-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h3 class="modal-title">Clear your pantry?</h3>
+      <p class="modal-text">
+        This removes <span id="clear-count">all</span> from your pantry.
+        You can always add them again.
+      </p>
+      <div class="modal-actions">
+        <button id="clear-cancel" class="btn-outline btn-sm">Cancel</button>
+        <button id="clear-confirm" class="btn-accent btn-sm">Clear all</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase (compat SDK) -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="js/firebase.js"></script>
+  <script src="js/logger.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/pantry.js"></script>
+</body>
+</html>

@@ -16,6 +16,7 @@ const categoryEl   = document.getElementById('recipe-category');
 const tagsEl       = document.getElementById('recipe-tags');
 const descEl       = document.getElementById('recipe-description');
 const instructionsEl = document.getElementById('recipe-instructions');
+const ingredientsEl  = document.getElementById('recipe-ingredients');
 const favoriteBtn  = document.getElementById('favorite-btn');
 
 const addCollectionBtn = document.getElementById('add-collection-btn');
@@ -57,6 +58,14 @@ function renderRecipe(recipe) {
 
   // Description
   descEl.textContent = recipe.description || 'No description available.';
+
+  // Malzemeler — Faz 17'de eklendi. Önceden metadata'da yapılandırılmış malzeme
+  // listesi yoktu (yalnızca gömme metninin içinde düz yazıydı), bu yüzden detay
+  // sayfası malzemeleri hiç gösteremiyordu.
+  const ingredients = recipe.ingredients || [];
+  ingredientsEl.innerHTML = ingredients.length === 0
+    ? '<li class="no-instructions">No ingredient list available for this recipe.</li>'
+    : ingredients.map(i => `<li>${escapeHtml(i)}</li>`).join('');
 
   // Instructions: "1. adım1 2. adım2..." formatını split ederek liste yapıyoruz
   const rawInstructions = recipe.instructions || '';
