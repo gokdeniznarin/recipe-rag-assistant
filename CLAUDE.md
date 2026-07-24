@@ -148,7 +148,7 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 - **`nut_free` etiketinde açık var** (Faz 7'de tesadüfen fark edildi): "nut free cookies for kids" araması `Pine Nut and Almond Cookies` ve `wheat free peanut butter cookies` döndürüyor — ikisi de `nut_free: True` etiketli, yani yanlış. **KÖK SEBEP FAZ 15'TE BULUNDU** (eski tahmin "bileşik adlar kural listesine takılmıyor" YANLIŞTI) — ayrıntı için Faz 15b. Hata henüz **düzeltilmedi**; `xfail(strict=True)` testi olarak kayıtlı (`ingestion/tests/test_clean_data.py`), düzeltilince test XPASS verip suite'i kırar ve işaretin kaldırılmasını zorlar.
 
 ## Şu An Üzerinde Çalışılıyor
-- **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Faz 6–11'in tamamı bu branch'te. `main` el değmemiş durumda. **Canlı deploy `firebase-auth` dalından yapılıyor** (hem Render hem Vercel bu dalı izliyor), dolayısıyla merge sonrası deploy dalını `main`'e çevirmek gerekecek.
+- **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Faz 6–16'nın tamamı bu branch'te. `main` el değmemiş durumda. **Canlı deploy `firebase-auth` dalından yapılıyor** (hem Render hem Vercel bu dalı izliyor), dolayısıyla merge sonrası deploy dalını `main`'e çevirmek gerekecek.
 - Repo **GitHub'da**: `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private). Sırlar (`firebase-key.json`, `.env`) gitignored, repoda yok — Render'da env var olarak duruyor.
 
 ## Güncel Durum: Faz 16 (Koleksiyonlar — rakip özelliği, gelir yol haritasının 1. adımı) ✅
@@ -201,14 +201,31 @@ DELETE /api/collections/{id}/recipes/{recipe_id}  çıkar (favoride kalır)
 ### Test (148 → **175**, +27)
 - **Katman 1:** `validate_collection_name` (boş / whitespace / None / 60 sınırı / trim sonrası ölçüm / unicode) — saf, mock yok.
 - **Katman 2 (`api/tests/test_collections.py`):** auth sözleşmesi (header yok → 422); create başarı / duplike (200+error, **500 değil**) / boş ad / 61 karakter (Firestore'a **gitmeden** validate eliyor) / 201 karakter (Pydantic 422); detay (kart eşleme + sıra, boş → ChromaDB **atlanıyor**); **ilişki kuralı** (add → `add_favorite` çağrılıyor; zaten favoriyse `ValueError` yutuluyor; favori silme → `remove_recipe_from_all_collections` çağrılıyor; koleksiyondan çıkarma favoriye **dokunmuyor**); delete.
-- `collections_store`'un Firestore CRUD'u **birim test EDİLMEDİ** (favoriler gibi — MagicMock Firestore anlamlı davranış üretmez); endpoint'te monkeypatch'lenip yalnızca BAĞLANTILARI test ediliyor. Gerçek CRUD canlı Docker'da doğrulanacak.
+- `collections_store`'un Firestore CRUD'u **birim test EDİLMEDİ** (favoriler gibi — MagicMock Firestore anlamlı davranış üretmez); endpoint'te monkeypatch'lenip yalnızca BAĞLANTILARI test ediliyor. **Gerçek CRUD yerel Docker'da gerçek Firestore ile uçtan uca doğrulandı** — aşağıdaki "Doğrulama" bölümüne bak.
 - `git status api/chroma_data` temiz (conftest ChromaDB'yi mock'luyor).
 
 ### Yerelde test
 `docker compose up -d --build api` (backend `COPY` ile image'a girdiği için rebuild şart) + `docker restart recipe_frontend` + tarayıcıda `Ctrl+Shift+R`.
 
+### Doğrulama (yerel Docker, GERÇEK Firestore, tarayıcı üzerinden — 2026-07-24) ✅
+**Yedi endpoint'in tamamı** uçtan uca çalıştırıldı. Ölçümler `docker compose logs api`'den (mock yok, gerçek Firestore):
+
+| Akış | Endpoint | Süre |
+|---|---|---:|
+| Oluşturma — **aynı isim reddi** | `POST /api/collections` | 240 ms |
+| Listeleme | `GET /api/collections` | 100–240 ms |
+| Detay (+ tarif kartları) | `GET /api/collections/{id}?include_details=true` | 103–163 ms |
+| Tarif ekleme (+auto-favorite) | `POST /api/collections/{id}/recipes` | 503–561 ms |
+| Yeniden adlandırma | `PATCH /api/collections/{id}` | 402 ms |
+| Tarifi koleksiyondan çıkarma | `DELETE /api/collections/{id}/recipes/{rid}` | 249 ms |
+| Koleksiyon silme | `DELETE /api/collections/{id}` | 253 ms |
+
+- **Aynı isim yasağı gerçekten çalışıyor** (kullanıcı isteğiydi): `WARNING | main | Create collection rejected ('Breakfast'): You already have a collection with this name.` → **200 + error**, 500 DEĞİL. Favorilerdeki kalıp korunmuş, frontend mesajı olduğu gibi gösteriyor.
+- **CORS preflight sağlam:** `PATCH` ve `DELETE` "basit istek" olmadığı için tarayıcı önce `OPTIONS` atıyor — hepsi 200 döndü. Yeni metodlar Faz 10'daki CORS yapılandırmasıyla ek ayar gerektirmedi.
+- **Yan gözlem — `firestore.client()` tembelliğinin ölçülmüş bedeli:** container yeniden başladıktan sonraki İLK favori isteği `get_favorites took 6.12 s (slow, >1.00 s)`, sonrakiler ~100–250 ms. Faz 9'da "tembel, import anında ağ bağlantısı kurmaz" diye not edilmişti (API'nin Firestore erişilemezken bile açılmasını sağlıyor); bedeli ilk çağrının bağlantı kurulumunu ödemesi.
+
 ### Bilinen sınırlar / ertelenenler
-- **JS makineyle syntax-check edilmedi:** geliştirme ortamında `node` kurulu değil; üç dosya da elle incelendi (mevcut çalışan `favorites.js`/`recipe.js` desenleriyle birebir). Tam doğrulama tarayıcıda.
+- **JS için otomatik syntax kontrolü YOK:** geliştirme ortamında `node` kurulu değil (Faz 13b'de `node --check` kullanılabiliyordu, artık yok); üç dosya elle incelendi. **Tarayıcıda doğrulandı** — yukarıdaki yedi akışın hepsi frontend üzerinden tetiklendi, yani syntax/runtime hatası yok. Yine de bu, tekrarlanabilir bir kontrol değil; JS değişikliklerinde tarayıcı testi şart.
 - **Firestore güvenlik kuralları:** backend Admin SDK ile bağlandığı için kurallar atlanıyor (Faz 9'daki gibi); frontend Firestore'a hiç doğrudan dokunmuyor, sahiplik `owner_email` ile API'de zorlanıyor.
 - **Eski favoriler** koleksiyonsuz kalıyor (yeni özellik, migrasyon yok) — kullanıcı dilediğinde gruplar.
 
