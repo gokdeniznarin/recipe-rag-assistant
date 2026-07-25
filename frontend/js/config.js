@@ -17,3 +17,23 @@
     ? `http://${host}:8080`
     : 'https://recipe-rag-assistant-api-7g6a.onrender.com';
 })();
+
+/**
+ * Alışveriş listesi "Shop this list" / satır-başına "bul" hedefi (Faz 19).
+ * Migros Sanal Market araması. Malzemeler İngilizce; stores.js Türkçe'ye
+ * çevirip buraya veriyor.
+ *
+ * GELİR KAPISI — affiliate. `mode: 'off'` iken link tertemiz bir arama:
+ * ortada sahte hiçbir şey yok, sadece kullanıcıyı markete götürüyor. Gerçek bir
+ * affiliate hesabı açılınca kod değişmeden gelir akmaya başlar:
+ *   - Ağ tarzı (Migros'un affiliate ağının verdiği redirect linki):
+ *       mode: 'wrap', wrap: 'https://ag.example/click?url={url}'
+ *   - Amazon tarzı (URL'ye etiket parametresi eklemek):
+ *       mode: 'append', append: '&tag=SENIN-ID'
+ * `{q}` arama terimi, `{url}` ise kaçışlanmış hedef URL ile değiştiriliyor.
+ */
+window.SHOP = {
+  store: 'Migros',
+  searchUrl: 'https://www.migros.com.tr/arama?q={q}',
+  affiliate: { mode: 'off', append: '', wrap: '' },
+};

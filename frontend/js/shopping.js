@@ -16,6 +16,11 @@ const addInput     = document.getElementById('add-input');
 const addError     = document.getElementById('add-error');
 
 const shopCta      = document.getElementById('shop-cta');
+const shopNote     = document.getElementById('shop-note');
+
+// Buton/not metnini config'deki mağaza adına göre kur (tek yerde tanımlı).
+shopCta.textContent = `Shop this list on ${window.SHOP.store} →`;
+shopNote.textContent = `Opens ${window.SHOP.store} for the items you still need.`;
 
 // ── Durum ────────────────────────────────────────────────
 let currentWeek = null;   // "YYYY-MM-DD" (pazartesi)
@@ -110,6 +115,15 @@ function renderItem(item) {
     ? `<button class="shopping-remove" type="button" aria-label="Remove ${escapeAttr(item.name)}" title="Remove">×</button>`
     : '';
 
+  // Satır-başına market linki: yalnızca ALINACAK (işaretsiz) malzemelerde.
+  // Malzeme Türkçe'ye çevrilip market aramasına gidiyor (affiliate config
+  // uygulanmış URL). Tek malzeme = tek ürün araması, markette sepete atılır.
+  const findLink = !item.checked
+    ? `<a class="shopping-find" href="${escapeAttr(Stores.buildUrl(Stores.toTurkish(item.name), window.SHOP))}"
+          target="_blank" rel="noopener"
+          title="Find on ${escapeAttr(window.SHOP.store)}">${escapeHtml(window.SHOP.store)} ↗</a>`
+    : '';
+
   li.innerHTML = `
     <label class="shopping-check">
       <input type="checkbox" ${item.checked ? 'checked' : ''} />
@@ -118,7 +132,7 @@ function renderItem(item) {
         ${sub ? `<span class="shopping-sub">${escapeHtml(sub)}</span>` : ''}
       </span>
     </label>
-    ${removeBtn}
+    <span class="shopping-actions">${findLink}${removeBtn}</span>
   `;
 
   li.querySelector('input').addEventListener('change', (e) => toggleCheck(item, e.target));
@@ -209,13 +223,15 @@ async function removeCustom(item) {
 }
 
 // ── Shop CTA (gelir kapısı) ──────────────────────────────
-// Gerçek üründe burada affiliate deep-link'i olur (sipariş başına komisyon).
-// Demoda: işaretlenmemiş malzemeler için dürüst bir market/alışveriş araması.
+// İşaretlenmemiş malzemeleri Türkçe'ye çevirip markete (Migros) götürüyor.
+// Affiliate config'i (window.SHOP) doluysa link izlenebilir olur — sipariş
+// başına komisyon. Boşken düz arama: ortada sahte bir şey yok.
+// NOT: çoklu terim araması geniş sonuç verir; asıl kullanışlı yol satır-başına
+// "bul" linkleri (tek ürün). Bu CTA "listeyi markete götür" jesti.
 shopCta.addEventListener('click', () => {
-  const toBuy = items.filter(i => !i.checked).map(i => i.name);
+  const toBuy = items.filter(i => !i.checked).map(i => Stores.toTurkish(i.name));
   if (toBuy.length === 0) return;
-  const query = encodeURIComponent(toBuy.join(', ') + ' buy grocery');
-  window.open(`https://www.google.com/search?tbm=shop&q=${query}`, '_blank', 'noopener');
+  window.open(Stores.buildUrl(toBuy.join(' '), window.SHOP), '_blank', 'noopener');
 });
 
 // ── Hafta yükleme ────────────────────────────────────────

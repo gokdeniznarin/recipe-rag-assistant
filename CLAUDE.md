@@ -206,14 +206,25 @@ DELETE /api/shopping-list/custom?week=&name=          elle çıkar
 - Custom ad **sorgu parametresi** (yol değil) — Faz 17'deki `salt/pepper` dersi (ASGI path yüzde-çözüyor).
 - Boş plan → ChromaDB'ye hiç gidilmiyor. Boş liste iki nedenli olabilir (hiç plan yok / her şey dolapta) — frontend `recipe_count`'a göre farklı mesaj gösteriyor.
 
-### Gelir kapısı: "Shop this list →" CTA (dürüst çerçeve)
-Gerçek affiliate hesabı yok; sahte marka/checkout taklit edilmedi. CTA, işaretlenmemiş malzemeler için **dürüst bir market/alışveriş araması** açıyor (gerçek deep-link, uydurma değil). Sunumda "affiliate linki buraya oturur, komisyon sipariş başına" diye anlatılıyor. Gelir modelini somutlaştırıyor ama yanıltıcı bir şey iddia etmiyor.
+### Gelir kapısı: Migros deep-link + çeviri + affiliate-hazır config (dürüst çerçeve)
+**Karar araştırmaya dayandı** (bkz. aşağıdaki "Neden gerçek sipariş API'si yok"). Üç seviye vardı: (1) markete deep-link, (2) affiliate link, (3) gerçek sipariş API'si. **Seviye 3 kapalı** — Getir/Migros/Trendyol üçüncü taraflara tüketici-sipariş API'si vermiyor (sadece satıcı-tarafı entegrasyon). Yapılan: **Seviye 1 + Seviye 2-hazır config.**
+
+- **Hedef market: Migros Sanal Market** (araştırmada grocery-native + komisyon Amazon'dan iyi ~%3.5). Arama URL'si `migros.com.tr/arama?q=...`.
+- **Çeviri katmanı zorunluydu:** malzemeler İngilizce (dataset), Migros Türkçe — "olive oil" boş döner, "zeytinyağı" döndürür. `frontend/js/stores.js` bir **EN→TR sözlüğü** (~90 yaygın malzeme) + `toTurkish` (longest-match, kelime sınırı: "ham" → "graham" içinde eşleşmiyor) taşıyor. Eşleşmezse İngilizce'ye düşüyor. Tam çeviri servisi (LLM/kota) yerine sözlük — malzeme adları sınırlı, tekrar eden bir küme.
+- **İki devir noktası:** büyük "Shop this list on Migros →" CTA (tüm liste, geniş arama — jest) + **satır-başına "Migros ↗" linki** (tek ürün araması — asıl kullanışlı olan).
+- **Affiliate `window.SHOP` config'inde (config.js), `mode: 'off'`:** bugün link tertemiz bir arama, ortada sahte hiçbir şey yok. Gerçek hesap açılınca **kod değişmeden** gelir akıyor: `mode: 'append'` (Amazon tarzı `&tag=ID`) ya da `mode: 'wrap'` (ağ redirect'i `{url}` sararak). `stores.buildUrl` üçünü de destekliyor (node testiyle doğrulandı).
+- **Dürüstlük:** gerçek marka aramasına yönlendirmek normal bir deep-link (herhangi bir "X'te ara" gibi); sahte marka/checkout/affiliate-ID uydurulmadı. Sunum: *"Affiliate yuvası bağlı; hesap onaylanınca gelir tek config satırı uzakta. Marjı düşük ama oyun hacim ve yapışkanlık."*
+
+### Neden gerçek sipariş API'si yok (araştırma sonucu)
+Platformlar **satıcı-tarafı** (arz) API'si açıyor (menü/sipariş yönetimi — Getir developer portalı bu) ama **tüketici-sipariş** (talep) API'sini kapalı tutuyor. Sebep iş kararı: checkout = müşteri ilişkisi + ödeme sorumluluğu (PCI/dolandırıcılık) + yasal sorumluluk + marj; onu kendi uygulamalarında tutuyorlar. Affiliate zaten bunun **onaylı** yolu: "müşteri gönder, pay al, satın alma bizde tamamlansın". Global istisnalar (Instacart Connect, Amazon) **ticari ortaklık** (şirket başvurusu + sözleşme), staj ölçeğinde erişilmez; TR'de hiç yok. Komisyonlar da düşük (grocery affiliate %1–3.5). Kaynaklar konuşma geçmişinde.
 
 ### Malzeme normalizasyonu KABA (bilinen sınır)
 Tekilleştirme normalize-eşitlik bazlı: "chicken breast" ile "boneless skinless chicken breast halves" **ayrı satır** kalır. Tam malzeme normalizasyonu zor bir NLP işi, kapsam dışı. `nut_free`/miktar sınırlarıyla aynı aile — sunumda dürüstçe kabul edilir.
 
 ### Frontend
-- **`shopping.html` / `js/shopping.js` (yeni)** — checkbox'lı satırlar (işaretlenen üstü çizili + kesikli), kaynak notu (hangi tarif(ler) / "Added by you"), elle ekleme kutusu, "Shop this list →" CTA, hafta gezinme (Plan'la aynı tarih yardımcıları — `toISOString()` YOK). İki boş durum: hiç plan yok / her şey dolapta.
+- **`shopping.html` / `js/shopping.js` (yeni)** — checkbox'lı satırlar (işaretlenen üstü çizili + kesikli), kaynak notu (hangi tarif(ler) / "Added by you"), elle ekleme kutusu, "Shop this list on Migros →" CTA + satır-başına "Migros ↗" linki, hafta gezinme (Plan'la aynı tarih yardımcıları — `toISOString()` YOK). İki boş durum: hiç plan yok / her şey dolapta.
+- **`js/stores.js` (yeni)** — EN→TR malzeme sözlüğü + `toTurkish` (longest-match, kelime sınırı) + `buildUrl` (affiliate off/append/wrap). Saf + node-test edilebilir (`module.exports` guard'ı; tarayıcıda `Stores` global'i, Logger deseni). config.js'ten sonra, shopping.js'ten önce yükleniyor.
+- **`js/config.js`** — `window.API_BASE`'in yanına **`window.SHOP`** (Migros arama URL'si + affiliate config) eklendi. Kullanıcının affiliate ID'sini gireceği yer.
 - **`plan.html`** — hafta araçlarına "Shopping list →" linki (plan.js `currentWeek`'e yöneltiyor).
 - Tüm sayfalara "Shopping" nav linki (artık Plan · Pantry · Shopping · Favorites).
 

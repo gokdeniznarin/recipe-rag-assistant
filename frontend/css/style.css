@@ -2000,6 +2000,26 @@ body {
   color: var(--text-muted);
 }
 
+.shopping-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+/* Satır-başına market linki (Migros ↗) — asıl kullanışlı devir noktası */
+.shopping-find {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.shopping-find:hover { text-decoration: underline; }
+
+.is-checked .shopping-find { display: none; }   /* alınana link gerekmez */
+
 .shopping-remove {
   background: none;
   border: none;
