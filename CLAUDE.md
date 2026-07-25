@@ -206,7 +206,20 @@ DELETE /api/shopping-list/custom?week=&name=          elle çıkar
 - Custom ad **sorgu parametresi** (yol değil) — Faz 17'deki `salt/pepper` dersi (ASGI path yüzde-çözüyor).
 - Boş plan → ChromaDB'ye hiç gidilmiyor. Boş liste iki nedenli olabilir (hiç plan yok / her şey dolapta) — frontend `recipe_count`'a göre farklı mesaj gösteriyor.
 
-### Gelir kapısı: Migros deep-link + çeviri + affiliate-hazır config (dürüst çerçeve)
+### ⚠️ GÜNCEL: mağaza Amazon.com, affiliate etiketi CANLI (Migros'tan geçildi)
+**Amazon Associates hesabı açıldı: `recipeassista-20`** (Amazon.com / ABD pazarı) ve `config.js`'te `mode: 'append'` ile **canlı**. Aşağıdaki Migros bölümü tarihsel kayıt — kod artık öyle çalışmıyor.
+
+**Neden Migros'tan Amazon.com'a geçildi:** uygulama baştan sona **İngilizce** (dataset, arayüz, kullanıcı girdisi). Amazon.com kataloğu da İngilizce → malzeme adları **doğrudan** eşleşiyor, **çeviri katmanı gereksizleşti** (EN→TR sözlüğü silindi, ölü koda dönmüştü). Değerlendirilip elenen alternatif **Amazon.com.tr**: hem çeviri isterdi (Türkçe katalog) hem **taze ürün satmıyor** (doğrulandı: makarna/bakliyat/yağ/kuruyemiş var, et-sebze-süt yok) — yani Migros'un dezavantajını alıp avantajını almazdı, "iki dünyanın kötüsü".
+
+**Bilinen sınır (dürüst):** ABD pazarı, demo kullanıcıları Türkiye'de → gerçek satış beklentisi düşük ve Amazon'un **180 gün / 3 nitelikli satış** kuralı var (yoksa hesap kapanır). Sunum için değerli olan mekanizmanın **kurulu ve canlı** olması, gelirin akması değil.
+
+**Tasarım kazancı:** mağaza bir **adaptör** — `window.SHOP` config'inden geliyor, `stores.js` mağazadan habersiz. Mağaza değiştirmek tek config satırı; Migros döneminde bu ispatlandı.
+
+- **`rel="noopener sponsored"`** — affiliate link için web standardı işaret (arama motorları bunu bekliyor).
+- **`?`/`&` ayıracı otomatik:** arama URL'sinde zaten `?` var (`&tag=`), anasayfada yok (`?tag=`). Aynı fonksiyondan geçtikleri için `_applyAffiliate` ayıracı kendisi seçiyor — node testinde ikisi de sabitlendi.
+- **🔴 ZORUNLU AÇIKLAMA:** Associates sözleşmesi affiliate linki kullanan sitenin ilişkiyi şeffafça bildirmesini şart koşuyor. `shopping.html`'de Amazon'un resmî ifadesi duruyor: *"As an Amazon Associate, we earn from qualifying purchases."* **Etiket kullanıldığı sürece kaldırılmamalı.**
+
+### (Tarihsel) Gelir kapısı: Migros deep-link + çeviri + affiliate-hazır config
 **Karar araştırmaya dayandı** (bkz. aşağıdaki "Neden gerçek sipariş API'si yok"). Üç seviye vardı: (1) markete deep-link, (2) affiliate link, (3) gerçek sipariş API'si. **Seviye 3 kapalı** — Getir/Migros/Trendyol üçüncü taraflara tüketici-sipariş API'si vermiyor (sadece satıcı-tarafı entegrasyon). Yapılan: **Seviye 1 + Seviye 2-hazır config.**
 
 - **Hedef market: Migros Sanal Market** (araştırmada grocery-native + komisyon Amazon'dan iyi ~%3.5). Arama URL'si `migros.com.tr/arama?q=...`.
@@ -223,9 +236,9 @@ Platformlar **satıcı-tarafı** (arz) API'si açıyor (menü/sipariş yönetimi
 Tekilleştirme **çoğul-duyarlı** (`pantry.canonical_ingredient`): "garlic clove" + "garlic cloves" **tek satıra** iner. Bu gerçek bir dataset kusurunu çözüyor — bazı tarifler aynı malzemenin hem tekilini hem çoğulunu içeriyor (canlı örnek: `A Bowlful of Dinner` id 518475, ham 14 malzeme → dedup 12; hem `garlic clove`/`garlic cloves` hem çift `gingerroot` birleşti). Kanonik anahtar `pantry.py`'de, `_variants`'ın kardeşi (o eşleştirme için varyant kümesi üretir, bu dedup için tek tekil form; `-s`/`-ies`, `-es` düzensizlikleri bilinçli dışarıda — glass/swiss için `ss` guard'ı var). **Sınır kalıyor:** "chicken breast" ≠ "boneless skinless chicken breast halves" (tam malzeme normalizasyonu zor bir NLP işi, kapsam dışı). `nut_free` ailesinden dürüst sınır.
 
 ### Frontend
-- **`shopping.html` / `js/shopping.js` (yeni)** — checkbox'lı satırlar (işaretlenen üstü çizili + kesikli), kaynak notu (hangi tarif(ler) / "Added by you"), elle ekleme kutusu, "Shop this list on Migros →" CTA + satır-başına "Migros ↗" linki, hafta gezinme (Plan'la aynı tarih yardımcıları — `toISOString()` YOK). İki boş durum: hiç plan yok / her şey dolapta.
-- **`js/stores.js` (yeni)** — EN→TR malzeme sözlüğü + `toTurkish` (longest-match, kelime sınırı) + `buildUrl` (affiliate off/append/wrap). Saf + node-test edilebilir (`module.exports` guard'ı; tarayıcıda `Stores` global'i, Logger deseni). config.js'ten sonra, shopping.js'ten önce yükleniyor.
-- **`js/config.js`** — `window.API_BASE`'in yanına **`window.SHOP`** (Migros arama URL'si + affiliate config) eklendi. Kullanıcının affiliate ID'sini gireceği yer.
+- **`shopping.html` / `js/shopping.js` (yeni)** — checkbox'lı satırlar (işaretlenen üstü çizili + kesikli), kaynak notu (hangi tarif(ler) / "Added by you"), elle ekleme kutusu, "Shop this list →" CTA + satır-başına "Amazon ↗" linki (affiliate etiketli), **zorunlu Associates açıklaması**, hafta gezinme (Plan'la aynı tarih yardımcıları — `toISOString()` YOK). İki boş durum: hiç plan yok / her şey dolapta.
+- **`js/stores.js` (yeni)** — mağaza adaptörü: `buildUrl` (ürün araması) + `storeHome` (anasayfa), affiliate off/append/wrap. Saf + node-test edilebilir (`module.exports` guard'ı; tarayıcıda `Stores` global'i, Logger deseni). config.js'ten sonra, shopping.js'ten önce yükleniyor. *(EN→TR sözlüğü ve `toTurkish` Amazon'a geçişte silindi — çağrılmayan ölü koda dönmüştü; git geçmişinde duruyor.)*
+- **`js/config.js`** — `window.API_BASE`'in yanına **`window.SHOP`** (mağaza URL'leri + affiliate config) eklendi. **Canlı Amazon etiketi burada** (`tag=recipeassista-20`).
 - **`plan.html`** — hafta araçlarına "Shopping list →" linki (plan.js `currentWeek`'e yöneltiyor).
 - Tüm sayfalara "Shopping" nav linki (artık Plan · Pantry · Shopping · Favorites).
 
@@ -253,7 +266,7 @@ Auth bypass'lı TestClient, test verisi sonra temizlendi:
 ### Bilinen sınırlar
 - **Miktar yok** — isim bazlı (Pantry/Plan kararıyla tutarlı); miktar premium hikayesi.
 - **Malzeme normalizasyonu çoğul-duyarlı ama tam değil** (yukarıda) — clove/cloves birleşir, "chicken breast" ≠ uzun ifade.
-- **Gerçek affiliate yok** — CTA dürüst bir arama; gerçek üründe deep-link buraya.
+- **Affiliate etiketi canlı ama gelir beklentisi düşük** — ABD pazarı + demo kullanıcıları TR'de; Amazon'un 180 gün/3 satış kuralı hesabı kapatabilir. Mekanizma kurulu, ölçek yok.
 - **"Garanti değil ilham"** — Pantry'deki mantığın kardeşi.
 
 ### Yerelde test

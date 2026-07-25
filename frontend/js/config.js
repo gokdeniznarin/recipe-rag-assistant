@@ -19,27 +19,28 @@
 })();
 
 /**
- * Alışveriş listesi "Shop this list" / satır-başına "bul" hedefi (Faz 19).
- * Migros Sanal Market araması. Malzemeler İngilizce; stores.js Türkçe'ye
- * çevirip buraya veriyor.
+ * Alışveriş listesi mağaza adaptörü (Faz 19).
  *
- * GELİR KAPISI — affiliate. `mode: 'off'` iken link tertemiz bir arama:
- * ortada sahte hiçbir şey yok, sadece kullanıcıyı markete götürüyor. Gerçek bir
- * affiliate hesabı açılınca kod değişmeden gelir akmaya başlar:
- *   - Ağ tarzı (Migros'un affiliate ağının verdiği redirect linki):
- *       mode: 'wrap', wrap: 'https://ag.example/click?url={url}'
- *   - Amazon tarzı (URL'ye etiket parametresi eklemek):
- *       mode: 'append', append: '&tag=SENIN-ID'
- * `{q}` arama terimi, `{url}` ise kaçışlanmış hedef URL ile değiştiriliyor.
+ * MAĞAZA = AMAZON.COM. Migros'tan buraya geçildi çünkü uygulama baştan sona
+ * İNGİLİZCE (dataset, arayüz, kullanıcı girdisi): malzeme adları amazon.com'un
+ * kataloğuyla doğrudan eşleşiyor, araya çeviri katmanı girmiyor ve arama
+ * isabeti yüksek oluyor. (Migros denendi ve çalışıyordu, ama Türkçe katalog
+ * için EN→TR sözlüğü gerekiyordu; Amazon.com.tr ise hem çeviri isterdi hem
+ * taze ürün satmıyor — iki dünyanın kötüsü olurdu. Gerekçe CLAUDE.md Faz 19.)
+ *
+ * GELİR KAPISI — affiliate etiketi CANLI. Amazon Associates `tag` parametresini
+ * URL'ye ekliyor; nitelikli satışta komisyon bu etikete işleniyor.
+ *   mode: 'off'    → etiket yok, tertemiz arama linki
+ *   mode: 'append' → URL'ye parametre ekle (Amazon tarzı; ?/& ayıracı otomatik)
+ *   mode: 'wrap'   → affiliate ağının redirect'iyle sar (ör. bir TR ağı)
+ * `{q}` arama terimi, `{url}` kaçışlanmış hedef URL ile değiştiriliyor.
+ *
+ * ⚠️ Etiket kullanıldığı sürece sitede Amazon Associates AÇIKLAMASI görünmek
+ * ZORUNDA (Associates Program Operating Agreement şartı) — shopping.html'de.
  */
 window.SHOP = {
-  store: 'Migros',
-  // searchUrl: tek ürün araması (satır-başına link). Migros Cloudflare ile dış
-  // deep-link'leri challenge edebiliyor; `rel="noreferrer"` ile referrer'sız
-  // gidince geçme şansı artıyor. Kesin çözüm production'da affiliate-ağ linki
-  // (aşağıdaki wrap) — o Migros'un beklediği meşru trafik.
-  searchUrl: 'https://www.migros.com.tr/arama?q={q}',
-  // homeUrl: büyük "Shop at ..." CTA'sının hedefi. Anasayfa asla bloklanmaz.
-  homeUrl: 'https://www.migros.com.tr/',
-  affiliate: { mode: 'off', append: '', wrap: '' },
+  store: 'Amazon',
+  searchUrl: 'https://www.amazon.com/s?k={q}',
+  homeUrl: 'https://www.amazon.com/',
+  affiliate: { mode: 'append', param: 'tag=recipeassista-20', wrap: '' },
 };

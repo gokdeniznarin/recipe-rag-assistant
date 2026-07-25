@@ -2063,6 +2063,18 @@ body {
   text-align: center;
 }
 
+/* Amazon Associates zorunlu açıklaması — görünür olmalı (küçük ama gizli değil,
+   sözleşme "şeffaf biçimde bildir" diyor). */
+.affiliate-disclosure {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  text-align: center;
+}
+
 @media (max-width: 480px) {
   .shopping-add-form { flex-direction: column; }
   .week-tools-right { gap: 0.75rem; }

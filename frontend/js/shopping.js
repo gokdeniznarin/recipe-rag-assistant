@@ -118,11 +118,13 @@ function renderItem(item) {
   // Satır-başına market linki: yalnızca ALINACAK (işaretsiz) malzemelerde.
   // Malzeme Türkçe'ye çevrilip market aramasına gidiyor (affiliate config
   // uygulanmış URL). Tek malzeme = tek ürün araması, markette sepete atılır.
-  // rel="noreferrer": referrer'ı silince istek "doğrudan adres yazılmış" gibi
-  // görünüyor — Migros'un Cloudflare challenge'ını geçme şansı artıyor.
+  // Malzeme adı DOĞRUDAN aranıyor — dataset İngilizce, amazon.com İngilizce,
+  // araya çeviri girmiyor (Migros dönemindeki EN→TR katmanı kalktı).
+  // rel="sponsored": affiliate/ücretli link için web standardı işaret; arama
+  // motorları bunu bekliyor. noopener güvenlik için.
   const findLink = !item.checked
-    ? `<a class="shopping-find" href="${escapeAttr(Stores.buildUrl(Stores.toTurkish(item.name), window.SHOP))}"
-          target="_blank" rel="noopener noreferrer"
+    ? `<a class="shopping-find" href="${escapeAttr(Stores.buildUrl(item.name, window.SHOP))}"
+          target="_blank" rel="noopener sponsored"
           title="Find on ${escapeAttr(window.SHOP.store)}">${escapeHtml(window.SHOP.store)} ↗</a>`
     : '';
 
@@ -225,12 +227,11 @@ async function removeCustom(item) {
 }
 
 // ── Shop CTA (gelir kapısı) ──────────────────────────────
-// Market ANASAYFASINI açıyor — dış deep-link challenge'ına takılmayan garantili
-// devir noktası (çoklu-terim deep arama hem kötü sonuç verir hem Cloudflare'i
-// tetikleyebilir). Asıl ürün bulma işi satır-başına "↗" linklerinde.
-// Affiliate config'i (window.SHOP) doluysa bu link de izlenebilir olur.
+// Mağaza anasayfasını açıyor; affiliate etiketi bu linke de işleniyor.
+// Asıl ürün bulma işi satır-başına "↗" linklerinde (tek ürün araması) —
+// çoklu terimi tek aramaya doldurmak kötü sonuç veriyordu.
 shopCta.addEventListener('click', () => {
-  window.open(Stores.storeHome(window.SHOP), '_blank', 'noopener,noreferrer');
+  window.open(Stores.storeHome(window.SHOP), '_blank', 'noopener');
 });
 
 // ── Hafta yükleme ────────────────────────────────────────
