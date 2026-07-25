@@ -34,6 +34,14 @@ from meal_plan import (
     remove_entry,
     clear_week,
 )
+from shopping import (
+    missing_ingredients,
+    build_list,
+    get_overlay,
+    set_checked as shopping_set_checked,
+    add_custom as shopping_add_custom,
+    remove_custom as shopping_remove_custom,
+)
 from logger import get_logger, timed, timed_block
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -910,4 +918,136 @@ def remove_meal_plan_entry_endpoint(
         return {"message": "Removed from your plan", "date": date_str, "slot": slot_name}
     except ValueError as e:
         log.warning("Remove from meal plan rejected (%r %r): %s", date, slot, e)
+        return {"error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════
+#  SHOPPING LIST — yol haritasının GELİR adımı.
+#  Liste SAKLANMIYOR, hesaplanıyor: eksikler = plandaki tariflerin malzemeleri
+#  − dolap. Üstüne hafta başına ince bir overlay (checked/custom) biniyor.
+#  Veri erişimi shopping.py'de.
+# ═══════════════════════════════════════════════════════════
+
+def _planned_recipes_for_week(user_email: str, week_start: str) -> list[dict]:
+    """Haftanın planındaki tarifleri malzemeleriyle döner (tekilleştirilmiş).
+
+    Malzemeler plan dokümanında DEĞİL, ID'lerden ChromaDB'den okunuyor —
+    meal-plan/favoriler/koleksiyonlardaki aynı desen. Yapılandırılmış
+    `ingredients` metadata'sı (Faz 17) olmadan bu hesap yapılamazdı.
+    """
+    entries = get_week(user_email, week_start)
+    recipe_ids = list({e["recipe_id"] for e in entries})
+    if not recipe_ids:
+        return []
+
+    with timed_block(f"chromadb get ({len(recipe_ids)} recipes)"):
+        results = collection.get(ids=recipe_ids)
+
+    meta_by_id = dict(zip(results["ids"], results["metadatas"]))
+    planned = []
+    for rid in recipe_ids:
+        meta = meta_by_id.get(rid)
+        if not meta:          # silinmiş tarif → atla (sarkan ID zaten olmamalı)
+            continue
+        planned.append({
+            "recipe_id": rid,
+            "name": meta.get("name", ""),
+            "ingredients": _ingredients_list(meta),
+        })
+    return planned
+
+
+@app.get("/api/shopping-list")
+@timed
+def get_shopping_list_endpoint(
+    week: str,
+    user_email: str = Depends(get_current_user_email),
+):
+    """Haftanın alışveriş listesi: türev eksikler + overlay (checked/custom).
+
+    `week` haftanın herhangi bir günü olabilir (validate_week pazartesiye
+    normalize ediyor). Boş plan + hiç elle öğe → boş liste.
+    """
+    try:
+        week_start = validate_week(week)
+    except ValueError as e:
+        log.warning("Get shopping list rejected (%r): %s", week, e)
+        return {"error": str(e)}
+
+    planned = _planned_recipes_for_week(user_email, week_start)
+    pantry_names = [i["name"] for i in get_pantry(user_email)]
+
+    derived = missing_ingredients(planned, pantry_names)
+    overlay = get_overlay(user_email, week_start)
+    items = build_list(derived, overlay["checked"], overlay["custom"])
+
+    return {
+        "week_start": week_start,
+        "items": items,
+        "recipe_count": len(planned),
+        "pantry_count": len(pantry_names),
+    }
+
+
+class ShoppingCheckRequest(BaseModel):
+    week: str = Field(..., max_length=32)
+    # Malzeme adları tarif ifadeleri olabilir ("boneless skinless chicken breast
+    # halves") — elle eklenenlerden (60) daha uzun, o yüzden sınır gevşek.
+    name: str = Field(..., max_length=120)
+    checked: bool
+
+
+@app.post("/api/shopping-list/check")
+@timed
+def check_shopping_item_endpoint(
+    request: ShoppingCheckRequest,
+    user_email: str = Depends(get_current_user_email),
+):
+    """Bir malzemeyi 'alındı' işaretler / işareti kaldırır."""
+    try:
+        week_start = validate_week(request.week)
+        shopping_set_checked(user_email, week_start, request.name, request.checked)
+    except ValueError as e:
+        log.warning("Check shopping item rejected (%r): %s", request.name, e)
+        return {"error": str(e)}
+    return {"message": "ok", "name": request.name, "checked": request.checked}
+
+
+class ShoppingCustomRequest(BaseModel):
+    week: str = Field(..., max_length=32)
+    name: str = Field(..., max_length=80)
+
+
+@app.post("/api/shopping-list/custom")
+@timed
+def add_custom_shopping_item_endpoint(
+    request: ShoppingCustomRequest,
+    user_email: str = Depends(get_current_user_email),
+):
+    """Listeye elle malzeme ekler ("bir de deterjan"). Zaten varsa atlar."""
+    try:
+        week_start = validate_week(request.week)
+        result = shopping_add_custom(user_email, week_start, request.name)
+    except ValueError as e:
+        log.warning("Add custom shopping item rejected (%r): %s", request.name, e)
+        return {"error": str(e)}
+    return result
+
+
+@app.delete("/api/shopping-list/custom")
+@timed
+def remove_custom_shopping_item_endpoint(
+    # Adı YOL değil SORGU parametresi — pantry'deki `salt/pepper` dersi (ASGI
+    # scope["path"]'i yüzde-çözüyor).
+    week: str,
+    name: str,
+    user_email: str = Depends(get_current_user_email),
+):
+    """Elle eklenen malzemeyi çıkarır (türev malzemeler plandan gelir)."""
+    try:
+        week_start = validate_week(week)
+        shopping_remove_custom(user_email, week_start, name)
+        return {"message": "Removed from your list", "name": name}
+    except ValueError as e:
+        log.warning("Remove custom shopping item rejected (%r): %s", name, e)
         return {"error": str(e)}

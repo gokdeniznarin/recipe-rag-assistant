@@ -1919,3 +1919,131 @@ body {
   .week-bar { gap: 0.5rem; }
   .week-label { font-size: 1rem; }
 }
+
+
+/* ── Shopping list ──────────────────────────────────────── */
+.week-tools-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* .link-btn auth sayfası için `margin: .25rem auto 0` taşıyor; flex satırında
+   auto marjlar öğeleri iter — burada sıfırla. */
+.week-tools-right .link-btn { margin: 0; }
+
+.shopping-summary {
+  margin-bottom: 0.75rem;
+}
+
+.shopping-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1.25rem;
+}
+
+.shopping-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.7rem 0.9rem;
+}
+
+.shopping-item.is-checked {
+  background: transparent;
+  border-style: dashed;
+}
+
+.shopping-check {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.shopping-check input[type="checkbox"] {
+  width: 1.15rem;
+  height: 1.15rem;
+  accent-color: var(--olive);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.shopping-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.shopping-name {
+  font-size: 0.98rem;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.is-checked .shopping-name {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.shopping-sub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.shopping-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--text-muted);
+  padding: 0.2rem 0.35rem;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.shopping-remove:hover { color: var(--error); }
+
+.shopping-add-form {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1.5rem;
+}
+
+.shopping-add-form .search-input {
+  flex: 1;
+}
+
+/* Gelir kapısı: gerçek üründe affiliate linki buraya oturur */
+.shop-cta {
+  width: 100%;
+  font-size: 1.02rem;
+  padding: 0.85rem 1rem;
+}
+
+.shop-cta:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.shop-note {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+@media (max-width: 480px) {
+  .shopping-add-form { flex-direction: column; }
+  .week-tools-right { gap: 0.75rem; }
+}

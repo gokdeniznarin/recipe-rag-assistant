@@ -70,6 +70,17 @@ def _variants(term: str) -> set[str]:
     return out
 
 
+def _pantry_patterns(name: str) -> list:
+    """Bir dolap malzemesi adı → varyantlarının kelime-sınırlı regex'leri.
+
+    TEK KAYNAK: hem count_pantry_matches (rozet) hem ingredient_in_pantry
+    (alışveriş listesi 'eksikler') bunu kullanıyor. Rozet "3/5 malzemen var"
+    diyorsa liste tam olarak diğer 2'yi istemeli — iki taraf aynı kuralı
+    kullanmazsa çelişir ve kullanıcı fark eder.
+    """
+    return [re.compile(r"\b" + re.escape(v) + r"(?:es|s)?\b") for v in _variants(name)]
+
+
 def count_pantry_matches(pantry_names: list[str], recipe_ingredients: list[str]) -> list[str]:
     """Tarifin kullandığı dolap malzemelerini döner (orijinal yazımlarıyla).
 
@@ -94,14 +105,33 @@ def count_pantry_matches(pantry_names: list[str], recipe_ingredients: list[str])
         if not base:
             continue
         # Herhangi bir varyant, herhangi bir malzeme ifadesinde geçiyor mu?
-        patterns = [
-            re.compile(r"\b" + re.escape(v) + r"(?:es|s)?\b")
-            for v in _variants(base)
-        ]
+        patterns = _pantry_patterns(base)
         if any(p.search(ing) for p in patterns for ing in lowered):
             matched.append(name)
 
     return matched
+
+
+def ingredient_in_pantry(ingredient: str, pantry_names: list[str]) -> bool:
+    """Bir tarif malzemesini dolaptaki HERHANGİ bir öğe karşılıyor mu?
+
+    count_pantry_matches'in TERSİ yönü: orada "dolabın hangi öğeleri bu tarifte
+    geçiyor" sorulur; burada "bu malzeme dolapta var mı" (yani alışveriş
+    listesine EKLENMELİ mi). Aynı eşleştirme kuralı (`_pantry_patterns`) —
+    kelime sınırı + iki yönlü çoğul. Saf fonksiyon.
+
+    Alışveriş listesi bunu kullanıyor: eksikler = tarif malzemeleri − dolap.
+    """
+    ing = (ingredient or "").strip().lower()
+    if not ing:
+        return False
+    for name in pantry_names:
+        base = (name or "").strip()
+        if not base:
+            continue
+        if any(p.search(ing) for p in _pantry_patterns(base)):
+            return True
+    return False
 
 
 def build_pantry_query(pantry_names: list[str], additional_text: str = "") -> str:

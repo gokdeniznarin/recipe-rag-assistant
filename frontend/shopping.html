@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Favorites — Recipe Assistant</title>
+  <title>Shopping list — Recipe Assistant</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -23,7 +23,7 @@
   <a href="pantry.html" class="nav-link">Pantry</a>
   <a href="shopping.html" class="nav-link">Shopping</a>
   <a href="favorites.html" class="nav-link">Favorites</a>
-  
+
   <div class="user-menu">
     <button id="user-btn" class="user-btn">
       <span id="user-email">…</span>
@@ -39,9 +39,19 @@
 
   <main class="page">
     <section class="search-hero">
-      <h1 class="page-title">Your recipes</h1>
-      <p class="page-sub">Everything you've saved, organized your way.</p>
+      <h1 class="page-title">Shopping list</h1>
+      <p class="page-sub">What you need for this week's plan — minus what's already in your pantry.</p>
     </section>
+
+    <!-- Hafta gezinme -->
+    <div class="week-bar">
+      <button id="prev-week" class="icon-btn" type="button" aria-label="Previous week">←</button>
+      <div class="week-bar-center">
+        <span id="week-label" class="week-label">…</span>
+        <a id="plan-link" class="link-btn" href="plan.html">View this week's plan</a>
+      </div>
+      <button id="next-week" class="icon-btn" type="button" aria-label="Next week">→</button>
+    </div>
 
     <!-- Yükleniyor -->
     <div id="loading" class="loading">
@@ -50,43 +60,47 @@
       <div class="loading-dot"></div>
     </div>
 
-    <!-- Koleksiyonlar -->
-    <section id="collections-section" class="collections-section hidden">
-      <h2 class="section-heading">Collections</h2>
-      <div id="collections-grid" class="collections-grid">
-        <!-- Koleksiyon kartları buraya + "New collection" kutucuğu -->
-        <button id="new-collection-tile" class="collection-tile collection-tile--new">
-          <span class="collection-tile-plus">＋</span>
-          <span class="collection-tile-name">New collection</span>
-        </button>
+    <!-- Liste -->
+    <section id="list-section" class="hidden">
+      <div class="shopping-summary">
+        <span id="shopping-count" class="results-count"></span>
       </div>
 
-      <!-- Yeni koleksiyon adı girişi (kutucuğa tıklayınca açılır) -->
-      <form id="new-collection-form" class="new-collection-form hidden">
-        <input id="new-collection-input" class="search-input" type="text"
-               maxlength="60" placeholder="Collection name (e.g. Breakfast)" />
-        <button type="submit" class="btn-accent btn-sm">Create</button>
-        <button type="button" id="new-collection-cancel" class="btn-outline btn-sm">Cancel</button>
-      </form>
-      <p id="new-collection-error" class="inline-error hidden"></p>
-    </section>
+      <ul id="shopping-items" class="shopping-list"></ul>
 
-    <!-- All Saved başlığı (favori varken görünür) -->
-    <h2 id="saved-heading" class="section-heading hidden">All saved</h2>
+      <!-- Elle malzeme ekleme -->
+      <form id="add-form" class="shopping-add-form">
+        <input
+          type="text"
+          id="add-input"
+          class="search-input"
+          maxlength="60"
+          placeholder="Add something else (e.g. dish soap)"
+        />
+        <button type="submit" class="btn-outline">Add</button>
+      </form>
+      <p id="add-error" class="inline-error hidden"></p>
+
+      <!-- Gelir kapısı: gerçek üründe affiliate linki buraya oturuyor -->
+      <button id="shop-cta" class="btn-accent shop-cta" type="button">
+        Shop this list →
+      </button>
+      <p class="shop-note">Opens a grocery search for your unchecked items.</p>
+    </section>
 
     <!-- Boş durum -->
     <div id="empty-state" class="empty-state hidden">
-      <div class="empty-icon">♡</div>
-      <h2 class="empty-title">No saved recipes yet</h2>
-      <p class="empty-text">Save recipes from search results to see them here.</p>
-      <a href="search.html" class="btn-accent empty-btn">Start searching</a>
+      <div class="empty-icon">🛒</div>
+      <h2 class="empty-title">Nothing to buy yet</h2>
+      <p class="empty-text">
+        Plan some meals for this week and we'll list what you're missing —
+        everything the recipes need that isn't already in your pantry.
+      </p>
+      <a href="plan.html" class="btn-accent empty-btn">Open your plan</a>
     </div>
 
-    <!-- Liste -->
-    <div id="favorites-list" class="recipe-list hidden"></div>
-
     <!-- Hata -->
-    <div id="favorites-error" class="page-error hidden"></div>
+    <div id="shopping-error" class="page-error hidden"></div>
   </main>
 
   <!-- Firebase (compat SDK) -->
@@ -96,6 +110,6 @@
   <script src="js/logger.js"></script>
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>
-  <script src="js/favorites.js"></script>
+  <script src="js/shopping.js"></script>
 </body>
 </html>

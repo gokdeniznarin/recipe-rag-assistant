@@ -18,6 +18,7 @@ const nextWeekBtn  = document.getElementById('next-week');
 const thisWeekBtn  = document.getElementById('this-week');
 const weekCount    = document.getElementById('week-count');
 
+const shoppingLink = document.getElementById('shopping-link');
 const clearWeekBtn = document.getElementById('clear-week-btn');
 const clearModal   = document.getElementById('clear-modal');
 const clearCount   = document.getElementById('clear-count');
@@ -195,6 +196,7 @@ function showTransientError(msg) {
 async function loadWeek(mondayISO) {
   currentWeek = mondayISO;
   weekLabel.textContent = formatWeekLabel(mondayISO);
+  shoppingLink.href = `shopping.html?week=${encodeURIComponent(mondayISO)}`;
   thisWeekBtn.classList.toggle('hidden', mondayISO === toISO(mondayOf(new Date())));
 
   gridEl.classList.add('hidden');
