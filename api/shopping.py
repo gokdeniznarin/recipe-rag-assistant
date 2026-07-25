@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 import auth  # noqa: F401
 from firebase_admin import firestore
 
-from pantry import ingredient_in_pantry, validate_ingredient_name
+from pantry import ingredient_in_pantry, validate_ingredient_name, canonical_ingredient
 from logger import timed
 
 _db = firestore.client()
@@ -46,21 +46,24 @@ def aggregate_ingredients(planned: list[dict]) -> dict:
     """Plandaki tüm tariflerin malzemelerini tekilleştirir (ilk görülme sırası).
 
     planned: [{recipe_id, name, ingredients: [...]}, ...]
-    döner:   {normalize_key: {"name": orijinal, "from_recipes": [tarif adları]}}
+    döner:   {kanonik_anahtar: {"name": orijinal, "from_recipes": [tarif adları]}}
 
-    Tekilleştirme normalize-eşitlik bazlı (küçük harf + trim). "chicken breast"
-    ile "boneless skinless chicken breast halves" AYRI kalır — tam malzeme
-    normalizasyonu zor bir NLP işi, kapsam dışı (bilinen sınır).
+    Tekilleştirme ÇOĞUL-DUYARLI (`canonical_ingredient`): "garlic clove" ile
+    "garlic cloves" tek satıra iner — bazı tarifler aynı malzemenin hem tekilini
+    hem çoğulunu içeriyor (dataset kusuru). Görünen ad ilk görülen orijinal
+    yazım. Sınır: "chicken breast" ≠ "boneless skinless chicken breast halves"
+    (tam malzeme normalizasyonu zor bir NLP işi, kapsam dışı).
     """
     agg: dict = {}   # dict insertion order'ı koruyor
     for recipe in planned:
         rname = (recipe.get("name") or "").strip()
         for ing in recipe.get("ingredients", []):
-            key = (ing or "").strip().lower()
+            original = (ing or "").strip()
+            key = canonical_ingredient(original)   # çoğul-duyarlı anahtar
             if not key:
                 continue
             if key not in agg:
-                agg[key] = {"name": ing.strip(), "from_recipes": []}
+                agg[key] = {"name": original, "from_recipes": []}
             if rname and rname not in agg[key]["from_recipes"]:
                 agg[key]["from_recipes"].append(rname)
     return agg

@@ -70,6 +70,32 @@ def _variants(term: str) -> set[str]:
     return out
 
 
+def _singularize_word(w: str) -> str:
+    """Bir kelimeyi tekilleştirir — dedup ANAHTARI için tek kanonik form.
+
+    `_variants`'ın kardeşi ama tersi amaçla: orada eşleştirme için bir varyant
+    KÜMESİ üretiliyor ("cloves" → {cloves, clov, clove}); burada tek bir kanonik
+    biçim lazım. O yüzden `-es` kuralı YOK (cloves → "clov" verirdi); yalnızca
+    `-s` ve `-ies`. Bilinçli sınır: `-es` düzensizlikleri (tomato/tomatoes)
+    birleşmeyebilir — kusuru azaltır, sıfırlamaz.
+    """
+    if w.endswith("ies") and len(w) > 4:
+        return w[:-3] + "y"            # berries → berry
+    if w.endswith("ss"):
+        return w                       # glass, dress, swiss — çoğul değil
+    if w.endswith("s") and len(w) > 2:
+        return w[:-1]                  # cloves → clove, onions → onion
+    return w
+
+
+def canonical_ingredient(phrase: str) -> str:
+    """Malzeme adının tekilleştirilmiş dedup anahtarı (küçük harf + her kelime
+    tekil). Alışveriş listesi bununla 'garlic clove' + 'garlic cloves'ı tek
+    satıra indiriyor — kaynak tarif ikisini de listelese bile (gerçek dataset
+    kusuru: bazı tarifler aynı malzemenin hem tekilini hem çoğulunu içeriyor)."""
+    return " ".join(_singularize_word(w) for w in (phrase or "").strip().lower().split())
+
+
 def _pantry_patterns(name: str) -> list:
     """Bir dolap malzemesi adı → varyantlarının kelime-sınırlı regex'leri.
 

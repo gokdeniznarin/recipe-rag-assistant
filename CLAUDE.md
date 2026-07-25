@@ -219,8 +219,8 @@ DELETE /api/shopping-list/custom?week=&name=          elle çıkar
 ### Neden gerçek sipariş API'si yok (araştırma sonucu)
 Platformlar **satıcı-tarafı** (arz) API'si açıyor (menü/sipariş yönetimi — Getir developer portalı bu) ama **tüketici-sipariş** (talep) API'sini kapalı tutuyor. Sebep iş kararı: checkout = müşteri ilişkisi + ödeme sorumluluğu (PCI/dolandırıcılık) + yasal sorumluluk + marj; onu kendi uygulamalarında tutuyorlar. Affiliate zaten bunun **onaylı** yolu: "müşteri gönder, pay al, satın alma bizde tamamlansın". Global istisnalar (Instacart Connect, Amazon) **ticari ortaklık** (şirket başvurusu + sözleşme), staj ölçeğinde erişilmez; TR'de hiç yok. Komisyonlar da düşük (grocery affiliate %1–3.5). Kaynaklar konuşma geçmişinde.
 
-### Malzeme normalizasyonu KABA (bilinen sınır)
-Tekilleştirme normalize-eşitlik bazlı: "chicken breast" ile "boneless skinless chicken breast halves" **ayrı satır** kalır. Tam malzeme normalizasyonu zor bir NLP işi, kapsam dışı. `nut_free`/miktar sınırlarıyla aynı aile — sunumda dürüstçe kabul edilir.
+### Malzeme normalizasyonu ÇOĞUL-DUYARLI ama tam değil
+Tekilleştirme **çoğul-duyarlı** (`pantry.canonical_ingredient`): "garlic clove" + "garlic cloves" **tek satıra** iner. Bu gerçek bir dataset kusurunu çözüyor — bazı tarifler aynı malzemenin hem tekilini hem çoğulunu içeriyor (canlı örnek: `A Bowlful of Dinner` id 518475, ham 14 malzeme → dedup 12; hem `garlic clove`/`garlic cloves` hem çift `gingerroot` birleşti). Kanonik anahtar `pantry.py`'de, `_variants`'ın kardeşi (o eşleştirme için varyant kümesi üretir, bu dedup için tek tekil form; `-s`/`-ies`, `-es` düzensizlikleri bilinçli dışarıda — glass/swiss için `ss` guard'ı var). **Sınır kalıyor:** "chicken breast" ≠ "boneless skinless chicken breast halves" (tam malzeme normalizasyonu zor bir NLP işi, kapsam dışı). `nut_free` ailesinden dürüst sınır.
 
 ### Frontend
 - **`shopping.html` / `js/shopping.js` (yeni)** — checkbox'lı satırlar (işaretlenen üstü çizili + kesikli), kaynak notu (hangi tarif(ler) / "Added by you"), elle ekleme kutusu, "Shop this list on Migros →" CTA + satır-başına "Migros ↗" linki, hafta gezinme (Plan'la aynı tarih yardımcıları — `toISOString()` YOK). İki boş durum: hiç plan yok / her şey dolapta.
@@ -252,7 +252,7 @@ Auth bypass'lı TestClient, test verisi sonra temizlendi:
 
 ### Bilinen sınırlar
 - **Miktar yok** — isim bazlı (Pantry/Plan kararıyla tutarlı); miktar premium hikayesi.
-- **Malzeme normalizasyonu kaba** (yukarıda).
+- **Malzeme normalizasyonu çoğul-duyarlı ama tam değil** (yukarıda) — clove/cloves birleşir, "chicken breast" ≠ uzun ifade.
 - **Gerçek affiliate yok** — CTA dürüst bir arama; gerçek üründe deep-link buraya.
 - **"Garanti değil ilham"** — Pantry'deki mantığın kardeşi.
 

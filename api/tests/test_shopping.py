@@ -16,12 +16,35 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from pantry import ingredient_in_pantry
+from pantry import ingredient_in_pantry, canonical_ingredient
 from shopping import (
     aggregate_ingredients,
     missing_ingredients,
     build_list,
 )
+
+
+# ── Katman 1: çoğul-duyarlı kanonik anahtar ───────────────
+
+class TestCanonicalIngredient:
+    def test_singular_plural_collapse(self):
+        # Asıl neden: bazı tarifler aynı malzemenin tekil+çoğulunu içeriyor
+        assert canonical_ingredient("garlic clove") == canonical_ingredient("garlic cloves")
+
+    def test_common_plurals(self):
+        assert canonical_ingredient("eggs") == "egg"
+        assert canonical_ingredient("onions") == "onion"
+        assert canonical_ingredient("berries") == "berry"          # -ies → -y
+
+    def test_double_s_not_stripped(self):
+        # "swiss"/"glass" çoğul değil — ss guard
+        assert canonical_ingredient("swiss cheese") == "swiss cheese"
+
+    def test_lowercases_and_trims(self):
+        assert canonical_ingredient("  Garlic Cloves ") == "garlic clove"
+
+    def test_empty(self):
+        assert canonical_ingredient("") == ""
 
 
 # ── Katman 1: paylaşılan eşleştirici (rozet ↔ liste tek kaynak) ──
@@ -79,6 +102,15 @@ class TestAggregateIngredients:
         planned = [_recipe("A", ["Olive Oil"]), _recipe("B", ["olive oil"])]
         agg = aggregate_ingredients(planned)
         assert agg["olive oil"]["name"] == "Olive Oil"   # ilk yazım korunuyor
+
+    def test_merges_singular_and_plural_in_one_recipe(self):
+        # Gerçek dataset kusuru: tek tarif hem "garlic clove" hem "garlic cloves"
+        # içeriyordu. Çoğul-duyarlı dedup ikisini TEK satıra indiriyor.
+        planned = [_recipe("A", ["garlic clove", "garlic cloves", "onion", "onions"])]
+        agg = aggregate_ingredients(planned)
+        assert len(agg) == 2                              # 4 girdi → 2 satır
+        names = [v["name"] for v in agg.values()]
+        assert names == ["garlic clove", "onion"]         # ilk görülen yazım
 
     def test_skips_blank(self):
         agg = aggregate_ingredients([_recipe("A", ["", "  ", "garlic"])])
