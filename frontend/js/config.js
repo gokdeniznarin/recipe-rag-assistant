@@ -40,7 +40,13 @@
  */
 window.SHOP = {
   store: 'Amazon',
-  searchUrl: 'https://www.amazon.com/s?k={q}',
-  homeUrl: 'https://www.amazon.com/',
+  // Tek ürün araması (satır-başına link) — `i=grocery` aramayı market
+  // kategorisiyle sınırlıyor, yoksa "butter" mutfak gereci de getiriyor.
+  searchUrl: 'https://www.amazon.com/s?k={q}&i=grocery',
+  // Büyük CTA'nın hedefi: market KATEGORİSİ. Anasayfa değil (o Migros'un
+  // Cloudflare engeli yüzünden seçilmişti, Amazon'da öyle bir kısıt yok) ve
+  // tüm listeyi tek aramaya doldurmak da değil — Amazon araması terimlerin
+  // HEPSİNİ içeren ürün aradığı için 12 malzemelik sorgu boş/çöp döner.
+  homeUrl: 'https://www.amazon.com/s?i=grocery',
   affiliate: { mode: 'append', param: 'tag=recipeassista-20', wrap: '' },
 };

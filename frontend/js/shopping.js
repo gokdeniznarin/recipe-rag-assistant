@@ -19,8 +19,8 @@ const shopCta      = document.getElementById('shop-cta');
 const shopNote     = document.getElementById('shop-note');
 
 // Buton/not metnini config'deki mağaza adına göre kur (tek yerde tanımlı).
-shopCta.textContent = `Shop at ${window.SHOP.store} →`;
-shopNote.textContent = `Opens ${window.SHOP.store}; use the ${window.SHOP.store} ↗ links to find each item.`;
+shopCta.textContent = `Browse groceries on ${window.SHOP.store} →`;
+shopNote.textContent = `Tap ${window.SHOP.store} ↗ next to an item to go straight to that product.`;
 
 // ── Durum ────────────────────────────────────────────────
 let currentWeek = null;   // "YYYY-MM-DD" (pazartesi)
