@@ -1717,7 +1717,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
-  padding-right: 1rem;   /* × butonunun altına girmesin */
 }
 
 .plan-slot-name {
@@ -1734,21 +1733,35 @@ body {
   color: var(--text-muted);
 }
 
+/* Öğün etiketi + eylemler (değiştir / sil) aynı başlık satırında. */
+.plan-slot-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+}
+
+.plan-slot-actions {
+  display: flex;
+  gap: 0.1rem;
+  flex-shrink: 0;   /* uzun etiket varken butonlar ezilmesin */
+}
+
+.plan-slot-change,
 .plan-slot-remove {
-  position: absolute;
-  top: 0.35rem;
-  right: 0.4rem;
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 0.95rem;
   line-height: 1;
   color: var(--text-muted);
   padding: 0.15rem 0.25rem;
   border-radius: var(--radius-sm);
 }
 
+.plan-slot-change:hover { color: var(--accent); }
 .plan-slot-remove:hover { color: var(--error); }
+.plan-slot-change:disabled,
 .plan-slot-remove:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── Tarif seçici modalı ────────────────────────────────── */

@@ -137,14 +137,28 @@ function renderSlot(date, slot) {
   const time = entry.recipe && entry.recipe.total_time_min > 0
     ? `${entry.recipe.total_time_min} min` : '';
 
+  // Etiket ve eylemler bir başlık satırında (space-between). Absolute konum
+  // yerine flex: dar slotta (620-1000px arası 3 öğün yan yana) uzun etiket
+  // butonların altına girmesin.
   cell.innerHTML = `
-    ${label}
+    <div class="plan-slot-top">
+      ${label}
+      <div class="plan-slot-actions">
+        <button class="plan-slot-change" type="button" aria-label="Change ${escapeAttr(name)}" title="Change recipe">⇄</button>
+        <button class="plan-slot-remove" type="button" aria-label="Remove ${escapeAttr(name)}" title="Remove">×</button>
+      </div>
+    </div>
     <a class="plan-slot-recipe" href="recipe.html?id=${encodeURIComponent(entry.recipe_id)}">
       <span class="plan-slot-name">${escapeHtml(name)}</span>
       ${time ? `<span class="plan-slot-time">${time}</span>` : ''}
     </a>
-    <button class="plan-slot-remove" type="button" aria-label="Remove ${escapeAttr(name)}" title="Remove">×</button>
   `;
+
+  // Dolu slotu değiştirmek: aynı seçiciyi açıyor, seçilen tarif eskisinin
+  // yerine geçiyor. Backend POST zaten replace yapıyor; choose() de frontend
+  // tarafında eski girdiyi düşürüp yenisini koyuyor. Yani "önce sil sonra ekle"
+  // gerekmiyor.
+  cell.querySelector('.plan-slot-change').addEventListener('click', () => openPicker(date, slot));
 
   cell.querySelector('.plan-slot-remove').addEventListener('click', async (e) => {
     e.preventDefault();
