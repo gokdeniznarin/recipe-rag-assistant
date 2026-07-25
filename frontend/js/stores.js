@@ -80,20 +80,31 @@ const Stores = (function () {
     return best ? TR[best] : (name || '');
   }
 
-  // Arama terimini market URL'sine gömer, affiliate config'ini uygular.
-  // cfg = window.SHOP. mode 'off' → düz arama; 'append' → parametre ekle;
-  // 'wrap' → ağ redirect'iyle sar.
+  // Affiliate config'ini bir URL'ye uygular. mode 'off' → dokunma;
+  // 'append' → parametre ekle (Amazon tarzı); 'wrap' → ağ redirect'iyle sar.
+  function _applyAffiliate(url, aff) {
+    aff = aff || {};
+    if (aff.mode === 'append' && aff.append) return url + aff.append;
+    if (aff.mode === 'wrap' && aff.wrap) return aff.wrap.replace('{url}', encodeURIComponent(url));
+    return url;
+  }
+
+  // Tek ürün araması URL'si (satır-başına link).
   function buildUrl(query, cfg) {
     cfg = cfg || {};
     const tmpl = cfg.searchUrl || 'https://www.google.com/search?q={q}';
-    const base = tmpl.replace('{q}', encodeURIComponent(query));
-    const aff = cfg.affiliate || {};
-    if (aff.mode === 'append' && aff.append) return base + aff.append;
-    if (aff.mode === 'wrap' && aff.wrap) return aff.wrap.replace('{url}', encodeURIComponent(base));
-    return base;
+    return _applyAffiliate(tmpl.replace('{q}', encodeURIComponent(query)), cfg.affiliate);
   }
 
-  return { TR, toTurkish, buildUrl };
+  // Market anasayfası URL'si (büyük CTA). Anasayfa dış deep-link challenge'ına
+  // takılmıyor — garantili devir noktası.
+  function storeHome(cfg) {
+    cfg = cfg || {};
+    const home = cfg.homeUrl || (cfg.searchUrl || 'https://www.google.com/').split('?')[0];
+    return _applyAffiliate(home, cfg.affiliate);
+  }
+
+  return { TR, toTurkish, buildUrl, storeHome };
 })();
 
 // Yalnızca node testi için (tarayıcıda `typeof module` undefined, zararsız).

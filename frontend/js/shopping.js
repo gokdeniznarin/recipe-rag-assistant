@@ -19,8 +19,8 @@ const shopCta      = document.getElementById('shop-cta');
 const shopNote     = document.getElementById('shop-note');
 
 // Buton/not metnini config'deki mağaza adına göre kur (tek yerde tanımlı).
-shopCta.textContent = `Shop this list on ${window.SHOP.store} →`;
-shopNote.textContent = `Opens ${window.SHOP.store} for the items you still need.`;
+shopCta.textContent = `Shop at ${window.SHOP.store} →`;
+shopNote.textContent = `Opens ${window.SHOP.store}; use the ${window.SHOP.store} ↗ links to find each item.`;
 
 // ── Durum ────────────────────────────────────────────────
 let currentWeek = null;   // "YYYY-MM-DD" (pazartesi)
@@ -118,9 +118,11 @@ function renderItem(item) {
   // Satır-başına market linki: yalnızca ALINACAK (işaretsiz) malzemelerde.
   // Malzeme Türkçe'ye çevrilip market aramasına gidiyor (affiliate config
   // uygulanmış URL). Tek malzeme = tek ürün araması, markette sepete atılır.
+  // rel="noreferrer": referrer'ı silince istek "doğrudan adres yazılmış" gibi
+  // görünüyor — Migros'un Cloudflare challenge'ını geçme şansı artıyor.
   const findLink = !item.checked
     ? `<a class="shopping-find" href="${escapeAttr(Stores.buildUrl(Stores.toTurkish(item.name), window.SHOP))}"
-          target="_blank" rel="noopener"
+          target="_blank" rel="noopener noreferrer"
           title="Find on ${escapeAttr(window.SHOP.store)}">${escapeHtml(window.SHOP.store)} ↗</a>`
     : '';
 
@@ -223,15 +225,12 @@ async function removeCustom(item) {
 }
 
 // ── Shop CTA (gelir kapısı) ──────────────────────────────
-// İşaretlenmemiş malzemeleri Türkçe'ye çevirip markete (Migros) götürüyor.
-// Affiliate config'i (window.SHOP) doluysa link izlenebilir olur — sipariş
-// başına komisyon. Boşken düz arama: ortada sahte bir şey yok.
-// NOT: çoklu terim araması geniş sonuç verir; asıl kullanışlı yol satır-başına
-// "bul" linkleri (tek ürün). Bu CTA "listeyi markete götür" jesti.
+// Market ANASAYFASINI açıyor — dış deep-link challenge'ına takılmayan garantili
+// devir noktası (çoklu-terim deep arama hem kötü sonuç verir hem Cloudflare'i
+// tetikleyebilir). Asıl ürün bulma işi satır-başına "↗" linklerinde.
+// Affiliate config'i (window.SHOP) doluysa bu link de izlenebilir olur.
 shopCta.addEventListener('click', () => {
-  const toBuy = items.filter(i => !i.checked).map(i => Stores.toTurkish(i.name));
-  if (toBuy.length === 0) return;
-  window.open(Stores.buildUrl(toBuy.join(' '), window.SHOP), '_blank', 'noopener');
+  window.open(Stores.storeHome(window.SHOP), '_blank', 'noopener,noreferrer');
 });
 
 // ── Hafta yükleme ────────────────────────────────────────

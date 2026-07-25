@@ -34,6 +34,12 @@
  */
 window.SHOP = {
   store: 'Migros',
+  // searchUrl: tek ürün araması (satır-başına link). Migros Cloudflare ile dış
+  // deep-link'leri challenge edebiliyor; `rel="noreferrer"` ile referrer'sız
+  // gidince geçme şansı artıyor. Kesin çözüm production'da affiliate-ağ linki
+  // (aşağıdaki wrap) — o Migros'un beklediği meşru trafik.
   searchUrl: 'https://www.migros.com.tr/arama?q={q}',
+  // homeUrl: büyük "Shop at ..." CTA'sının hedefi. Anasayfa asla bloklanmaz.
+  homeUrl: 'https://www.migros.com.tr/',
   affiliate: { mode: 'off', append: '', wrap: '' },
 };
