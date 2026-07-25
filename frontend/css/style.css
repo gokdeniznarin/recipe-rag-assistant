@@ -1627,17 +1627,22 @@ body {
 }
 
 /* ── Hafta ızgarası ─────────────────────────────────────── */
+/* 7 sütun (gün) × 4 satır (başlık + 3 öğün). `grid-auto-flow: column` her günün
+   4 öğesini BİR sütuna diziyor; `.day-col { display: contents }` sayesinde slotlar
+   doğrudan bu ızgaraya katılıyor. Sonuç: tüm breakfast'lar TEK satırda hizalanıyor
+   (aynı yükseklik), dolayısıyla her sütun eşit boyda oluyor — içerik uzunluğundan
+   bağımsız. (Alternatif: sabit yükseklik + kırpma; ama o uzun tarif adlarını
+   keserdi. Satır hizalaması kırpmadan eşitliyor.) */
 .week-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-rows: auto auto auto auto;
+  grid-auto-flow: column;
   gap: 0.6rem;
 }
 
 .day-col {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  min-width: 0;
+  display: contents;
 }
 
 .day-head {
@@ -1679,6 +1684,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
+  overflow: hidden;   /* içerik/buton yan sütuna taşmasın (dar hücrede kritik) */
 }
 
 .plan-slot--empty {
@@ -1688,11 +1694,17 @@ body {
 }
 
 .plan-slot-label {
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   color: var(--text-muted);
+  /* Dar hücrede "BREAKFAST" + iki buton sığmazsa etiket kısalsın (…),
+     butonları dışarı itmesin. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .plan-slot-add {
@@ -1743,8 +1755,8 @@ body {
 
 .plan-slot-actions {
   display: flex;
-  gap: 0.1rem;
-  flex-shrink: 0;   /* uzun etiket varken butonlar ezilmesin */
+  gap: 0.05rem;
+  flex-shrink: 0;   /* uzun etiket varken butonlar ezilmesin — etiket kısalır */
 }
 
 .plan-slot-change,
@@ -1752,11 +1764,12 @@ body {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   line-height: 1;
   color: var(--text-muted);
-  padding: 0.15rem 0.25rem;
+  padding: 0.1rem 0.2rem;
   border-radius: var(--radius-sm);
+  flex-shrink: 0;
 }
 
 .plan-slot-change:hover { color: var(--accent); }
@@ -1848,13 +1861,17 @@ body {
 /* 7 sütun telefona sığmıyor: güne göre DİKEY listeye dönüyor, her günün
    öğünleri yan yana. 1000px altında zaten sıkışmaya başlıyor. */
 @media (max-width: 1000px) {
+  /* Tek sütun, her gün bir satır. Masaüstündeki `grid-auto-flow: column` +
+     4-satır düzenini SIFIRLA, yoksa günler yanlış akar. */
   .week-grid {
     grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-auto-flow: row;
     gap: 1.25rem;
   }
 
   .day-col {
-    display: grid;
+    display: grid;   /* masaüstündeki `display: contents`'i geri alıyor */
     grid-template-columns: 5.5rem repeat(3, minmax(0, 1fr));
     align-items: stretch;
     gap: 0.5rem;
