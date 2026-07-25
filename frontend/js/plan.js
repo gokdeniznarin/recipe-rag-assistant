@@ -75,6 +75,14 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// escapeHtml `"` karakterini kaçırmıyor (metin bağlamı için yeterli). Bir
+// ÖZNİTELİK değerinin içinde kullanılacaksa tırnak da kaçmalı, yoksa adında `"`
+// olan tarifler (veri setinde 20 tane var, örn. Vegan "whipped Cream") özniteliği
+// erken kapatıp bozuk HTML üretir.
+function escapeAttr(str) {
+  return escapeHtml(str).replace(/"/g, '&quot;');
+}
+
 // ── Render ───────────────────────────────────────────────
 function entryFor(date, slot) {
   return entries.find(e => e.date === date && e.slot === slot) || null;
@@ -135,7 +143,7 @@ function renderSlot(date, slot) {
       <span class="plan-slot-name">${escapeHtml(name)}</span>
       ${time ? `<span class="plan-slot-time">${time}</span>` : ''}
     </a>
-    <button class="plan-slot-remove" type="button" aria-label="Remove ${escapeHtml(name)}" title="Remove">×</button>
+    <button class="plan-slot-remove" type="button" aria-label="Remove ${escapeAttr(name)}" title="Remove">×</button>
   `;
 
   cell.querySelector('.plan-slot-remove').addEventListener('click', async (e) => {
