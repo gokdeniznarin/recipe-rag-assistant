@@ -250,6 +250,60 @@ Kullanıcı önerdi, değerlendirildi, **elendi**: (1) FatSecret verisi **lisans
 
 ---
 
+## 🔬 ARAŞTIRILDI ama YAPILMADI: fotoğraftan besin değeri (FatSecret)
+
+> **DURUM: KODDA HİÇBİR ŞEY YOK.** Araştırma yapıldı, FatSecret hesabı açıldı, mimari kararlaştırıldı — **implementasyon başlamadı.** `api/` ve `frontend/` içinde "fatsecret" geçen tek satır bile yok. Bu bölüm araştırmayı saklıyor ki ileride sıfırdan yapılmasın.
+
+**Fikir (kullanıcıdan):** kullanıcı bir tabak / meyve / sebze fotoğrafı çeker, uygulama yaklaşık besin değerlerini gösterir. Yol haritasındaki **"beslenme takibi (premium)"** adımının kapısı.
+
+### Neden ayrı bir veri kaynağı gerekiyor
+Elimizdeki besin verisi **tarif başına** (`calories`, `protein_content`, …). Kullanıcı bir **elma** ya da restoranda bilmediğimiz bir tabak çekerse 9.795 tarifimizde karşılığı yok. Faz 17'nin `ingredients` alanı da sadece **isim** taşıyor, besin değeri değil. Yani **gıda başına** bir tabloya ihtiyaç var.
+
+**Gemini doğrudan sayı da verebilir** ama fark önemli: LLM'in sayısı *üretilmiş* (aynı fotoğrafa farklı cevap verebilir, doğrulanamaz), veri setinden gelen sayı *aranmış* ve kaynağı gösterilebilir.
+
+### FatSecret katmanları (2026-07 araştırması)
+| Katman | Ücret | Limit | İçerik |
+|---|---|---|---|
+| **Basic** | Ücretsiz, anında kayıt | 5.000 çağrı/gün | Gıda arama, besin değeri, **barkod**, otomatik tamamlama, günlük API'leri. ABD veri seti, **atıf zorunlu** |
+| **Premier Free** | Ücretsiz, **doğrulama** ile | **Limitsiz** | Basic + alerjen verisi, gıda görselleri, gelişmiş kategorizasyon. **Öğrenciler / <1M$ startup / STK**, atıf zorunlu |
+| Premier | Ücretli | Limitsiz | 58 ülke, white-label, atıf yok |
+| **Image Recognition / NLP** | **$250/ay** (25.000 giriş), 14 gün deneme | — | **Ayrıca faturalanıyor — kapsam dışı** |
+
+**Görüntü tanıma ücretli çıktığı için** FatSecret'ın ayırt edici özelliği kalmıyor; ihtiyacımız olan kısım (gıda arama + besin değeri) ücretsiz katmanda fazlasıyla var.
+
+### 🔑 KRİTİK BULGU: OAuth 1.0'da IP whitelist YOK
+Bu, işi yapılabilir kılan şey — ve neredeyse blocker oluyordu:
+- **OAuth 2.0** → *"You must whitelist at least one IP address"* (en fazla 15 IP; aralık yalnızca Premier'de, değişiklik 24 saate kadar sürüyor)
+- **OAuth 1.0** → IP kısıtı **yok**; her istek Consumer Secret ile **imzalanıyor** (HMAC), imza gerçekliği kanıtladığı için IP kilidine gerek kalmıyor
+
+**Neden kritik:** Render ücretsiz katmanında **sabit giden IP yok** — paylaşımlı CIDR aralığı veriliyor, dedicated IP Pro plan ($100/ay). Yani OAuth 2.0 yolu **kapalı**, OAuth 1.0 yolu **açık**.
+
+**Hesap açıldı:** Consumer Key + Consumer Secret alındı. ⚠️ Secret **asla frontend'e girmeyecek** (`GEMINI_API_KEY` gibi: yerelde `.env`, Render'da env var, imzalama sadece backend'de).
+
+### Planlanan mimari (yazılmadı)
+```
+1. Kamera fotoğrafı            (var — search.js)
+2. Gemini vision: yemek + porsiyon tahmini   (var — llm.py, VISION_MODELS)
+3. FatSecret foods.search  → eşleşen gıda    ← YENİ
+4. FatSecret food.get      → besin değerleri ← YENİ
+5. Porsiyona göre ölçekle, topla, göster
+```
+FatSecret'ın onlarca metodundan **yalnızca 2'si** kullanılacak. **Atıf zorunlu** (Amazon açıklaması gibi görünür bir yere). Kullanılmayacaklar: görüntü tanıma/NLP (ücretli), kendi tarif veritabanı (bizimki var), günlük API'leri (ileride "kaydet" eklenirse), barkod (ücretsiz ve kameramız var — **ileride gerçek bir özellik olabilir**).
+
+**Dayanıklılık:** FatSecret erişilemezse **Gemini tahminine düşülmesi** planlandı (fail-open, `is_food_request`'teki desen) — özellik kırılmaz, sadece sayıların kaynağı değişir.
+
+### Değerlendirilen alternatif: USDA FoodData Central
+**Kamu malı**, indirilebilir (SR Legacy ~7.800 temel gıda — bizim 9.795 tarifle aynı ölçek), ChromaDB'ye ikinci koleksiyon olarak **gömülebilirdi** — hesap/onay/kota/IP derdi olmadan, mimarideki "salt-okunur veri image'a gömülü" desenini sürdürerek. Elenmedi, **yedek olarak duruyor**: FatSecret tarafında bir tıkanma olursa bu yola dönülür. Dezavantajı klinik isimlendirme (`Chicken, broiler or fryers, breast, meat only, cooked, roasted`) — Gemini'nin doğal dil çıktısıyla eşleştirmesi FatSecret'a göre zor.
+
+### Dürüst sınır (hangi kaynak seçilirse seçilsin)
+**Porsiyon fotoğraftan tahmin ediliyor ve bu doğası gereği kaba:** 100 g mı 300 g mı belli olmaz, yağ/tereyağı/şeker fotoğrafta görünmez. $250'lık API'de de böyle. Veri kaynağı iyileşiyor, **fiziksel belirsizlik kalıyor** — arayüz "yaklaşık tahmin" dilini kullanmalı ve tıbbi/diyet aracı gibi durmamalı (diyabet, yeme bozukluğu riski).
+
+### Karar verilmemiş iki nokta
+1. Sonuç **sadece gösterilsin** mi, yoksa **"günlük besin kaydına ekle"** de olsun mu? (İkincisi yeni Firestore koleksiyonu + sayfa — premium hikâyesine oturur, kapsamı büyütür.)
+2. Yerleşim: **kamera akışına ikinci buton** (önerilen — aynı fotoğraf, "Tarif ara" **veya** "Besin değeri", sıfır kod tekrarı) mı, **ayrı sayfa** mı?
+
+---
+
 ## Faz 19 (Alışveriş Listesi — gelir adımı) ✅
 
 **Tetikleyici:** Yol haritasının 4. adımı ve **gelir hikayesinin somut karşılığı**. Plan ve Pantry hazır olduğu için artık hesaplanabiliyor:
