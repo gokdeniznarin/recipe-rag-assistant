@@ -51,7 +51,7 @@
 - **Hafta 8 — CANLI:** Backend → Render, frontend → Vercel ✅ (Faz 10). 4 blocker'ın 3'ü çözüldü, in-app tarayıcı Google girişi (④) bilinçli ertelendi.
 - **Hafta 9 — performans:** Faz 11 ✅ — arama LLM'i beklemiyor (8.87sn → 0.32sn), favoriler N+1 kalktı, favori sırası düzeldi.
 - **Hafta 10 — kalite:** Faz 13 logging ✅, Faz 14 model güncellemesi ✅, **Faz 15 test altyapısı + girdi doğrulama + LLM sınıflandırıcı ✅** (Katman 1 + Katman 2: 148 test).
-- **Hafta 11 (şu an buradayız) — zenginleştirme + gelir modeli:** rakip özelliklerini (Samsung Food / ReciMe) ekleyip gelir hikayesi kurma. **Faz 16 Koleksiyonlar ✅** (175 test), **Faz 17 Pantry + yapılandırılmış malzeme verisi ✅** (235 test), **Faz 18 Meal Planner ✅** (316 test), **Faz 19 Alışveriş Listesi ✅** (366 test) — gelir zinciri (Pantry+Plan → eksikler → affiliate CTA) tamamlandı. **Faz 20 tarif görselleri + veri seti 2× ✅** (372 test), **Faz 21 fotoğraftan besin değeri ✅** (523 test). Yol haritasında kalan opsiyonel adımlar: Cook Mode / porsiyon ölçekleme, **günlük besin kaydı** (Faz 21 sadece gösteriyor, kaydetmiyor — premium hikayesi). Kalan (Faz 15'ten devir): `main`'e merge, README/sunum hazırlığı.
+- **Hafta 11 (şu an buradayız) — zenginleştirme + gelir modeli:** rakip özelliklerini (Samsung Food / ReciMe) ekleyip gelir hikayesi kurma. **Faz 16 Koleksiyonlar ✅** (175 test), **Faz 17 Pantry + yapılandırılmış malzeme verisi ✅** (235 test), **Faz 18 Meal Planner ✅** (316 test), **Faz 19 Alışveriş Listesi ✅** (366 test) — gelir zinciri (Pantry+Plan → eksikler → affiliate CTA) tamamlandı. **Faz 20 tarif görselleri + veri seti 2× ✅** (372 test), **Faz 21 fotoğraftan besin değeri ✅** (525 test). Yol haritasında kalan opsiyonel adımlar: Cook Mode / porsiyon ölçekleme, **günlük besin kaydı** (Faz 21 sadece gösteriyor, kaydetmiyor — premium hikayesi). Kalan (Faz 15'ten devir): `main`'e merge, README/sunum hazırlığı.
 
 ## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
 ### Backend
@@ -125,8 +125,8 @@
 - **Alışveriş Listesi (Faz 19):**
   - `api/tests/test_shopping.py` — 50 test: Katman 1 paylaşılan `ingredient_in_pantry` + **rozet↔liste tutarlılık testi**, `aggregate_ingredients` / `missing_ingredients` / `build_list` (bayat işaretin zararsızlığı, custom dedup) + Katman 1.5 overlay Firestore yazma (sahte doküman) + Katman 2 endpoint sözleşmesi (boş plan → ChromaDB atlanıyor, dolap çıkarması, overlay, silinmiş tarif, normalize, custom `/`).
 - **Besin değeri (Faz 21):**
-  - `api/tests/test_nutrition.py` — 151 test: Katman 1 ölçekleme/toplama/ayrıştırma + `merge_duplicate_items` (gerçek fotoğrafta gözlenen kirazdomatesi vakası) + **OAuth imzası BAĞIMSIZ vektöre karşı** (Twitter'ın yayınlanmış OAuth 1.0a örneği — kendi HMAC'ini kendi HMAC'iyle doğrulamak totolojik olurdu, ayrıca yanlış imza *sessizce* fail-open'a düşeceği için başka türlü fark edilmezdi) + Katman 1.5 sahte HTTP ile `lookup_macros`'un tam zinciri + Katman 2 endpoint sözleşmesi (kota → 200+CORS, **ChromaDB'ye dokunulmaması**).
-- **Toplam: 523 test + 1 xfail**, ~2 sn, container/ağ gerekmiyor.
+  - `api/tests/test_nutrition.py` — 153 test: Katman 1 ölçekleme/toplama/ayrıştırma + `merge_duplicate_items` (gerçek fotoğrafta gözlenen kirazdomatesi vakası) + **OAuth imzası BAĞIMSIZ vektöre karşı** (Twitter'ın yayınlanmış OAuth 1.0a örneği — kendi HMAC'ini kendi HMAC'iyle doğrulamak totolojik olurdu, ayrıca yanlış imza *sessizce* fail-open'a düşeceği için başka türlü fark edilmezdi) + Katman 1.5 sahte HTTP ile `lookup_macros`'un tam zinciri + Katman 2 endpoint sözleşmesi (kota → 200+CORS, **ChromaDB'ye dokunulmaması**).
+- **Toplam: 525 test + 1 xfail**, ~2 sn, container/ağ gerekmiyor.
 - Çalıştırma: `python -m pytest` · `-v` test adlarını gösterir · `--lf` sadece son kırılanları çalıştırır.
 - Windows notu: konsol cp1254 olduğu için Türkçe karakterli mesajlar bozuk görünür (çökme değil). `$env:PYTHONIOENCODING = "utf-8"` düzeltiyor.
 
@@ -276,7 +276,7 @@ POST /api/nutrition/from-image  {image_base64}  →  {items, totals, source, att
 - **Dürüst sınır arayüzde yazılı:** *"Portion size is estimated from the photo... not medical or dietary advice."* Uyarı değil bilgi olduğu için `--error` değil `--text-muted`.
 - `style.css` — 4'lü ölçüm kutusu (mobilde 2×2), öğe kırılımı, `estimated` rozeti (hangi satır tahmin, hangisi aranmış), `.visually-hidden` (dosya girdisi: `display:none` KULLANILMIYOR — klavyeyle erişilemez hale gelirdi).
 
-### Test (372 → **523**, +151)
+### Test (372 → **525**, +153)
 - **Katman 1:** `clamp_grams` / `scale_macros` / `total_macros` / `overall_source` / `as_list` / `parse_food_description` / `macros_from_serving` / `pick_serving` / `pick_best_food` / `canonical_food_name` / `merge_duplicate_items` (**gözlenen kirazdomatesi vakası** dahil) / `llm._parse_plate_json`.
 - **OAuth imzası BAĞIMSIZ VEKTÖRE karşı:** Twitter'ın yayınlanmış OAuth 1.0a örneği. Kendi HMAC'imizi kendi HMAC'imizle karşılaştırmak totolojik olurdu — ve **yanlış imza sessizce fail-open'a düşeceği için başka türlü fark edilmezdi** (özellik "çalışıyor" görünür, FatSecret hiç devreye girmez).
 - **Katman 1.5 — sahte HTTP:** `lookup_macros`'un tam zinciri (tek istekle biten metrik yol, `food.get`'e düşen yol, **hataların 200 GÖVDESİNDE gelmesi**, tek-nesne yanıtı, ağ hatası, bozuk JSON, secret'ın tel üzerinde görünmemesi).
@@ -285,7 +285,7 @@ POST /api/nutrition/from-image  {image_base64}  →  {items, totals, source, att
 ### Doğrulama ✅
 | Kontrol | Sonuç |
 |---|---|
-| Python testleri | **523 geçiyor** + 1 xfail (~2 sn) |
+| Python testleri | **525 geçiyor** + 1 xfail (~2 sn) |
 | Gerçek fotoğrafla uçtan uca (Docker) | HTTP 200, 3 öğe, `source: fatsecret`, atıf dönüyor |
 | Uçtan uca süre (FatSecret dahil) | 2.8–3.8 sn (vision ~1.3 sn + 3 arama × ~490 ms) |
 | ChromaDB'ye dokunma | **0** (query/get çağrılmadı) |
@@ -331,7 +331,7 @@ Ceza ağırlıkları bilinçli: marka cezası tam-eşleşme bonusundan çok daha
 
 ### Bilinen sınırlar
 - **Porsiyon tahmini doğası gereği kaba** — 100 g mı 300 g mı belli olmaz; yağ/tereyağı/şeker fotoğrafta görünmez. $250'lık API'de de böyle. Veri kaynağı iyileşiyor, **fiziksel belirsizlik kalıyor**.
-- **Öğe sınırı 8** — her öğe en az bir HTTP turu.
+- ~~Öğe sınırı 8~~ → **20** (yalnızca akıl sağlığı sınırı). **Gerçek fotoğrafta veri kaybettiriyordu:** vision 11 öğe tanıdı, son üçü (**curry paste, snow peas, parsley**) sessizce kırpıldı — kırpılanlar arasında tabağın en kalorili öğesi vardı (curry paste 125 kcal/100g), yani toplam eksik çıkıyordu ve kullanıcının anlamasının **hiçbir yolu yoktu** (282 vs gerçek 400 kcal). Hata sayının küçüklüğü değil, **tek sayıya iki iş** bindirilmesiydi: "kaç öğe gösterilsin" ile "kaç tanesi aranabilsin" ayrı sorular. İkincisini zaten `LOOKUP_BUDGET_SEC` sınırlıyor ve bütçe dolunca öğeler **düşmüyor**, sadece Gemini tahminine geçiyor (o veri vision yanıtında zaten var). Canlı doğrulandı: 11/11 öğe, 11 arama 5.97 sn.
 - **Günlük kayıt yok** (kapsam kararı) — premium hikâyesinin doğal yeri.
 - **`ml` gram sayılıyor** — sıvılarda yoğunluk 1 g/ml varsayılıyor (su için doğru, yağ/bal için değil).
 

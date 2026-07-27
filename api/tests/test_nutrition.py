@@ -846,12 +846,49 @@ class TestBuildPlate:
         plate = nutrition.build_plate([{"name": "  ", "grams": 100}, {"grams": 50}])
         assert plate["items"] == []
 
-    def test_item_count_is_capped(self, monkeypatch):
-        """Her öğe en az bir HTTP turu — sınırsız bırakılırsa tek fotoğraf
-        onlarca ağ turuna dönüşür."""
+    def test_a_busy_plate_is_not_silently_truncated(self, monkeypatch):
+        """REGRESYON — GERÇEK FOTOĞRAFTA GÖZLENDİ: vision 11 öğe tanıdı, sınır 8
+        olduğu için son üçü (curry paste, snow peas, parsley) sessizce düştü.
+        Kırpılanlar arasında tabağın EN KALORİLİ öğesi vardı, yani toplam eksik
+        çıkıyordu ve kullanıcı bunu göremiyordu."""
         monkeypatch.setattr(nutrition, "lookup_macros", lambda name: None)
-        detected = [{"name": f"food {i}", "grams": 100} for i in range(30)]
+        detected = [
+            {"name": n, "grams": 50, "calories": 10} for n in
+            ["bok choy", "white rice", "farro", "mushrooms", "chili pepper",
+             "bean sprouts", "carrot", "cucumber", "curry paste", "snow peas", "parsley"]
+        ]
+
+        plate = nutrition.build_plate(detected)
+
+        assert len(plate["items"]) == 11
+        assert [i["name"] for i in plate["items"]][-3:] == ["curry paste", "snow peas", "parsley"]
+        assert plate["totals"]["calories"] == 110.0     # hiçbir öğe kaybolmadı
+
+    def test_an_absurd_item_count_is_still_bounded(self, monkeypatch):
+        """Sınır kalktı değil, yükseldi — model saçmalarsa yine tutuluyor."""
+        monkeypatch.setattr(nutrition, "lookup_macros", lambda name: None)
+        detected = [{"name": f"food {i}", "grams": 100} for i in range(200)]
         assert len(nutrition.build_plate(detected)["items"]) == nutrition.MAX_ITEMS
+
+    def test_lookups_stay_bounded_even_on_a_long_plate(self, monkeypatch):
+        """Öğe sınırı yükseldi ama AĞ maliyeti hâlâ bütçeyle sınırlı — öğeler
+        düşmüyor, yalnızca aranmayanlar tahmine geçiyor."""
+        calls = []
+        clock = {"now": 0.0}
+
+        def slow_lookup(name):
+            calls.append(name)
+            clock["now"] += 6.0
+            return None
+
+        monkeypatch.setattr(nutrition, "lookup_macros", slow_lookup)
+        monkeypatch.setattr(nutrition.time, "perf_counter", lambda: clock["now"])
+
+        detected = [{"name": f"food {i}", "grams": 100} for i in range(15)]
+        plate = nutrition.build_plate(detected)
+
+        assert len(calls) == 2              # bütçe 10 sn: iki aramadan sonra kesildi
+        assert len(plate["items"]) == 15    # ama HİÇBİR öğe düşmedi
 
     def test_duplicates_are_merged_before_the_cap_is_applied(self, monkeypatch):
         """SIRA ÖNEMLİ: önce kırpsaydık aynı gıdanın tekrarları bütçeyi yiyip

@@ -59,9 +59,21 @@ ATTRIBUTION = "Nutrition data from FatSecret Platform API."
 # çağrısını bekliyor, üstüne yavaş bir dış servis binmemeli.
 HTTP_TIMEOUT_SEC = 6
 
-# Tabaktaki öğe sayısı sınırı. Her öğe en az bir FatSecret HTTP çağrısı demek;
-# sınırsız bırakılırsa tek fotoğraf onlarca ağ turuna dönüşebilir.
-MAX_ITEMS = 8
+# Tabakta GÖSTERİLECEK en fazla öğe. Yalnızca akıl sağlığı sınırı (model
+# saçmalayıp 200 öğe döndürmesin), ağ maliyeti sınırı DEĞİL.
+#
+# ⚠️ ÖNCEDEN 8'Dİ VE SESSİZCE VERİ KAYBETTİRİYORDU: gerçek bir tabak
+# fotoğrafında vision 11 öğe tanıdı (bok choy, white rice, farro, mushrooms,
+# chili pepper, bean sprouts, carrot, cucumber, **curry paste, snow peas,
+# parsley**) ve son ÜÇÜ kırpıldı. Kırpılanlar arasında tabağın en kalorili
+# öğesi (curry paste, 125 kcal/100g) vardı, yani TOPLAM eksik çıkıyordu ve
+# kullanıcının bunu anlamasının hiçbir yolu yoktu.
+#
+# Hata sayının küçüklüğü değil, TEK SAYIYA İKİ İŞ bindirilmesiydi: "kaç öğe
+# gösterilsin" ile "kaç tanesi aranabilsin" ayrı sorular. İkincisini zaten
+# LOOKUP_BUDGET_SEC sınırlıyor ve bütçe dolunca öğeler DÜŞMÜYOR, yalnızca
+# Gemini tahminine geçiyor (o veri vision yanıtında zaten var, ek maliyeti yok).
+MAX_ITEMS = 20
 
 # TÜM arama turlarının toplam zaman bütçesi (istek başına).
 #
