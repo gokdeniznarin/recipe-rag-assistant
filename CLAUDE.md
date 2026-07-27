@@ -226,6 +226,19 @@ df_sample = with_images.sample(n=10000, random_state=42)
 1. **Linux'ta çalıştır** (Faz 8): `docker run --rm -v "${PWD}:/work" recipe-rag-assistant-api sh -c "pip install --quiet pandas && python /work/ingestion/load_to_chromadb.py"`
 2. **Yetim segment klasörünü sil** (Faz 17): `delete_collection` eski klasörü diskten silmiyor. Bu fazda da oldu — canlı segment sqlite'ın `segments` tablosundan okundu, yetim 6.9 MB'lık klasör elle silindi (79 MB → 73 MB).
 
+### Geri tuşunda arama sonuçları korunuyor (sessionStorage)
+**Kullanıcı bildirimi:** arama → tarife tıkla → geri → **sonuçlar uçuyordu.** Sebep mimari: bu bir **MPA**, `recipe.html`'den dönmek `search.html`'i sıfırdan yüklüyor (Faz 1'deki "React değil MPA" kararının bir bedeli daha — Faz 13b'deki `authReady` beklemesi gibi).
+
+Çözüm `sessionStorage`: **sekme ömrü** boyunca yaşıyor, sekme kapanınca siliniyor — arama sonuçları gibi geçici veri için doğru yer (`localStorage` kalıcı olurdu, gereksiz).
+
+- **Kaydedilen:** mod (text/camera/pantry), sorgu metni, `data` (sonuçlar), AI yorumu, kameradaki tanınan malzemeler.
+- **Yorum ayrıca kaydediliyor** — geri dönüşte yeniden istemek bir Gemini çağrısı daha harcardı (kota model başına günde 20). `saveSearchState` **merge** yapıyor: yorum sonradan gelip üstüne yazıldığında sorgu/sonuçlar korunuyor (node testiyle sabitlendi).
+- **Yeni arama eski yorumu siliyor** (`commentary: null`) — bayat yorum yeni sonuçların üstünde kalmasın.
+- **Fotoğrafın base64'ü SAKLANMIYOR** — sessionStorage kotasını doldururdu; yalnızca tanınan malzeme adları saklanıyor.
+- **URL'de parametre varsa geri yükleme YOK** (`?mode=pantry` ile gelen kullanıcı yeni arama niyetinde).
+- **try/catch şart:** Safari gizli modda `sessionStorage` **okurken bile** `SecurityError` fırlatıyor — Faz 13b'de `logger.js` tam bu yüzden uygulamayı düşürmüştü. Depolama yoksa özellik sessizce devre dışı kalıyor, arama çalışmaya devam ediyor (node testinde doğrulandı).
+- Geri yükleme kodu dosyanın **sonunda**: `renderResults` / `formatCommentary` tanımlı olmalı.
+
 ### Neden tarifler FatSecret'tan ALINMADI
 Kullanıcı önerdi, değerlendirildi, **elendi**: (1) FatSecret verisi **lisanslı**, API'den çekip kendi veritabanına gömmek sözleşmeye aykırı; (2) daha önemlisi **projenin çekirdeği yok olurdu** — anlamsal arama ancak veri bizde olursa mümkün, dışarıdan anahtar-kelime API'si kullanmak "RAG sistemi kurdum"u "API çağırdım"a çevirirdi; (3) Faz 8/17/18/19'un tamamı bu şemaya bağlı. FatSecret yalnızca **besin değeri** için düşünülüyor (ayrı özellik, ChromaDB'ye dokunmaz).
 

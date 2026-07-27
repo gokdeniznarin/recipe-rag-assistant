@@ -85,6 +85,37 @@ function showError(msg) {
   searchError.classList.remove('hidden');
 }
 
+// ── Arama durumunu koru (MPA geri tuşu) ──────────────────
+// Bu bir MPA: tarife tıklayıp geri dönmek search.html'i SIFIRDAN yüklüyor,
+// yani sonuçlar uçuyordu. sessionStorage sekme ömrü boyunca yaşıyor ve sekme
+// kapanınca temizleniyor — arama sonuçları gibi geçici veri için doğru yer
+// (localStorage kalıcı olurdu, gereksiz).
+//
+// try/catch ŞART: Safari gizli modda / site verileri engellendiğinde
+// sessionStorage OKURKEN BİLE SecurityError fırlatıyor. Faz 13b'de tam bu
+// yüzden logger.js uygulamayı düşürmüştü; aynı hatayı tekrarlamıyoruz.
+const SEARCH_STATE_KEY = 'search_state_v1';
+
+function readSearchState() {
+  try {
+    const raw = sessionStorage.getItem(SEARCH_STATE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveSearchState(patch) {
+  try {
+    sessionStorage.setItem(
+      SEARCH_STATE_KEY,
+      JSON.stringify({ ...(readSearchState() || {}), ...patch })
+    );
+  } catch {
+    // Depolama yoksa özellik sessizce devre dışı kalır — arama yine çalışır.
+  }
+}
+
 // AI yorumunu arama sonuçlarından SONRA, ayrı bir istekle çeker.
 // Sonuçlar zaten ekranda olduğu için bu isteğin süresi kullanıcıyı bekletmiyor;
 // gelmezse (kota dolmuş olabilir) kutu hiç görünmez.
@@ -119,6 +150,9 @@ async function loadCommentary(query, recipes) {
     if (data.answer) {
       llmSkeleton.classList.add('hidden');
       llmText.innerHTML = formatCommentary(data.answer);
+      // Geri dönüldüğünde yorum da dursun — yeniden istemek bir Gemini
+      // çağrısı daha harcardı (kota model başına günde 20).
+      saveSearchState({ commentary: data.answer });
     } else {
       llmBox.classList.add('hidden');   // yorum yok — kutuyu hiç gösterme
     }
@@ -220,6 +254,8 @@ textForm.addEventListener('submit', async (e) => {
       showError(data.error);
     } else {
       renderResults(data);
+      // commentary: null — yeni arama, önceki yorumu taşımasın
+      saveSearchState({ mode: 'text', query, data, commentary: null, detected: null });
       loadCommentary(query, data.results);   // bilerek await edilmiyor
     }
   } catch (err) {
@@ -315,6 +351,12 @@ cameraForm.addEventListener('submit', async (e) => {
       addDetectedBtn.disabled = false;
       detectedBox.classList.remove('hidden');
       renderResults(data);
+      // Fotoğrafın kendisi (base64) KAYDEDİLMİYOR — sessionStorage kotasını
+      // doldurur. Tanınan malzemeler yeterli, kutu onlarla geri kuruluyor.
+      saveSearchState({
+        mode: 'camera', query: cameraExtra.value.trim(),
+        data, commentary: null, detected: detectedNames,
+      });
       loadCommentary(data.combined_query, data.results);   // bilerek await edilmiyor
     }
   } catch (err) {
@@ -407,6 +449,10 @@ pantryForm.addEventListener('submit', async (e) => {
       showError(data.error);
     } else {
       renderResults(data);
+      saveSearchState({
+        mode: 'pantry', query: pantryExtra.value.trim(),
+        data, commentary: null, detected: null,
+      });
       loadCommentary(data.combined_query, data.results);   // bilerek await edilmiyor
     }
   } catch (err) {
@@ -476,3 +522,48 @@ function stopListening() {
   micBtn.classList.remove('is-listening');
   micBtn.setAttribute('aria-label', 'Voice search');
 }
+
+// ── Önceki aramayı geri yükle (geri tuşu) ────────────────
+// Dosyanın SONUNDA: renderResults / formatCommentary gibi fonksiyonların
+// tanımlanmış olması gerekiyor.
+//
+// URL'de parametre varsa (ör. pantry.html'den gelen ?mode=pantry) geri yükleme
+// YAPILMIYOR — o durumda kullanıcı yeni bir arama niyetiyle geliyor, eski
+// sonuçları göstermek kafa karıştırır.
+(function restorePreviousSearch() {
+  if (window.location.search) return;
+
+  const st = readSearchState();
+  if (!st || !st.data) return;
+
+  // Mod sekmesi (tıklamak paneli de değiştiriyor, mantık tek yerde kalsın)
+  if (st.mode && st.mode !== 'text') {
+    const tab = document.querySelector(`.mode-tab[data-mode="${st.mode}"]`);
+    if (tab) tab.click();
+  }
+
+  if (st.query) {
+    if (st.mode === 'camera') cameraExtra.value = st.query;
+    else if (st.mode === 'pantry') pantryExtra.value = st.query;
+    else textQuery.value = st.query;
+  }
+
+  // Kamerada tanınan malzemeler (fotoğrafın kendisi saklanmıyor, o yüzden
+  // "Add to pantry" butonu yeniden çekim isteyecek şekilde kapalı kalıyor)
+  if (st.detected && st.detected.length) {
+    detectedNames = st.detected;
+    detectedList.textContent = detectedNames.join(', ');
+    addDetectedBtn.disabled = false;
+    detectedBox.classList.remove('hidden');
+  }
+
+  renderResults(st.data);
+
+  if (st.commentary) {
+    llmSkeleton.classList.add('hidden');
+    llmText.innerHTML = formatCommentary(st.commentary);
+    llmBox.classList.remove('hidden');
+  }
+
+  searchLog.debug('Restored previous search from this tab');
+})();
