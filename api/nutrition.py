@@ -364,21 +364,58 @@ def pick_serving(servings: list) -> dict | None:
     return None
 
 
-def pick_best_food(foods: list) -> dict | None:
-    """Arama sonuçlarından en uygun gıdayı seçer.
+# "Green Chili Peppers (Canned)" → parantez içi bir İŞLENME DURUMU bildiriyor.
+_QUALIFIER_RE = re.compile(r"\s*\([^)]*\)")
 
-    MARKASIZ ("Generic") KAYITLAR TERCİH EDİLİYOR: fotoğraftan tanınan şey bir
-    ürün değil bir yemek ("grilled chicken breast"). Markalı kayıtlar (bir zincir
-    restoranın kendi tavuğu) tesadüfen üste çıkabiliyor ve tabaktakini temsil
-    etmiyor. Marka yoksa FatSecret'ın kendi alaka sırası korunuyor.
+
+def _strip_qualifier(name: str) -> str:
+    return _QUALIFIER_RE.sub("", name or "").strip()
+
+
+def score_food(food: dict, query: str = "") -> int:
+    """Bir arama sonucunun uygunluk puanı (yüksek olan seçilir).
+
+    FatSecret'ın kendi alaka sırası TEK BAŞINA YETMİYOR — canlı sorgularda
+    ölçüldü:
+      "grilled chicken breast" → 1. "Skinless Chicken Breast",
+                                 2. "Grilled Chicken Breast"  ← sorgunun AYNISI
+      "green chili pepper"     → 1. "Green Chili Peppers (Canned)",
+                                 2. "Green Hot Chili Peppers"  ← taze olan
+    Yani ilk sonucu almak hem tam eşleşmeyi kaçırıyor hem de fotoğrafta
+    görünmeyen bir işlenme durumunu (konserve) seçebiliyor.
+    """
+    name = str(food.get("food_name", ""))
+    score = 0
+
+    # Markalı kayıt: fotoğraftan tanınan şey bir ürün değil bir yemek. Bir
+    # zincir restoranın kendi tavuğu tabaktakini temsil etmiyor.
+    if str(food.get("brand_name", "")).strip():
+        score -= 100
+
+    # Parantezli nitelik ("(Canned)", "(Cooked, Fat Added)") fotoğrafın
+    # söylemediği bir hazırlanış biçimi varsayar. Sade kayıt daha güvenli.
+    if "(" in name:
+        score -= 10
+
+    # Sorgunun birebir karşılığı varsa en güçlü sinyal o. Karşılaştırma
+    # canonical_food_name üzerinden: "Green Chili Peppers" ↔ "green chili pepper"
+    # (çoğul farkı eşleşmeyi bozmasın).
+    if query and canonical_food_name(_strip_qualifier(name)) == canonical_food_name(query):
+        score += 5
+
+    return score
+
+
+def pick_best_food(foods: list, query: str = "") -> dict | None:
+    """Arama sonuçlarından en uygun gıdayı seçer (bkz. score_food).
+
+    `max` ilk en büyüğü döndürdüğü için EŞİT PUANDA FatSecret'ın kendi alaka
+    sırası korunuyor — puanlama ayırt etmediğinde onun sıralamasına güveniyoruz.
     """
     candidates = [f for f in as_list(foods) if isinstance(f, dict)]
     if not candidates:
         return None
-    for food in candidates:
-        if not str(food.get("brand_name", "")).strip():
-            return food
-    return candidates[0]
+    return max(candidates, key=lambda food: score_food(food, query))
 
 
 # ── OAuth 1.0 imzalama (saf — sabit nonce/timestamp ile test edilebilir) ──
@@ -519,7 +556,7 @@ def lookup_macros(food_name: str) -> dict | None:
         return None
 
     foods = (payload.get("foods") or {}).get("food")
-    best = pick_best_food(foods)
+    best = pick_best_food(foods, name)
     if not best:
         log.info("FatSecret has no match for %r", name[:60])
         return None

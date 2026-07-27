@@ -328,6 +328,66 @@ class TestPickBestFood:
         assert nutrition.pick_best_food(None) is None
 
 
+class TestPickBestFoodAgainstRealCandidates:
+    """CANLI FatSecret'tan alınan GERÇEK aday listeleri (2026-07-27).
+
+    Bunlar uydurulmadı — anahtar eklendikten sonra üç sorgu çalıştırılıp
+    dönen sıralama olduğu gibi alındı. FatSecret'ın kendi alaka sırasının
+    yetmediğini bu ölçüm gösterdi.
+    """
+
+    def test_an_exact_name_match_beats_the_first_result(self):
+        """REGRESYON: sorgunun BİREBİR AYNISI listede 2. sıradaydı ve
+        seçilmiyordu — "Skinless" ızgara tavuğun yerine geçmez."""
+        foods = [
+            {"food_name": "Skinless Chicken Breast"},
+            {"food_name": "Grilled Chicken Breast"},
+            {"food_name": "Grilled Chicken Breast", "brand_name": "HEB"},
+            {"food_name": "Fully Cooked Grilled Chicken Breast", "brand_name": "Great Value"},
+        ]
+        best = nutrition.pick_best_food(foods, "grilled chicken breast")
+        assert best["food_name"] == "Grilled Chicken Breast"
+        assert not best.get("brand_name")        # markasız olanı seçmeli
+
+    def test_a_plain_entry_beats_a_canned_one(self):
+        """REGRESYON: fotoğrafta TAZE biber vardı, "(Canned)" seçiliyordu.
+        Parantez içi, fotoğrafın söylemediği bir hazırlanış varsayıyor."""
+        foods = [
+            {"food_name": "Green Chili Peppers (Canned)"},
+            {"food_name": "Green Hot Chili Peppers"},
+            {"food_name": "Green Hot Chili Peppers (Excluding Seeds, Canned)"},
+            {"food_name": "Pitted Green Olives with Chili", "brand_name": "Gaea"},
+        ]
+        best = nutrition.pick_best_food(foods, "green chili pepper")
+        assert best["food_name"] == "Green Hot Chili Peppers"
+
+    def test_the_plain_exact_match_still_wins_when_it_is_already_first(self):
+        foods = [
+            {"food_name": "Eggplant"},
+            {"food_name": "Cooked Eggplant (Fat Added in Cooking)"},
+            {"food_name": "Cooked Eggplant"},
+            {"food_name": "Fried Batter Dipped Eggplant"},
+        ]
+        assert nutrition.pick_best_food(foods, "eggplant")["food_name"] == "Eggplant"
+
+    def test_plural_difference_does_not_break_the_exact_match(self):
+        foods = [{"food_name": "Cooked Cherry Tomatoes"}, {"food_name": "Cherry Tomatoes"}]
+        best = nutrition.pick_best_food(foods, "cherry tomato")
+        assert best["food_name"] == "Cherry Tomatoes"
+
+    def test_a_branded_exact_match_still_loses_to_a_generic_one(self):
+        # Marka cezası (-100) tam eşleşme bonusundan (+5) çok daha ağır olmalı.
+        foods = [
+            {"food_name": "Grilled Chicken Breast", "brand_name": "HEB"},
+            {"food_name": "Chicken Breast"},
+        ]
+        assert nutrition.pick_best_food(foods, "grilled chicken breast")["food_name"] == "Chicken Breast"
+
+    def test_without_a_query_it_falls_back_to_relevance_order(self):
+        foods = [{"food_name": "First"}, {"food_name": "Second"}]
+        assert nutrition.pick_best_food(foods)["food_name"] == "First"
+
+
 # ── OAuth 1.0 imzalama ────────────────────────────────────
 
 class TestPercentEncode:
