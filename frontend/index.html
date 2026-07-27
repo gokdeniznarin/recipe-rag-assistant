@@ -67,6 +67,115 @@
     </div>
   </div>
 
+  <!--
+    HERKESE AÇIK TANITIM İÇERİĞİ — giriş gerektirmiyor.
+    Sadece pazarlama değil: uygulamanın tamamı giriş duvarının arkasındaydı,
+    yani ziyaretçi (ve affiliate program incelemesi) kök adreste yalnızca bir
+    giriş formu görüyordu. Bu bölüm uygulamanın ne yaptığını açıkça anlatıyor.
+  -->
+  <section class="landing">
+    <div class="landing-inner">
+
+      <h2 class="landing-title">Cook what you already have</h2>
+      <p class="landing-lede">
+        Recipe Assistant searches nearly 5,000 real recipes by what you actually
+        mean — not by keyword. Tell it “something quick and gluten free with
+        chicken”, or photograph your fridge shelf, and it finds dishes that fit.
+        Then it remembers: what's in your cupboard, what you plan to cook this
+        week, and what you still need to buy.
+      </p>
+
+      <div class="feature-grid">
+        <article class="feature">
+          <span class="feature-icon">🔍</span>
+          <h3>Search in plain language</h3>
+          <p>
+            Describe the meal you want. Dietary needs and time limits are pulled
+            out of your sentence automatically, so “vegan pasta under 30 minutes”
+            filters as well as it reads.
+          </p>
+        </article>
+
+        <article class="feature">
+          <span class="feature-icon">📷</span>
+          <h3>Search with a photo</h3>
+          <p>
+            Point your camera at what's in the fridge. The app identifies the
+            ingredients it can see and searches with them — useful when you know
+            what you have but not what to make.
+          </p>
+        </article>
+
+        <article class="feature">
+          <span class="feature-icon">🧺</span>
+          <h3>Your pantry, remembered</h3>
+          <p>
+            Save the ingredients you keep at home. Results then show how many of
+            them each recipe uses, and the ones using the most come first.
+          </p>
+        </article>
+
+        <article class="feature">
+          <span class="feature-icon">🗓️</span>
+          <h3>Plan the week</h3>
+          <p>
+            Drop recipes into a seven-day, three-meal grid. Unlike asking a
+            chatbot, the plan is still there on Thursday.
+          </p>
+        </article>
+
+        <article class="feature">
+          <span class="feature-icon">🛒</span>
+          <h3>Shopping list that does the maths</h3>
+          <p>
+            The list is your planned recipes' ingredients minus what's already in
+            your pantry. Check items off as you shop, add anything else by hand.
+          </p>
+        </article>
+
+        <article class="feature">
+          <span class="feature-icon">❤️</span>
+          <h3>Save and organise</h3>
+          <p>
+            Keep the recipes you like and group them into named collections —
+            weeknight dinners, things to try, whatever fits how you cook.
+          </p>
+        </article>
+      </div>
+
+      <h2 class="landing-title">How the search works</h2>
+      <p class="landing-lede">
+        Recipes are stored as vector embeddings, so a query is matched by meaning
+        rather than exact words — “quick chicken dinner” can surface a recipe
+        that never uses the word “quick”. Dietary tags and cooking times are
+        filtered at the same time, and a language model writes a short note on
+        why the results fit. Recipe data comes from the public Food.com dataset;
+        dietary labels are derived automatically and shown as best-effort
+        estimates, not guarantees.
+      </p>
+
+      <p class="landing-cta-note">Free to use — create an account above to start.</p>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <p class="footer-brand">✦ Recipe Assistant</p>
+      <p class="footer-note">
+        A student project built around a retrieval-augmented recipe search.
+        Dietary tags are automatic estimates — always check ingredients yourself
+        if you have an allergy.
+      </p>
+      <p class="footer-note">
+        As an Amazon Associate, we earn from qualifying purchases. Shopping links
+        in the app are affiliate links; using them costs you nothing extra.
+      </p>
+      <p class="footer-links">
+        <a href="privacy.html">Privacy &amp; data</a>
+      </p>
+    </div>
+  </footer>
+
   <!-- Firebase (compat SDK — klasik <script> ile global `firebase`) -->
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>

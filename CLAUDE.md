@@ -78,7 +78,8 @@
 - `README.md` (**repo kökünde**) — proje/deploy özeti; gereken iki env var burada yazılı.
 
 ### Frontend
-- `frontend/index.html` — giriş/kayıt sayfası (Sign in / Create account sekmeleri, "Continue with Google" butonu). Firebase compat SDK script'leri + `firebase.js`, diğer JS'lerden önce yükleniyor (sıra önemli).
+- `frontend/index.html` — giriş/kayıt sayfası (Sign in / Create account sekmeleri, "Continue with Google" butonu) **+ altında herkese açık landing içeriği** (Faz 19: özellik kartları, "how it works", footer + Associates açıklaması). Firebase compat SDK script'leri + `firebase.js`, diğer JS'lerden önce yükleniyor (sıra önemli).
+- `frontend/privacy.html` — **gizlilik & veri sayfası** (Faz 19). Giriş gerektirmiyor. `CONTACT_EMAIL` yer tutucusu doldurulmalı.
 - `frontend/search.html` — ana arama sayfası (Text search / Camera search sekmeleri, mikrofon butonu)
 - `frontend/recipe.html` — tarif detay sayfası (instructions + kalp butonu ile favori toggle + Faz 16'da "Add to collection" seçicisi)
 - `frontend/favorites.html` — "Your recipes": üstte koleksiyon grid'i (Faz 16), altta "All saved" listesi (boş durum ekranı ile)
@@ -218,6 +219,13 @@ DELETE /api/shopping-list/custom?week=&name=          elle çıkar
 - **`rel="noopener sponsored"`** — affiliate link için web standardı işaret (arama motorları bunu bekliyor).
 - **`?`/`&` ayıracı otomatik:** arama URL'sinde zaten `?` var (`&tag=`), anasayfada yok (`?tag=`). Aynı fonksiyondan geçtikleri için `_applyAffiliate` ayıracı kendisi seçiyor — node testinde ikisi de sabitlendi.
 - **🔴 ZORUNLU AÇIKLAMA:** Associates sözleşmesi affiliate linki kullanan sitenin ilişkiyi şeffafça bildirmesini şart koşuyor. `shopping.html`'de Amazon'un resmî ifadesi duruyor: *"As an Amazon Associate, we earn from qualifying purchases."* **Etiket kullanıldığı sürece kaldırılmamalı.**
+
+### Herkese açık landing + gizlilik sayfası (affiliate ön koşulu)
+**Sorun:** uygulamanın TAMAMI giriş duvarının arkasındaydı — kök adrese gelen ziyaretçi (ve affiliate program incelemesi) yalnızca bir giriş formu görüyordu. Amazon'un şartı net: *içerik herkese açık olmalı, paywall/kapalı grup arkasında olmamalı* + *özgün içerik*. Bu, başvurunun **en olası red sebebiydi**.
+
+- **`index.html`** — giriş kartının ALTINA herkese açık tanıtım bölümü eklendi: 6 özellik kartı (arama / kamera / pantry / plan / alışveriş listesi / koleksiyonlar) + "How the search works" (embedding tabanlı anlamsal arama, diyet etiketlerinin otomatik tahmin olduğu dürüstçe yazılı) + footer (marka, sorumluluk notu, **Associates açıklaması**, gizlilik linki). **Giriş akışına dokunulmadı** — `auth.js`'in aradığı tüm ID'ler yerinde, script sırası korundu, sadece `body.auth-page` dikey ortalamadan normal akışa çevrildi (altında içerik olduğu için).
+- **`privacy.html` (yeni)** — hukuk kalıbı değil, **gerçek veri pratiğinin** düz anlatımı: ne saklanıyor (e-posta, favoriler, koleksiyonlar, pantry, plan, alışveriş overlay'i), **fotoğrafların SAKLANMADIĞI** (Gemini'ye gidip atılıyor), üçüncü taraflar (Firebase/Gemini/Render/Vercel/Amazon), affiliate açıklaması, veri silme, ve "bu bir öğrenci projesi" uyarısı.
+- **⚠️ Doldurulacak:** `privacy.html` içinde **`CONTACT_EMAIL`** yer tutucusu var (2 yerde) — veri silme talebi için iletişim adresi. Kişisel e-posta yayınlamak kullanıcının kararı olduğu için boş bırakıldı.
 
 ### (Tarihsel) Gelir kapısı: Migros deep-link + çeviri + affiliate-hazır config
 **Karar araştırmaya dayandı** (bkz. aşağıdaki "Neden gerçek sipariş API'si yok"). Üç seviye vardı: (1) markete deep-link, (2) affiliate link, (3) gerçek sipariş API'si. **Seviye 3 kapalı** — Getir/Migros/Trendyol üçüncü taraflara tüketici-sipariş API'si vermiyor (sadece satıcı-tarafı entegrasyon). Yapılan: **Seviye 1 + Seviye 2-hazır config.**

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy &amp; data — Recipe Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <header class="app-header">
+    <div class="app-header-inner">
+      <a href="index.html" class="brand">
+        <span class="brand-mark">✦</span>
+        <span class="brand-name">Recipe Assistant</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="page legal-page">
+    <a href="index.html" class="back-link">← Back</a>
+
+    <h1 class="page-title">Privacy &amp; data</h1>
+    <p class="page-sub">
+      What this app stores, who it talks to, and how to get rid of it.
+      Written in plain language rather than legal boilerplate.
+    </p>
+
+    <section class="legal-section">
+      <h2>What we store</h2>
+      <p>Only what the app needs to work. Specifically:</p>
+      <ul>
+        <li><strong>Your email address</strong> — this is your account identity. Sign-in is handled by Google Firebase Authentication; if you use a password, it is set and checked by Firebase and never reaches our server.</li>
+        <li><strong>Recipes you save</strong>, and the collections you group them into.</li>
+        <li><strong>Your pantry list</strong> — the ingredient names you add.</li>
+        <li><strong>Your meal plan</strong> — which recipe you put in which day and meal.</li>
+        <li><strong>Your shopping list state</strong> — which items you ticked off and anything you added by hand. The list itself is not stored; it is recalculated from your plan and pantry each time you open it.</li>
+      </ul>
+      <p>
+        We do not ask for or store your name, address, phone number, or any
+        payment details. There is no payment in this app.
+      </p>
+    </section>
+
+    <section class="legal-section">
+      <h2>Searches and photos</h2>
+      <p>
+        When you search, your query is sent to Google's Gemini API so it can
+        judge whether it is a food request and write a short note about the
+        results. When you use camera search, the photo is sent to the same API
+        to identify visible ingredients.
+      </p>
+      <p>
+        <strong>Photos are not saved.</strong> They are sent, processed, and
+        discarded — nothing is written to our database. Search queries are not
+        stored against your account either.
+      </p>
+    </section>
+
+    <section class="legal-section">
+      <h2>Who else is involved</h2>
+      <ul>
+        <li><strong>Google Firebase</strong> — sign-in and the database holding the items listed above.</li>
+        <li><strong>Google Gemini</strong> — processes search text and camera photos as described.</li>
+        <li><strong>Render</strong> and <strong>Vercel</strong> — host the server and the website.</li>
+        <li><strong>Amazon</strong> — only when you choose to open a shopping link (see below).</li>
+      </ul>
+      <p>
+        We do not sell your data, and there are no advertising or analytics
+        trackers on the site.
+      </p>
+    </section>
+
+    <section class="legal-section">
+      <h2>Affiliate links</h2>
+      <p>
+        As an Amazon Associate, we earn from qualifying purchases. The shopping
+        links in the app carry an affiliate tag, which lets Amazon attribute a
+        purchase to this site and pay a small commission.
+      </p>
+      <p>
+        <strong>Using them costs you nothing extra</strong>, and the link is a
+        normal product search — we are not paid to recommend particular items,
+        and the recipes you see are never influenced by it. If you would rather
+        not use them, search the store yourself; nothing in the app depends on it.
+      </p>
+      <p>
+        Once you follow such a link, you are on Amazon's site and their privacy
+        policy applies, not ours.
+      </p>
+    </section>
+
+    <section class="legal-section">
+      <h2>Deleting your data</h2>
+      <p>
+        Anything you added, you can remove in the app: unsave recipes, delete
+        collections, clear your pantry, clear a week of your plan.
+      </p>
+      <p>
+        To delete your account and everything attached to it, email
+        <a href="mailto:CONTACT_EMAIL">CONTACT_EMAIL</a> from the address you
+        signed up with and it will be removed.
+      </p>
+    </section>
+
+    <section class="legal-section">
+      <h2>One honest caveat</h2>
+      <p>
+        This is a student project, not a commercial service. It is built with
+        care — passwords are handled by Firebase, the API is locked to this
+        site's origin, and recipe data is read-only — but it does not carry the
+        guarantees, support, or uptime commitments of a production product.
+        Dietary tags are generated automatically and are best-effort estimates:
+        if you have an allergy, always read the ingredient list yourself.
+      </p>
+    </section>
+
+    <p class="legal-updated">Last updated: July 2026</p>
+  </main>
+
+</body>
+</html>
