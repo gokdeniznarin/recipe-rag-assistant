@@ -340,6 +340,18 @@ retakeBtn.addEventListener('click', async () => {
   cameraActions.classList.add('hidden');
   detectedBox.classList.add('hidden');
   nutritionPanel.classList.add('hidden');
+  detectedNames = [];
+
+  // Retake ekrandaki fotoğraf türevlerini siliyor; KAYIT da aynısını yapmalı.
+  // Yoksa yeni fotoğrafın besin değeri, ESKİ fotoğrafın tarif sonuçlarının ve
+  // malzemelerinin yanında geri yükleniyordu (saveSearchState merge yaptığı
+  // için eski alanlar hayatta kalıyor) — geri tuşunda görünür bir tutarsızlık.
+  // Yalnızca KAMERA kaydı temizleniyor: kullanıcı önce metin/dolap araması
+  // yapıp sonra kameraya geçtiyse o sonuçlar korunmalı.
+  const saved = readSearchState();
+  if (saved && saved.mode === 'camera') {
+    saveSearchState({ data: null, commentary: null, detected: null, nutrition: null });
+  }
 
   // Kamerayı tekrar aç
   try {

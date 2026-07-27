@@ -22,23 +22,48 @@ import nutrition
 #  KATMAN 1 — saf fonksiyonlar
 # ═══════════════════════════════════════════════════════════
 
-class TestClampGrams:
-    """Vision'ın porsiyon tahmini doğrudan ÇARPAN olarak kullanılıyor; tek bir
-    uçuk değer bütün tabağın toplamını anlamsız yapar."""
+class TestPieceGrams:
+    """TEK PARÇA sağlaması. Kullanılamaz değer 0 sayılıyor — varsayılan bir
+    ağırlık uydurmak toplamı şişirirdi, oysa kardeş parçalar ölçeği taşıyor."""
 
     def test_keeps_a_reasonable_portion(self):
-        assert nutrition.clamp_grams(150) == 150.0
+        assert nutrition.piece_grams(150) == 150.0
 
     def test_accepts_numeric_string(self):
-        assert nutrition.clamp_grams("180") == 180.0
+        assert nutrition.piece_grams("180") == 180.0
 
     @pytest.mark.parametrize("value", [0, -5, 5000, None, "", "chicken", float("nan"), float("inf")])
-    def test_unusable_values_fall_back_to_default(self, value):
-        assert nutrition.clamp_grams(value) == nutrition.DEFAULT_GRAMS
+    def test_unusable_values_contribute_nothing(self, value):
+        assert nutrition.piece_grams(value) == 0.0
 
     def test_boundaries_are_inclusive(self):
-        assert nutrition.clamp_grams(nutrition.MIN_GRAMS) == nutrition.MIN_GRAMS
-        assert nutrition.clamp_grams(nutrition.MAX_GRAMS) == nutrition.MAX_GRAMS
+        assert nutrition.piece_grams(nutrition.MIN_GRAMS) == nutrition.MIN_GRAMS
+        assert nutrition.piece_grams(nutrition.MAX_GRAMS) == nutrition.MAX_GRAMS
+
+
+class TestPlateGrams:
+    """BİRLEŞTİRME SONRASI sağlama. piece_grams'tan kritik farkı: büyük bir
+    toplam varsayılana DÜŞÜRÜLMEZ, tavana çekilir."""
+
+    def test_keeps_a_reasonable_total(self):
+        assert nutrition.plate_grams(180) == 180.0
+
+    def test_a_large_but_legitimate_total_is_not_reset_to_the_default(self):
+        """REGRESYON: 10 dilim pizzanın 2000 g'lık toplamı 150 g'a iniyordu ve
+        FatSecret yolunda gram ÇARPAN olduğu için besin değeri 13 kat eksik
+        çıkıyordu."""
+        assert nutrition.plate_grams(2000) == 2000.0
+
+    def test_an_absurd_total_is_capped_not_defaulted(self):
+        assert nutrition.plate_grams(99999) == nutrition.MAX_TOTAL_GRAMS
+
+    @pytest.mark.parametrize("value", [0, -5, None, "", "chicken", float("nan")])
+    def test_nothing_usable_falls_back_to_the_default(self, value):
+        # Burada gerçekten elde bilgi yok; tahmin etmekten başka seçenek kalmıyor.
+        assert nutrition.plate_grams(value) == nutrition.DEFAULT_GRAMS
+
+    def test_the_two_ceilings_are_different(self):
+        assert nutrition.MAX_TOTAL_GRAMS > nutrition.MAX_GRAMS
 
 
 class TestCanonicalFoodName:
@@ -112,6 +137,21 @@ class TestMergeDuplicateItems:
         assert merged[0]["grams"] == 100.0
         assert merged[0]["calories"] == 130.0
 
+    def test_one_absurd_piece_does_not_swallow_its_healthy_siblings(self):
+        """REGRESYON: 99999 g'lık tek bir bozuk parça toplamı aralık dışına
+        itiyor ve sağlıklı 180 g'lık parça kaybolup sonuç 150 g oluyordu."""
+        merged = nutrition.merge_duplicate_items([
+            {"name": "rice", "grams": 180},
+            {"name": "rice", "grams": 99999},
+        ])
+        assert merged[0]["grams"] == 180.0
+
+    def test_a_large_legitimate_total_survives_the_merge(self):
+        merged = nutrition.merge_duplicate_items(
+            [{"name": "pizza slice", "grams": 200}] * 10
+        )
+        assert merged[0]["grams"] == 2000.0
+
     def test_nameless_entries_are_dropped(self):
         assert nutrition.merge_duplicate_items([{"grams": 10}, {"name": "  "}]) == []
 
@@ -138,9 +178,14 @@ class TestScaleMacros:
     def test_non_numeric_values_do_not_raise(self):
         assert nutrition.scale_macros({"calories": "n/a"}, 100)["calories"] == 0.0
 
-    def test_absurd_grams_are_clamped_before_scaling(self):
-        # 5000 g reddedilip DEFAULT_GRAMS'a çekiliyor — ölçekleme onun üstünden.
-        assert nutrition.scale_macros(self.PER_100G, 5000)["calories"] == pytest.approx(247.5)
+    def test_a_large_portion_scales_up_instead_of_collapsing(self):
+        """REGRESYON: gram burada ÇARPAN. 2000 g varsayılana düşseydi besin
+        değeri sessizce 13 kat eksik çıkardı."""
+        assert nutrition.scale_macros(self.PER_100G, 2000)["calories"] == 3300.0
+
+    def test_an_absurd_portion_is_capped(self):
+        expected = 165.0 * nutrition.MAX_TOTAL_GRAMS / 100.0
+        assert nutrition.scale_macros(self.PER_100G, 99999)["calories"] == pytest.approx(expected)
 
 
 class TestTotalMacros:
@@ -602,6 +647,30 @@ class TestBuildPlate:
         assert item["matched_food"] == "Grilled Chicken Breast"
         assert plate["attribution"] == nutrition.ATTRIBUTION
 
+    def test_a_large_merged_portion_is_reported_honestly(self, monkeypatch):
+        """REGRESYON (tahmin yolu): 10×200 g birleşip 2000 g olurken gram
+        varsayılana düşüyordu — arayüz "≈150 g … 2800 kcal" gibi KENDİ İÇİNDE
+        ÇELİŞEN bir satır gösteriyordu."""
+        monkeypatch.setattr(nutrition, "lookup_macros", lambda name: None)
+
+        plate = nutrition.build_plate(
+            [{"name": "pizza slice", "grams": 200, "calories": 280}] * 10
+        )
+
+        assert plate["items"][0]["grams"] == 2000
+        assert plate["items"][0]["calories"] == 2800.0
+
+    def test_a_large_merged_portion_scales_looked_up_data(self, monkeypatch):
+        """REGRESYON (FatSecret yolu) — en ciddisi: gram burada ÇARPAN olduğu
+        için hata sessiz ve 13 katlık bir eksik beyandı."""
+        monkeypatch.setattr(nutrition, "lookup_macros",
+                            lambda name: {"calories": 100.0, "protein_g": 5.0})
+
+        plate = nutrition.build_plate([{"name": "pizza slice", "grams": 200}] * 10)
+
+        assert plate["items"][0]["grams"] == 2000
+        assert plate["items"][0]["calories"] == 2000.0
+
     def test_portion_always_comes_from_the_photo_not_the_database(self, monkeypatch):
         # FatSecret fotoğrafa bakamaz; gram her durumda vision'dan geliyor.
         monkeypatch.setattr(nutrition, "lookup_macros", lambda name: {
@@ -662,6 +731,40 @@ class TestBuildPlate:
         nutrition.build_plate([{"name": "cherry tomato", "grams": 20}] * 5)
 
         assert calls == ["cherry tomato"]
+
+    def test_a_slow_service_cannot_hold_the_whole_request_hostage(self, monkeypatch):
+        """Her öğe diğerinden BAĞIMSIZ yeniden deniyor; devre kesici olmadan
+        8 öğe × 2 çağrı × 6 sn timeout = ~96 sn beklerdi. Bütçe dolunca kalan
+        öğeler tahmine düşüyor (fail-open'ın aynısı, tetikleyicisi yavaşlık)."""
+        calls = []
+        clock = {"now": 0.0}
+
+        def slow_lookup(name):
+            calls.append(name)
+            clock["now"] += 6.0          # her arama zaman aşımına uğruyor
+            return None
+
+        monkeypatch.setattr(nutrition, "lookup_macros", slow_lookup)
+        monkeypatch.setattr(nutrition.time, "perf_counter", lambda: clock["now"])
+
+        detected = [{"name": f"food {i}", "grams": 100} for i in range(8)]
+        plate = nutrition.build_plate(detected)
+
+        # Bütçe 10 sn: 2 arama (12 sn) sonrası kesiliyor, 8 değil.
+        assert len(calls) == 2
+        assert len(plate["items"]) == 8      # öğelerin hepsi yine dönüyor
+        assert plate["source"] == "estimate"
+
+    def test_the_budget_does_not_interfere_when_lookups_are_fast(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(nutrition, "lookup_macros",
+                            lambda name: calls.append(name) or {"calories": 10.0})
+
+        detected = [{"name": f"food {i}", "grams": 100} for i in range(8)]
+        plate = nutrition.build_plate(detected)
+
+        assert len(calls) == 8              # hepsi arandı
+        assert plate["source"] == "fatsecret"
 
     def test_empty_detection_gives_an_empty_plate_not_an_error(self, monkeypatch):
         monkeypatch.setattr(nutrition, "lookup_macros", lambda name: None)

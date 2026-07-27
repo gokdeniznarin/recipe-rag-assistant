@@ -51,7 +51,7 @@
 - **Hafta 8 — CANLI:** Backend → Render, frontend → Vercel ✅ (Faz 10). 4 blocker'ın 3'ü çözüldü, in-app tarayıcı Google girişi (④) bilinçli ertelendi.
 - **Hafta 9 — performans:** Faz 11 ✅ — arama LLM'i beklemiyor (8.87sn → 0.32sn), favoriler N+1 kalktı, favori sırası düzeldi.
 - **Hafta 10 — kalite:** Faz 13 logging ✅, Faz 14 model güncellemesi ✅, **Faz 15 test altyapısı + girdi doğrulama + LLM sınıflandırıcı ✅** (Katman 1 + Katman 2: 148 test).
-- **Hafta 11 (şu an buradayız) — zenginleştirme + gelir modeli:** rakip özelliklerini (Samsung Food / ReciMe) ekleyip gelir hikayesi kurma. **Faz 16 Koleksiyonlar ✅** (175 test), **Faz 17 Pantry + yapılandırılmış malzeme verisi ✅** (235 test), **Faz 18 Meal Planner ✅** (316 test), **Faz 19 Alışveriş Listesi ✅** (366 test) — gelir zinciri (Pantry+Plan → eksikler → affiliate CTA) tamamlandı. **Faz 20 tarif görselleri + veri seti 2× ✅** (372 test), **Faz 21 fotoğraftan besin değeri ✅** (487 test). Yol haritasında kalan opsiyonel adımlar: Cook Mode / porsiyon ölçekleme, **günlük besin kaydı** (Faz 21 sadece gösteriyor, kaydetmiyor — premium hikayesi). Kalan (Faz 15'ten devir): `main`'e merge, README/sunum hazırlığı.
+- **Hafta 11 (şu an buradayız) — zenginleştirme + gelir modeli:** rakip özelliklerini (Samsung Food / ReciMe) ekleyip gelir hikayesi kurma. **Faz 16 Koleksiyonlar ✅** (175 test), **Faz 17 Pantry + yapılandırılmış malzeme verisi ✅** (235 test), **Faz 18 Meal Planner ✅** (316 test), **Faz 19 Alışveriş Listesi ✅** (366 test) — gelir zinciri (Pantry+Plan → eksikler → affiliate CTA) tamamlandı. **Faz 20 tarif görselleri + veri seti 2× ✅** (372 test), **Faz 21 fotoğraftan besin değeri ✅** (504 test). Yol haritasında kalan opsiyonel adımlar: Cook Mode / porsiyon ölçekleme, **günlük besin kaydı** (Faz 21 sadece gösteriyor, kaydetmiyor — premium hikayesi). Kalan (Faz 15'ten devir): `main`'e merge, README/sunum hazırlığı.
 
 ## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
 ### Backend
@@ -122,8 +122,8 @@
 - **Alışveriş Listesi (Faz 19):**
   - `api/tests/test_shopping.py` — 50 test: Katman 1 paylaşılan `ingredient_in_pantry` + **rozet↔liste tutarlılık testi**, `aggregate_ingredients` / `missing_ingredients` / `build_list` (bayat işaretin zararsızlığı, custom dedup) + Katman 1.5 overlay Firestore yazma (sahte doküman) + Katman 2 endpoint sözleşmesi (boş plan → ChromaDB atlanıyor, dolap çıkarması, overlay, silinmiş tarif, normalize, custom `/`).
 - **Besin değeri (Faz 21):**
-  - `api/tests/test_nutrition.py` — 115 test: Katman 1 ölçekleme/toplama/ayrıştırma + `merge_duplicate_items` (gerçek fotoğrafta gözlenen kirazdomatesi vakası) + **OAuth imzası BAĞIMSIZ vektöre karşı** (Twitter'ın yayınlanmış OAuth 1.0a örneği — kendi HMAC'ini kendi HMAC'iyle doğrulamak totolojik olurdu, ayrıca yanlış imza *sessizce* fail-open'a düşeceği için başka türlü fark edilmezdi) + Katman 1.5 sahte HTTP ile `lookup_macros`'un tam zinciri + Katman 2 endpoint sözleşmesi (kota → 200+CORS, **ChromaDB'ye dokunulmaması**).
-- **Toplam: 487 test + 1 xfail**, ~2 sn, container/ağ gerekmiyor.
+  - `api/tests/test_nutrition.py` — 132 test: Katman 1 ölçekleme/toplama/ayrıştırma + `merge_duplicate_items` (gerçek fotoğrafta gözlenen kirazdomatesi vakası) + **OAuth imzası BAĞIMSIZ vektöre karşı** (Twitter'ın yayınlanmış OAuth 1.0a örneği — kendi HMAC'ini kendi HMAC'iyle doğrulamak totolojik olurdu, ayrıca yanlış imza *sessizce* fail-open'a düşeceği için başka türlü fark edilmezdi) + Katman 1.5 sahte HTTP ile `lookup_macros`'un tam zinciri + Katman 2 endpoint sözleşmesi (kota → 200+CORS, **ChromaDB'ye dokunulmaması**).
+- **Toplam: 504 test + 1 xfail**, ~3 sn, container/ağ gerekmiyor.
 - Çalıştırma: `python -m pytest` · `-v` test adlarını gösterir · `--lf` sadece son kırılanları çalıştırır.
 - Windows notu: konsol cp1254 olduğu için Türkçe karakterli mesajlar bozuk görünür (çökme değil). `$env:PYTHONIOENCODING = "utf-8"` düzeltiyor.
 
@@ -220,6 +220,28 @@ Doğrulama sonrası: **3 ayrı öğe** (green chili pepper 95g · cherry tomatoe
 ### `canonical_food_name` neden `pantry.canonical_ingredient`'ı KULLANMIYOR
 Aynı fikir ama **bilerek kopya**: `pantry.py` import anında `firestore.client()` çağırıyor. Import etmek, besin modülüne gereksiz bir **Firestore bağımlılığı** takardı ve bu modülün *import anında yan etkisiz* kalması gerekiyor (Faz 15a dersi). İhtiyaç duyulan kural da oradakinden çok daha dar.
 
+### 🔴 Gözden geçirmede bulunan 3 kusur daha (kod yazıldıktan SONRA, hepsi teste bağlandı)
+Faz 18'deki gibi ikinci okumada çıktılar; üçü de canlıda patlayacak türdendi.
+
+**1. Porsiyon sağlaması tek fonksiyona bindirilmişti — 3 ayrı hataya yol açıyordu.**
+`clamp_grams`'ın "kullanılamaz değer → tipik porsiyon" anlamı **tek bir ham parça** için doğru, ama **birleştirilmiş toplama** uygulanınca yanlış:
+
+| Durum | Beklenen | Gerçekleşen |
+|---|---|---|
+| 10 dilim pizza × 200 g | 2000 g | **150 g** |
+| Sağlıklı 180 g + bozuk 99999 g | 180 g | **150 g** (sağlıklı parça kayboldu) |
+| FatSecret yolunda 2000 g | 2000 kcal | **150 kcal** |
+
+Üçüncüsü en ciddisi: gram orada **ÇARPAN**, yani **13 kat sessiz eksik beyan**. Birincisinde arayüz kendi kendiyle çelişiyordu ("≈150 g … 2800 kcal").
+
+**Çözüm — iki farklı başarısızlık anlamı, iki fonksiyon:**
+- `piece_grams` (birleştirme içi): kullanılamaz → **0**. Varsayılan uydurmak toplamı şişirirdi; kardeş parçalar ölçeği zaten taşıyor. Uçuk tek parça da 0 sayılıyor, böylece kardeşlerini götürmüyor.
+- `plate_grams` (birleştirme sonrası, ölçeklemede kullanılan): büyük toplam varsayılana **düşürülmez, tavana çekilir** (`MAX_TOTAL_GRAMS = 3000`). Yalnızca hiç kullanılabilir parça yoksa varsayılana düşülüyor.
+
+**2. Yavaş FatSecret bütün isteği rehin alabiliyordu.** Her öğe diğerinden **bağımsız** yeniden deniyordu: 8 öğe × 2 çağrı × 6 sn timeout = **~96 sn** (+ vision ~8 sn). Tek başına zaman aşımı yetmiyor, devre kesici gerekiyordu → `LOOKUP_BUDGET_SEC = 10`; bütçe dolunca kalan öğeler tahmine düşüyor (var olan fail-open'ın aynısı, tetikleyicisi "hata" değil "yavaşlık"). Normal işleyişte hiç devreye girmiyor (gerçek çağrılar ~200–500 ms). *Bugün riski sıfırdı — anahtar olmadığı için hiç HTTP yapılmıyor — ama özelliğin amacı anahtarların eklenmesi.*
+
+**3. `retake` ekranı temizliyordu ama KAYDI temizlemiyordu.** `saveSearchState` merge yaptığı için: fotoğraf A ile tarif ara → retake → fotoğraf B ile besin değeri → geri tuşu → **A'nın tarif kartları + A'nın malzemeleri + B'nin besin değeri** yan yana geri yükleniyordu. Retake artık kaydı da temizliyor — ama **yalnızca `mode === 'camera'` ise**, yoksa kullanıcının önceki metin araması silinirdi. Node testiyle sabitlendi (aynı fotoğrafta ara+besin değeri ikisinin de korunduğu dahil).
+
 ### Endpoint
 ```
 POST /api/nutrition/from-image  {image_base64}  →  {items, totals, source, attribution}
@@ -234,7 +256,7 @@ POST /api/nutrition/from-image  {image_base64}  →  {items, totals, source, att
 - **Dürüst sınır arayüzde yazılı:** *"Portion size is estimated from the photo... not medical or dietary advice."* Uyarı değil bilgi olduğu için `--error` değil `--text-muted`.
 - `style.css` — 4'lü ölçüm kutusu (mobilde 2×2), öğe kırılımı, `estimated` rozeti (hangi satır tahmin, hangisi aranmış).
 
-### Test (372 → **487**, +115)
+### Test (372 → **504**, +132)
 - **Katman 1:** `clamp_grams` / `scale_macros` / `total_macros` / `overall_source` / `as_list` / `parse_food_description` / `macros_from_serving` / `pick_serving` / `pick_best_food` / `canonical_food_name` / `merge_duplicate_items` (**gözlenen kirazdomatesi vakası** dahil) / `llm._parse_plate_json`.
 - **OAuth imzası BAĞIMSIZ VEKTÖRE karşı:** Twitter'ın yayınlanmış OAuth 1.0a örneği. Kendi HMAC'imizi kendi HMAC'imizle karşılaştırmak totolojik olurdu — ve **yanlış imza sessizce fail-open'a düşeceği için başka türlü fark edilmezdi** (özellik "çalışıyor" görünür, FatSecret hiç devreye girmez).
 - **Katman 1.5 — sahte HTTP:** `lookup_macros`'un tam zinciri (tek istekle biten metrik yol, `food.get`'e düşen yol, **hataların 200 GÖVDESİNDE gelmesi**, tek-nesne yanıtı, ağ hatası, bozuk JSON, secret'ın tel üzerinde görünmemesi).
@@ -243,7 +265,7 @@ POST /api/nutrition/from-image  {image_base64}  →  {items, totals, source, att
 ### Doğrulama ✅
 | Kontrol | Sonuç |
 |---|---|
-| Python testleri | **487 geçiyor** + 1 xfail (~2 sn) |
+| Python testleri | **504 geçiyor** + 1 xfail (~3 sn) |
 | Gerçek fotoğrafla uçtan uca (Docker) | HTTP 200, 3 öğe, toplam 139 kcal |
 | Vision süresi | 7.6 sn (lite model, ilk çağrı) |
 | ChromaDB'ye dokunma | **0** (query/get çağrılmadı) |

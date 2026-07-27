@@ -63,10 +63,26 @@ HTTP_TIMEOUT_SEC = 6
 # sınırsız bırakılırsa tek fotoğraf onlarca ağ turuna dönüşebilir.
 MAX_ITEMS = 8
 
-# Tek bir öğe için makul porsiyon aralığı (gram). Vision bazen saçma değer
-# döndürüyor ("2500 g elma"); aralığın dışı, ortalama bir porsiyona çekiliyor.
+# TÜM arama turlarının toplam zaman bütçesi (istek başına).
+#
+# NEDEN GEREKLİ: tek başına zaman aşımı yetmiyor. Her öğe diğerinden BAĞIMSIZ
+# olarak yeniden deniyor, yani FatSecret takılırsa 8 öğe × 2 çağrı × 6 sn =
+# ~96 sn boyunca kullanıcı bekler — üstüne vision'ın ~8 sn'si biner. Devre
+# kesici olmadan tek bir yavaş dış servis bütün isteği rehin alıyor.
+#
+# Bütçe dolunca kalan öğeler Gemini tahminine düşüyor — yani zaten var olan
+# fail-open davranışının aynısı, sadece tetikleyicisi "hata" değil "yavaşlık".
+# Normal işleyişte hiç devreye girmiyor: gerçek çağrılar ~200-500 ms.
+LOOKUP_BUDGET_SEC = 10.0
+
+# Porsiyon sınırları. İKİ AYRI TAVAN VAR ve karıştırılmamalı:
+#   MAX_GRAMS       — tek bir PARÇA için makul üst sınır ("2500 g'lık tek domates"
+#                     model hatasıdır)
+#   MAX_TOTAL_GRAMS — birleştirme SONRASI toplam için sınır. Daha yüksek, çünkü
+#                     10 dilim pizza toplamı meşru biçimde 2000 g olabilir.
 MIN_GRAMS = 1.0
 MAX_GRAMS = 1500.0
+MAX_TOTAL_GRAMS = 3000.0
 DEFAULT_GRAMS = 150.0
 
 # Yanıtta kullanılan makro anahtarları. Tek yerde duruyor ki toplama, ölçekleme
@@ -82,22 +98,49 @@ def empty_macros() -> dict:
     return {key: 0.0 for key in MACRO_KEYS}
 
 
-def clamp_grams(value) -> float:
-    """Vision'ın porsiyon tahminini makul bir aralığa çeker.
-
-    Model bazen birimi karıştırıp saçma değer veriyor (0 g ya da 2500 g). Bu
-    sayı doğrudan çarpan olarak kullanıldığı için tek bir uçuk değer bütün
-    tabağın toplamını anlamsız hale getirir.
-    """
+def _finite(value) -> float | None:
+    """float'a çevirir; sayı değilse ya da NaN/sonsuzsa None."""
     try:
-        grams = float(value)
+        number = float(value)
     except (TypeError, ValueError):
-        return DEFAULT_GRAMS
-    if grams != grams or grams in (float("inf"), float("-inf")):   # NaN / sonsuz
-        return DEFAULT_GRAMS
-    if grams < MIN_GRAMS or grams > MAX_GRAMS:
-        return DEFAULT_GRAMS
+        return None
+    if number != number or number in (float("inf"), float("-inf")):
+        return None
+    return number
+
+
+def piece_grams(value) -> float:
+    """TEK BİR PARÇANIN gramı. Kullanılamazsa **0** döner.
+
+    Neden 0 ve neden "tipik porsiyon" DEĞİL: bu fonksiyon yalnızca birleştirme
+    sırasında, yani aynı gıdanın birden çok parçası varken çağrılıyor. Bozuk bir
+    parçaya varsayılan bir ağırlık uydurmak toplamı ŞİŞİRİR — oysa kardeş
+    parçalar ölçeği zaten taşıyor. Uydurmak yerine o parçayı hesaba katmıyoruz.
+
+    Aralık dışı değerler de (99999 g) 0 sayılıyor: model hatası olduğu açık ve
+    tek bir uçuk parça bütün öğeyi ele geçirmemeli.
+    """
+    grams = _finite(value)
+    if grams is None or grams < MIN_GRAMS or grams > MAX_GRAMS:
+        return 0.0
     return grams
+
+
+def plate_grams(value) -> float:
+    """BİRLEŞTİRME SONRASI gram — ölçeklemede kullanılan nihai değer.
+
+    piece_grams'tan KRİTİK FARKI: fazla büyük bir toplam varsayılana
+    DÜŞÜRÜLMEZ, tavana ÇEKİLİR. Düşürmek sessiz ve büyük bir hataydı: 10 dilim
+    pizzanın meşru 2000 g'lık toplamı 150 g'a iniyordu ve FatSecret yolunda gram
+    doğrudan ÇARPAN olduğu için besin değeri 13 kat eksik çıkıyordu.
+
+    Hiç kullanılabilir parça yoksa (toplam 0) varsayılana düşülüyor — orada
+    gerçekten elimizde bilgi yok, tahmin etmekten başka seçenek kalmıyor.
+    """
+    grams = _finite(value)
+    if grams is None or grams < MIN_GRAMS:
+        return DEFAULT_GRAMS
+    return min(grams, MAX_TOTAL_GRAMS)
 
 
 def canonical_food_name(name: str) -> str:
@@ -157,24 +200,28 @@ def merge_duplicate_items(detected_items: list[dict]) -> list[dict]:
             order.append(key)
 
         target = merged[key]
-        try:
-            target["grams"] += float(raw.get("grams") or 0.0)
-        except (TypeError, ValueError):
-            pass
+        # Parça bazında sağlama: bozuk/uçuk bir parça 0 sayılıyor, böylece tek
+        # bir hatalı değer sağlıklı kardeşlerini götürmüyor.
+        target["grams"] += piece_grams(raw.get("grams"))
         for macro in MACRO_KEYS:
             try:
                 target[macro] += float(raw.get(macro) or 0.0)
             except (TypeError, ValueError):
                 continue
 
-    # Toplama sonrası gram hâlâ kullanılamaz olabilir (hepsi bozuk geldiyse);
-    # clamp_grams son sözü build_plate'te söylüyor.
+    # Toplam 0 kalmış olabilir (hepsi bozuk geldiyse); son sözü plate_grams
+    # söylüyor ve orada varsayılana düşülüyor.
     return [merged[key] for key in order]
 
 
 def scale_macros(per_100g: dict, grams: float) -> dict:
-    """100 gramlık değerleri verilen porsiyona ölçekler."""
-    factor = clamp_grams(grams) / 100.0
+    """100 gramlık değerleri verilen porsiyona ölçekler.
+
+    plate_grams kullanıyor (piece_grams DEĞİL): buraya gelen değer birleştirme
+    sonrası toplam ve gram burada doğrudan ÇARPAN — büyük bir toplamı varsayılana
+    düşürmek besin değerini sessizce eksik gösterirdi.
+    """
+    factor = plate_grams(grams) / 100.0
     scaled = {}
     for key in MACRO_KEYS:
         try:
@@ -517,13 +564,29 @@ def build_plate(detected_items: list[dict]) -> dict:
     # tekrarları MAX_ITEMS bütçesini yiyip gerçekten farklı yemekleri dışarıda
     # bırakırdı (beş kirazdomatesi sekiz öğelik bütçenin beşini harcıyordu).
     items = []
+    deadline = time.perf_counter() + LOOKUP_BUDGET_SEC
+    budget_spent = False
+
     for raw in merge_duplicate_items(detected_items)[:MAX_ITEMS]:
         name = str(raw.get("name", "")).strip()
         if not name:
             continue
 
-        grams = clamp_grams(raw.get("grams"))
-        looked_up = lookup_macros(name)
+        grams = plate_grams(raw.get("grams"))
+
+        # Bütçe dolduysa aramayı BIRAKIYORUZ ve kalan öğeler tahmine düşüyor.
+        # Yavaş bir dış servis, kullanıcıyı dakikalarca bekletmek yerine
+        # yalnızca sayıların kaynağını değiştiriyor.
+        if time.perf_counter() < deadline:
+            looked_up = lookup_macros(name)
+        else:
+            if not budget_spent:
+                log.warning(
+                    "FatSecret lookup budget (%.0fs) spent; remaining items fall back to estimates",
+                    LOOKUP_BUDGET_SEC,
+                )
+                budget_spent = True
+            looked_up = None
 
         if looked_up:
             macros = scale_macros(looked_up, grams)
