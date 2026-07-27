@@ -100,6 +100,9 @@ def _recipe_card(recipe_id: str, meta: dict, doc: str) -> dict:
         "total_time_min": meta["total_time_min"],
         "calories": meta["calories"],
         "ingredients": _ingredients_list(meta),
+        # Faz 20: tarif fotoğrafı. Eski kayıtlarda alan olmayabileceği için
+        # .get ile okunuyor; frontend boş/bozuk URL'de metin kartına düşüyor.
+        "image_url": meta.get("image_url", ""),
         "diet_tags": {
             "gluten_free": meta["gluten_free"],
             "dairy_free": meta["dairy_free"],
@@ -365,6 +368,7 @@ def get_recipe_detail(recipe_id: str, user_email: str = Depends(get_current_user
         # Faz 17'de eklendi: önceden malzemeler yalnızca gömme metninin içinde
         # düz yazı olarak vardı, detay sayfası hiç gösteremiyordu.
         "ingredients": _ingredients_list(meta),
+        "image_url": meta.get("image_url", ""),   # Faz 20
         "diet_tags": {
             "gluten_free": meta["gluten_free"],
             "dairy_free": meta["dairy_free"],

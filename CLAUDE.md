@@ -22,7 +22,7 @@
 
 ## Dataset
 - **Kaynak:** Kaggle "Food.com - Recipes and Reviews" (522,517 tarif, 28 kolon)
-- **Kullanılan alt küme:** Rastgele seçilmiş 5000 tarif (`random_state=42`), temizlik sonrası ~4886 tarif kaldı
+- **Kullanılan alt küme (Faz 20'de güncellendi):** **görseli olan** tarifler arasından rastgele 10.000 (`random_state=42`), temizlik sonrası **9.795** kaldı — hepsinin fotoğrafı var. *(Faz 20 öncesi: görsel filtresi olmadan 5000 örnek → 4886 tarif.)*
 - **Kullanılan kolonlar:** RecipeId, Name, RecipeCategory, CookTime/PrepTime/TotalTime (ISO 8601 format, dakikaya çevrildi), RecipeIngredientParts (R vector formatında, regex ile parse edildi), 9 makro besin kolonu (Calories, FatContent, SaturatedFatContent, CholesterolContent, SodiumContent, CarbohydrateContent, FiberContent, SugarContent, ProteinContent — hepsi %0 eksik veri)
 
 ## Veri Temizleme Mantığı (`ingestion/clean_data.py`)
@@ -56,12 +56,12 @@
 ## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
 ### Backend
 - `ingestion/explore_data.py` — dataset keşfi
-- `ingestion/clean_data.py` — temizleme pipeline'ı, recipes_cleaned.csv üretiyor (instructions_clean dahil)
+- `ingestion/clean_data.py` — temizleme pipeline'ı, recipes_cleaned.csv üretiyor (instructions_clean dahil). **Faz 20'den beri örnekleme GÖRSELİ OLAN tariflerle sınırlı** (`has_image` filtresi örneklemeden ÖNCE) ve `parse_image_url` ile `image_url` kolonu üretiliyor. Miktar kolonu bilerek kullanılmıyor — gerekçe Faz 20.
 - `ingestion/validate_tags.py` — diyet etiketi ve veri kalitesi doğrulama scripti
 - `ingestion/load_to_chromadb.py` — ChromaDB'ye yükleme. Embedding'i artık elle üretmiyor: `collection.add()`'e sadece `documents` veriliyor, ChromaDB kendi varsayılan fonksiyonuyla (ONNX) embed ediyor. `PersistentClient` ile `api/chroma_data/` klasörüne yazıyor (sunucuya değil). **Linux'ta çalıştırılmalı** — bkz. Faz 8'deki Windows/HNSW bulgusu. Faz 17'de `ingredients` metadata alanı eklendi (`|` ayraçlı metin — ChromaDB liste tutamıyor); yeniden çalıştırılırsa **yetim segment klasörü kontrol edilmeli**, bkz. Faz 17.
 - `ingestion/test_search.py` — arama testleri. Gömülü veritabanını okuyor (sunucu yok). `CHROMA_PATH` env var'ıyla image'daki kopyaya yöneltilebilir — **repodaki `api/chroma_data`'ya yöneltirsen commit'li dosyayı kirletir** (bkz. Faz 8 notları).
 - `api/main.py` — FastAPI backend + CORS middleware (Faz 10'dan beri kendi origin'lerimizle sınırlı): /api/recipes/search, /api/recipes/from-image, **/api/recipes/commentary** (Faz 11), /api/recipes/{recipe_id}, /api/favorites/*, **/api/collections/*** (Faz 16), **/api/pantry/*** + **/api/recipes/from-pantry** (Faz 17), **/api/meal-plan*** (Faz 18), **/api/shopping-list*** (Faz 19) endpoint'leri. Tarifleri image'a gömülü `chroma_data/` klasöründen `PersistentClient` ile okuyor (Faz 8). Arama endpoint'leri LLM'i beklemiyor (Faz 11).
-- `api/chroma_data/` — **git'e commit edilmiş** gömülü tarif veritabanı (35MB: `chroma.sqlite3` + HNSW indeks dosyaları). `load_to_chromadb.py` üretiyor, Dockerfile `COPY . .` ile image'a alıyor.
+- `api/chroma_data/` — **git'e commit edilmiş** gömülü tarif veritabanı (**73MB**, Faz 20'de 9.795 tarife çıktı: `chroma.sqlite3` + HNSW indeks dosyaları). `load_to_chromadb.py` üretiyor, Dockerfile `COPY . .` ile image'a alıyor.
 - `api/logger.py` — **merkezi logging + süre ölçümü** (Faz 13). Renkli seviye formatter'ı (`ColorFormatter`), `@timed` decorator'ı ve `timed_block` context manager'ı. Uygulamada `print` kalmadı. `python api/logger.py` ile seviyeleri/renkleri tek başına gösteren bir demo bloğu var.
 - `api/auth.py` — tek iş: Firebase Admin SDK ile `verify_id_token()` → e-posta. `get_current_user_email` dependency'si korumalı endpoint'lerde kullanılıyor. (Eskiden JWT + bcrypt + kullanıcı kayıt/giriş vardı; Firebase geçişiyle ~140 satırdan ~30 satıra düştü.)
 - `api/llm.py` — Gemini API ile LLM cevap üretimi (`generate_answer`) + fotoğraftan malzeme tanıma (`detect_ingredients_from_image`) + **sorgu sınıflandırma** (`is_food_request`, Faz 15f — non-food sorguları aramadan önce eliyor, fail-open). Çoklu model fallback zinciri.
@@ -167,7 +167,71 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 - **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Faz 6–19'un tamamı bu branch'te. `main` el değmemiş durumda. **Canlı deploy `firebase-auth` dalından yapılıyor** (hem Render hem Vercel bu dalı izliyor), dolayısıyla merge sonrası deploy dalını `main`'e çevirmek gerekecek.
 - Repo **GitHub'da**: `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private). Sırlar (`firebase-key.json`, `.env`) gitignored, repoda yok — Render'da env var olarak duruyor.
 
-## Güncel Durum: Faz 19 (Alışveriş Listesi — gelir adımı) ✅
+## Güncel Durum: Faz 20 (Tarif görselleri + veri seti 2× büyütüldü) ✅
+
+**Tetikleyici:** Kullanıcı "tarifleri FatSecret'tan alalım, orada görsel var" dedi. Bu **elendi** (lisanslı veri, indirilip gömülemez + RAG pipeline'ı yok olurdu — bkz. aşağıdaki not), ama araştırma sırasında **çok daha iyi bir şey bulundu: aradığımız veri zaten elimizdeydi.**
+
+### Ham veri setinde kullanılmayan üç kolon vardı
+Kaggle Food.com seti **28 kolon**; biz yalnızca bir kısmını kullanıyorduk. Kontrol edilince:
+
+| Kolon | Durum | Karar |
+|---|---|---|
+| **`Images`** | Setin **%31.7'sinde** dolu (522.517'den **165.896** tarif), gerçek Food.com CDN linkleri | ✅ **Kullanıldı** |
+| `RecipeIngredientQuantities` | %100 dolu ama **hizasız** | ❌ **Elendi** (aşağıda) |
+| `RecipeServings` / `AggregatedRating` | %64 / %74 | Şimdilik kullanılmadı |
+
+### ⚠️ Miktar bilgisi ÖLÇÜMLE elendi (Faz 19 sınırının gerekçesi)
+Alışveriş listesindeki "miktar yok" sınırını kapatmak için `RecipeIngredientQuantities` denendi. **Malzeme ve miktar dizileri KAYNAK VERİDE hizasız** — bizim temizliğimizden değil:
+```
+Banilla Splash
+  HAM malzeme : ['vodka', 'cranberry juice']       ← 2
+  HAM miktar  : ['1', '1', '4 1/2', '1 1/2']       ← 4
+```
+2000 tarifte ölçüldü: **yalnızca %27 hizalı.** Eşleştirilseydi %73 oranında **yanlış miktar** gösterilirdi — "2 su bardağı votka" gibi. Güvenilmeyen veriyi göstermemek, göstermekten iyi. `parse_image_url` docstring'ine not düşüldü. Faz 19'un "miktar yok" sınırı artık **gerekçeli bir karar**.
+
+### Örneklem yeniden yapıldı: 4.886 → **9.795 tarif, HEPSİ görselli**
+`clean_data.py`'de örnekleme **görselli olanlarla sınırlandı** — filtre örneklemeden ÖNCE, yoksa kartların ancak %32'sinde fotoğraf olurdu:
+```python
+with_images = df[df["Images"].apply(has_image)]     # 165.896 havuz
+df_sample = with_images.sample(n=10000, random_state=42)
+```
+10.000'den 205'i "2'den az malzeme" kuralına takıldı → **9.795**. Diyet dağılımı öncekiyle tutarlı, `validate_tags.py` **0 çelişki** veriyor.
+
+**Eski tariflerin %68'i düştü** (görseli olmayanlar) ama toplam 2× arttı. Düşenler zaten ekranda en zayıf görünecek kartlardı. Kullanıcı verisi (favori/plan/koleksiyon) düşen tariflere işaret ediyorsa uygulama zaten **zarifçe** "Recipe unavailable" gösteriyor (Faz 18'de bilerek öyle tasarlanmıştı) — sadece geliştirme sırasındaki test verisi etkilendi.
+
+### Görsel akışı ve ölü link koruması
+- `load_to_chromadb.py` → **`image_url`** metadata alanı (R vector'dan ilk URL).
+- `main.py` → hem `_recipe_card` hem detay endpoint'i alanı taşıyor (`.get` ile — eski kayıtlarda yoksa patlamasın).
+- **`api.js`'te `recipeThumbHtml()`** — kart üreten ÜÇ dosya var (search/favorites/collection), markup'ı üçe kopyalamamak için her sayfada yüklenen `api.js`'te duruyor.
+- **Ölü link koruması şart:** linkler Food.com CDN'inde, yani dış bir servise bağlıyız. Kartta `onerror="this.parentElement.remove()"` → kutu tamamen kalkar, kart eski metin düzenine döner. Detay sayfasında `onerror` kapak kutusunu gizler. Kırık ikon hiçbir yerde görünmez.
+- Detay sayfasına **kapak görseli** (`.recipe-hero`, max 340px, `object-fit: cover`).
+
+### Doğrulama (yerel Docker, GERÇEK veri) ✅
+| Kontrol | Sonuç |
+|---|---|
+| Koleksiyon | **9.795** tarif |
+| `image_url` dolu | **500/500** örnekte |
+| `ingredients` dolu (Faz 17 regresyonu) | **500/500** |
+| Arama + filtre çıkarımı | 3 sonuç, `gluten_free` + `total_time<=30` doğru |
+| Kartlarda görsel | 3/3 |
+| Görsel linki canlı mı | **HTTP 200** |
+| **Pantry eşleşmesi** (Faz 17) | 400 tarifte 'chicken' malzemeli 41, eşleşen **41/41** |
+| Python testleri | **372 geçiyor** |
+| JS syntax (13 dosya) | hepsi geçti |
+
+### Maliyetler
+`chroma_data` **39 MB → 73 MB** (2× tarif). Docker image ~1.25 GB. Render RAM etkisi ihmal edilebilir (~15 MB vektör). **Git geçmişine yeni bir ~73 MB blob eklendi** — her yeniden ingestion'da olduğu gibi.
+
+### ⚠️ Yeniden ingestion yapılırsa (iki kural yine geçerli)
+1. **Linux'ta çalıştır** (Faz 8): `docker run --rm -v "${PWD}:/work" recipe-rag-assistant-api sh -c "pip install --quiet pandas && python /work/ingestion/load_to_chromadb.py"`
+2. **Yetim segment klasörünü sil** (Faz 17): `delete_collection` eski klasörü diskten silmiyor. Bu fazda da oldu — canlı segment sqlite'ın `segments` tablosundan okundu, yetim 6.9 MB'lık klasör elle silindi (79 MB → 73 MB).
+
+### Neden tarifler FatSecret'tan ALINMADI
+Kullanıcı önerdi, değerlendirildi, **elendi**: (1) FatSecret verisi **lisanslı**, API'den çekip kendi veritabanına gömmek sözleşmeye aykırı; (2) daha önemlisi **projenin çekirdeği yok olurdu** — anlamsal arama ancak veri bizde olursa mümkün, dışarıdan anahtar-kelime API'si kullanmak "RAG sistemi kurdum"u "API çağırdım"a çevirirdi; (3) Faz 8/17/18/19'un tamamı bu şemaya bağlı. FatSecret yalnızca **besin değeri** için düşünülüyor (ayrı özellik, ChromaDB'ye dokunmaz).
+
+---
+
+## Faz 19 (Alışveriş Listesi — gelir adımı) ✅
 
 **Tetikleyici:** Yol haritasının 4. adımı ve **gelir hikayesinin somut karşılığı**. Plan ve Pantry hazır olduğu için artık hesaplanabiliyor:
 

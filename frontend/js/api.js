@@ -248,3 +248,27 @@ function initUserMenu() {
   loadUserEmail();
   showVerifyBannerIfNeeded();
 }
+
+
+/**
+ * Tarif kartı küçük görseli (Faz 20).
+ *
+ * Kart üreten üç dosya var (search.js, favorites.js, collection.js) — aynı
+ * markup'ı üçüne kopyalamamak için ortak yer olan api.js'te duruyor.
+ *
+ * Görsel URL'si yoksa BOŞ dize döner, yani kart eskisi gibi düz metin olur.
+ * `onerror` ile kutu tamamen DOM'dan kalkıyor: linkler Food.com CDN'inde,
+ * yani dış bir servise bağlıyız ve ölü linkte kırık ikon göstermektense
+ * kartın metin hâline düşmesi daha iyi.
+ */
+function recipeThumbHtml(recipe) {
+  const url = (recipe && recipe.image_url) || '';
+  if (!url) return '';
+  const safe = String(url)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
+  return `<span class="recipe-thumb">` +
+         `<img src="${safe}" alt="" loading="lazy" onerror="this.parentElement.remove()">` +
+         `</span>`;
+}

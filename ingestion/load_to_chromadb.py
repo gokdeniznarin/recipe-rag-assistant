@@ -72,6 +72,12 @@ for start in range(0, total, batch_size):
             "pescatarian": "pescatarian" in row["diet_tags"],
             "vegan": "vegan" in row["diet_tags"],
             "instructions": str(row["instructions_clean"])[:1000],  # çok uzunsa kısalt
+            # Tarif fotoğrafı (Faz 20). Örneklem artık YALNIZCA görseli olan
+            # tariflerden alınıyor, dolayısıyla bu alan her kayıtta dolu. Yine de
+            # frontend bozuk/ölü linke karşı yedekli çalışıyor (görsel yüklenmezse
+            # kart metin hâline düşüyor) — linkler Food.com CDN'inde ve dış bir
+            # servise bağlıyız.
+            "image_url": str(row.get("image_url", "") or ""),
             # Malzeme listesi (Faz 17 — Pantry). Önceden malzemeler YALNIZCA
             # description_for_embedding metninin içindeydi, yani yapılandırılmamış
             # düz yazıydı; "bu tarif dolabımdaki kaç malzemeyi kullanıyor"

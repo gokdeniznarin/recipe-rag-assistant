@@ -23,6 +23,34 @@ def parse_instructions(raw_string):
     steps = re.findall(r'"([^"]+)"', raw_string)
     return " ".join(f"{i+1}. {step}" for i, step in enumerate(steps))
 
+def parse_image_url(raw_string):
+    """R vector formatındaki görsel listesinden İLK URL'yi alır.
+
+    Ham veri: c("https://.../a.jpg", "https://.../b.jpg") — bir tarifin birden
+    çok fotoğrafı olabiliyor, kart için ilki yeterli. Görsel yoksa alan
+    "character(0)" ya da boş geliyor; o durumda boş dize dönüyor.
+
+    NOT: miktar kolonu (RecipeIngredientQuantities) bilerek KULLANILMIYOR —
+    ölçüldü: malzeme ve miktar dizileri kaynak veride yalnızca %27 hizalı,
+    yani eşleştirme %73 yanlış miktar gösterirdi. Görsel alanı tek başına
+    durduğu için bu sorundan etkilenmiyor.
+    """
+    if pd.isna(raw_string):
+        return ""
+    text = str(raw_string)
+    urls = re.findall(r'"(https?://[^"]+)"', text)
+    if urls:
+        return urls[0]
+    # Bazı satırlarda tırnaksız tek URL olabiliyor
+    stripped = text.strip()
+    return stripped if stripped.startswith("http") else ""
+
+
+def has_image(raw_string):
+    """Tarifin kullanılabilir bir görseli var mı (örnekleme filtresi)."""
+    return bool(parse_image_url(raw_string))
+
+
 def parse_duration_to_minutes(iso_duration):
     """PT24H45M formatını dakikaya çevirir (örn: 1485)"""
     if pd.isna(iso_duration):
@@ -149,15 +177,26 @@ def build_description(row):
 # ayrıldı. (filters.py ve llm.py'de bu guard zaten vardı.)
 # Çalıştırma şekli değişmedi: python clean_data.py
 
+SAMPLE_SIZE = 10000
+
+
 def main():
     print("Loading recipes.csv ...")
     df = pd.read_csv("recipes.csv")
     print(f"Total recipes in dataset: {len(df)}")
 
-    df_sample = df.sample(n=5000, random_state=42).reset_index(drop=True)
+    # GÖRSELİ OLANLARDAN örnekliyoruz — örneklemeden ÖNCE filtrelemek şart,
+    # yoksa sette görselli oran ~%32 olduğu için kartların üçte ikisi fotoğrafsız
+    # kalırdı. Havuz bol: 522.517 tarifin 165.896'sında görsel var (ölçüldü).
+    with_images = df[df["Images"].apply(has_image)]
+    print(f"Recipes with a usable image: {len(with_images)} "
+          f"({100 * len(with_images) / len(df):.1f}%)")
+
+    df_sample = with_images.sample(n=SAMPLE_SIZE, random_state=42).reset_index(drop=True)
     print(f"Sampled {len(df_sample)} recipes for processing")
 
     print("Cleaning fields...")
+    df_sample["image_url"] = df_sample["Images"].apply(parse_image_url)
     df_sample["name_clean"] = df_sample["Name"].apply(clean_text)
     df_sample["ingredients_clean"] = df_sample["RecipeIngredientParts"].apply(parse_ingredients)
     df_sample["instructions_clean"] = df_sample["RecipeInstructions"].apply(parse_instructions)
@@ -178,6 +217,7 @@ def main():
     print(f"\n=== Summary ===")
     print(f"Final recipe count: {len(df_sample)}")
     print(f"With cook time: {df_sample['cook_time_min'].notna().sum()}")
+    print(f"With image: {(df_sample['image_url'] != '').sum()} (should be all)")
     print()
     print("Diet tag distribution:")
     for tag in ["gluten_free", "dairy_free", "nut_free", "vegetarian", "pescatarian", "vegan"]:

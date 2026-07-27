@@ -42,6 +42,7 @@ def _default_collection() -> MagicMock:
         "fat_content": 5.0, "instructions": "1. Cook it.",
         # ChromaDB metadata liste tutamıyor → `|` ile ayrılmış metin (Faz 17)
         "ingredients": "chicken breast|tomatoes|olive oil|garlic",
+        "image_url": "https://img.sndimg.com/food/image/upload/test.jpg",  # Faz 20
         "gluten_free": True, "dairy_free": True, "nut_free": True,
         "vegetarian": False, "pescatarian": False, "vegan": False,
     }

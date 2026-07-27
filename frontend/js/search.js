@@ -166,6 +166,7 @@ const renderResults = Logger.timed(function (data) {
       : '';
 
     card.innerHTML = `
+      ${recipeThumbHtml(recipe)}
       <div class="recipe-card-body">
         <h3 class="recipe-name">${escapeHtml(recipe.name)}</h3>
         <p class="recipe-meta">

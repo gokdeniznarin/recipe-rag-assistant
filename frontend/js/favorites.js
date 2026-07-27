@@ -35,6 +35,7 @@ function renderRecipeCard(recipe) {
   card.href = `recipe.html?id=${encodeURIComponent(recipe.id)}`;
   card.className = 'recipe-card';
   card.innerHTML = `
+    ${recipeThumbHtml(recipe)}
     <div class="recipe-card-body">
       <h3 class="recipe-name">${escapeHtml(recipe.name)}</h3>
       <p class="recipe-meta">

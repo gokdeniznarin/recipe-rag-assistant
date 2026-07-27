@@ -52,6 +52,7 @@ function renderRecipeRow(recipe) {
   row.className = 'collection-recipe-row';
   row.innerHTML = `
     <a href="recipe.html?id=${encodeURIComponent(recipe.id)}" class="recipe-card">
+      ${recipeThumbHtml(recipe)}
       <div class="recipe-card-body">
         <h3 class="recipe-name">${escapeHtml(recipe.name)}</h3>
         <p class="recipe-meta">

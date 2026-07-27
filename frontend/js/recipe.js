@@ -48,6 +48,19 @@ function renderRecipe(recipe) {
   titleEl.textContent    = recipe.name;
   categoryEl.textContent = recipe.category || 'Recipe';
 
+  // Kapak görseli (Faz 20). Link Food.com CDN'inde, yani dış bir servis —
+  // ölü linkte kırık ikon göstermek yerine kutuyu tamamen gizliyoruz.
+  const hero    = document.getElementById('recipe-hero');
+  const heroImg = document.getElementById('recipe-hero-img');
+  if (recipe.image_url) {
+    heroImg.onerror = () => hero.classList.add('hidden');
+    heroImg.onload  = () => hero.classList.remove('hidden');
+    heroImg.alt = recipe.name;
+    heroImg.src = recipe.image_url;
+  } else {
+    hero.classList.add('hidden');
+  }
+
   // Diyet tag'leri
   const tagOrder = ['vegan', 'vegetarian', 'pescatarian', 'gluten_free', 'dairy_free', 'nut_free'];
   const activeTags = tagOrder
