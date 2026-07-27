@@ -51,7 +51,7 @@
 - **Hafta 8 — CANLI:** Backend → Render, frontend → Vercel ✅ (Faz 10). 4 blocker'ın 3'ü çözüldü, in-app tarayıcı Google girişi (④) bilinçli ertelendi.
 - **Hafta 9 — performans:** Faz 11 ✅ — arama LLM'i beklemiyor (8.87sn → 0.32sn), favoriler N+1 kalktı, favori sırası düzeldi.
 - **Hafta 10 — kalite:** Faz 13 logging ✅, Faz 14 model güncellemesi ✅, **Faz 15 test altyapısı + girdi doğrulama + LLM sınıflandırıcı ✅** (Katman 1 + Katman 2: 148 test).
-- **Hafta 11 (şu an buradayız) — zenginleştirme + gelir modeli:** rakip özelliklerini (Samsung Food / ReciMe) ekleyip gelir hikayesi kurma. **Faz 16 Koleksiyonlar ✅** (175 test), **Faz 17 Pantry + yapılandırılmış malzeme verisi ✅** (235 test), **Faz 18 Meal Planner ✅** (316 test), **Faz 19 Alışveriş Listesi ✅** (366 test) — gelir zinciri (Pantry+Plan → eksikler → affiliate CTA) tamamlandı. **Faz 20 tarif görselleri + veri seti 2× ✅** (372 test), **Faz 21 fotoğraftan besin değeri ✅** (510 test). Yol haritasında kalan opsiyonel adımlar: Cook Mode / porsiyon ölçekleme, **günlük besin kaydı** (Faz 21 sadece gösteriyor, kaydetmiyor — premium hikayesi). Kalan (Faz 15'ten devir): `main`'e merge, README/sunum hazırlığı.
+- **Hafta 11 (şu an buradayız) — zenginleştirme + gelir modeli:** rakip özelliklerini (Samsung Food / ReciMe) ekleyip gelir hikayesi kurma. **Faz 16 Koleksiyonlar ✅** (175 test), **Faz 17 Pantry + yapılandırılmış malzeme verisi ✅** (235 test), **Faz 18 Meal Planner ✅** (316 test), **Faz 19 Alışveriş Listesi ✅** (366 test) — gelir zinciri (Pantry+Plan → eksikler → affiliate CTA) tamamlandı. **Faz 20 tarif görselleri + veri seti 2× ✅** (372 test), **Faz 21 fotoğraftan besin değeri ✅** (523 test). Yol haritasında kalan opsiyonel adımlar: Cook Mode / porsiyon ölçekleme, **günlük besin kaydı** (Faz 21 sadece gösteriyor, kaydetmiyor — premium hikayesi). Kalan (Faz 15'ten devir): `main`'e merge, README/sunum hazırlığı.
 
 ## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
 ### Backend
@@ -125,8 +125,8 @@
 - **Alışveriş Listesi (Faz 19):**
   - `api/tests/test_shopping.py` — 50 test: Katman 1 paylaşılan `ingredient_in_pantry` + **rozet↔liste tutarlılık testi**, `aggregate_ingredients` / `missing_ingredients` / `build_list` (bayat işaretin zararsızlığı, custom dedup) + Katman 1.5 overlay Firestore yazma (sahte doküman) + Katman 2 endpoint sözleşmesi (boş plan → ChromaDB atlanıyor, dolap çıkarması, overlay, silinmiş tarif, normalize, custom `/`).
 - **Besin değeri (Faz 21):**
-  - `api/tests/test_nutrition.py` — 138 test: Katman 1 ölçekleme/toplama/ayrıştırma + `merge_duplicate_items` (gerçek fotoğrafta gözlenen kirazdomatesi vakası) + **OAuth imzası BAĞIMSIZ vektöre karşı** (Twitter'ın yayınlanmış OAuth 1.0a örneği — kendi HMAC'ini kendi HMAC'iyle doğrulamak totolojik olurdu, ayrıca yanlış imza *sessizce* fail-open'a düşeceği için başka türlü fark edilmezdi) + Katman 1.5 sahte HTTP ile `lookup_macros`'un tam zinciri + Katman 2 endpoint sözleşmesi (kota → 200+CORS, **ChromaDB'ye dokunulmaması**).
-- **Toplam: 510 test + 1 xfail**, ~2 sn, container/ağ gerekmiyor.
+  - `api/tests/test_nutrition.py` — 151 test: Katman 1 ölçekleme/toplama/ayrıştırma + `merge_duplicate_items` (gerçek fotoğrafta gözlenen kirazdomatesi vakası) + **OAuth imzası BAĞIMSIZ vektöre karşı** (Twitter'ın yayınlanmış OAuth 1.0a örneği — kendi HMAC'ini kendi HMAC'iyle doğrulamak totolojik olurdu, ayrıca yanlış imza *sessizce* fail-open'a düşeceği için başka türlü fark edilmezdi) + Katman 1.5 sahte HTTP ile `lookup_macros`'un tam zinciri + Katman 2 endpoint sözleşmesi (kota → 200+CORS, **ChromaDB'ye dokunulmaması**).
+- **Toplam: 523 test + 1 xfail**, ~2 sn, container/ağ gerekmiyor.
 - Çalıştırma: `python -m pytest` · `-v` test adlarını gösterir · `--lf` sadece son kırılanları çalıştırır.
 - Windows notu: konsol cp1254 olduğu için Türkçe karakterli mesajlar bozuk görünür (çökme değil). `$env:PYTHONIOENCODING = "utf-8"` düzeltiyor.
 
@@ -276,7 +276,7 @@ POST /api/nutrition/from-image  {image_base64}  →  {items, totals, source, att
 - **Dürüst sınır arayüzde yazılı:** *"Portion size is estimated from the photo... not medical or dietary advice."* Uyarı değil bilgi olduğu için `--error` değil `--text-muted`.
 - `style.css` — 4'lü ölçüm kutusu (mobilde 2×2), öğe kırılımı, `estimated` rozeti (hangi satır tahmin, hangisi aranmış), `.visually-hidden` (dosya girdisi: `display:none` KULLANILMIYOR — klavyeyle erişilemez hale gelirdi).
 
-### Test (372 → **510**, +138)
+### Test (372 → **523**, +151)
 - **Katman 1:** `clamp_grams` / `scale_macros` / `total_macros` / `overall_source` / `as_list` / `parse_food_description` / `macros_from_serving` / `pick_serving` / `pick_best_food` / `canonical_food_name` / `merge_duplicate_items` (**gözlenen kirazdomatesi vakası** dahil) / `llm._parse_plate_json`.
 - **OAuth imzası BAĞIMSIZ VEKTÖRE karşı:** Twitter'ın yayınlanmış OAuth 1.0a örneği. Kendi HMAC'imizi kendi HMAC'imizle karşılaştırmak totolojik olurdu — ve **yanlış imza sessizce fail-open'a düşeceği için başka türlü fark edilmezdi** (özellik "çalışıyor" görünür, FatSecret hiç devreye girmez).
 - **Katman 1.5 — sahte HTTP:** `lookup_macros`'un tam zinciri (tek istekle biten metrik yol, `food.get`'e düşen yol, **hataların 200 GÖVDESİNDE gelmesi**, tek-nesne yanıtı, ağ hatası, bozuk JSON, secret'ın tel üzerinde görünmemesi).
@@ -285,7 +285,7 @@ POST /api/nutrition/from-image  {image_base64}  →  {items, totals, source, att
 ### Doğrulama ✅
 | Kontrol | Sonuç |
 |---|---|
-| Python testleri | **510 geçiyor** + 1 xfail (~2 sn) |
+| Python testleri | **523 geçiyor** + 1 xfail (~2 sn) |
 | Gerçek fotoğrafla uçtan uca (Docker) | HTTP 200, 3 öğe, `source: fatsecret`, atıf dönüyor |
 | Uçtan uca süre (FatSecret dahil) | 2.8–3.8 sn (vision ~1.3 sn + 3 arama × ~490 ms) |
 | ChromaDB'ye dokunma | **0** (query/get çağrılmadı) |
@@ -310,7 +310,22 @@ Tavukta **%77 fark** — yani eşleşme kalitesi doğrudan gösterilen sayıya y
 - markalı kayıt **−100** (fotoğraftaki bir ürün değil yemek; zincir restoranın tavuğu tabaktakini temsil etmiyor)
 - parantezli nitelik **−10** (`(Canned)`, `(Cooked, Fat Added)` — fotoğrafın söylemediği bir hazırlanış varsayıyor)
 - sorgunun birebir karşılığı **+5** (`canonical_food_name` üzerinden, çoğul farkı eşleşmeyi bozmasın)
+- **aynı ANA İSİM +3** (aşağıda)
 - `max` ilk en büyüğü döndürdüğü için **eşit puanda FatSecret'ın sırası korunuyor**
+
+#### Sonraki tur: ana isim + alaka tabanı (ikinci canlı gözlem)
+Kullanıcı gerçek bir tabak fotoğrafında iki yanlış eşleşme daha yakaladı — ve ikisi **farklı** sebeptendi:
+
+**1. Adlandırma (prompt):** vision tarif edici ifadeler üretiyordu (`fresh red and yellow chilies`, `spicy bean sprout salad`, `white rice and grain mix`), FatSecret ise **anahtar kelime** araması yapıyor → ortak tek kelime bir RENK olunca alakasız yemek dönüyordu (`Red Tomatoes`). Prompt sıkılaştırıldı: "veritabanının etiketleyeceği gibi sade ad; renk/fresh/spicy/medley/mix at" + gözlenen hataların örnek olarak yazılması (kirazdomatesi düzeltmesindeki teknik). **Kritik nüans: besin değerini DEĞİŞTİREN hazırlanış korunuyor** (`grilled chicken breast` 195 vs `skinless` 110 kcal — %77). Ölçüm: `white rice` 365→**129** kcal (eski eşleşme *pişmemiş* pirinçti), `mushrooms` 67→**22**. Ama **4 vakanın yalnızca 2'sini çözdü** — kalan ikisi sıralama sorunuydu, adlandırma değil.
+
+**2. ANA İSİM (`head_noun`, +3):** `chili pepper` için hem `Hot Chili Pepper` hem `Chili Pepper Fritter` sorgunun TÜM kelimelerini içeriyor ve ikisi de tam eşleşme değil → puanlar eşit → karar FatSecret'ın sırasına kalıyordu, **kızartma kazanıyordu**. İngilizce'de ana isim sonda: `pepper` ≠ `fritter`. Parantez atılarak bakılıyor.
+
+**3. ALAKA TABANI:** `bean sprouts` sorgusuna beş farklı **fasulye** dönüyor, hiçbirinde `sprout` yok — doğru cevap listede **hiç yok**, yani sıralamayla çözülemez. En iyi aday bile sorgunun ana ismini içermiyorsa `None` dönüyor ve Gemini tahminine düşülüyor (`estimated` rozeti). **Gerekçe asimetri:** taban fazla katıysa sonuç dürüst bir tahmin; tabansız hâlde sonuç *"Looked up in a nutrition database"* etiketli YANLIŞ bir sayı — kullanıcı doğrulanmış sanıyor. Besin değerinde bu ikisi eşit ağırlıkta değil.
+- Taban **TAM ad** üzerinden bakıyor (**parantez DAHİL**): eşanlamlılar orada duruyor. `bok choy`'un doğru karşılığı `Chinese Cabbage (Bok-Choy, Pak-Choi)` ve ana adında `choy` **hiç geçmiyor** — yalnızca ana ada bakılsaydı DOĞRU eşleşme reddedilirdi. `food_tokens` noktalamayı ayraç sayıyor, yoksa tireli `Bok-Choy` tek kelime kalırdı.
+
+**Canlı doğrulama: 12/12** (`chili pepper`→Hot Chili Pepper · `bean sprouts`→reddedildi · `bok choy`, `white rice`, `mushrooms`, `grilled chicken breast`, `eggplant`, `cherry tomatoes`, `carrots`, `cucumber`, `curry paste`, `green chili pepper` hepsi doğru ve bozulmadı).
+
+**Kalan sınır (dürüst):** ana ismi parantez içinde geçen ama asıl adı BAŞKA bir yemek olan kayıt tabanı geçebilir (`Red Tomatoes (with Green Chilies, Canned)` ↔ `chilies`). Prompt düzeltmesi bu tür tarif edici sorguların üretilmesini azaltıyor ama sıfırlamıyor. Tam anlamsal eşleştirme bu projenin kapsamı dışında.
 
 Ceza ağırlıkları bilinçli: marka cezası tam-eşleşme bonusundan çok daha ağır, yoksa markalı bir tam eşleşme markasız genel kaydı yenerdi (teste bağlandı). Testler **gerçek aday listelerine** karşı yazıldı — uydurulmadı, canlı sorgulardan alındı.
 

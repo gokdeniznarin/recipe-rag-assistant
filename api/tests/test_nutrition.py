@@ -387,6 +387,48 @@ class TestPickBestFoodAgainstRealCandidates:
         foods = [{"food_name": "First"}, {"food_name": "Second"}]
         assert nutrition.pick_best_food(foods)["food_name"] == "First"
 
+    def test_the_head_noun_separates_a_food_from_a_dish_made_of_it(self):
+        """REGRESYON: ikisi de sorgunun TÜM kelimelerini içeriyor ve ikisi de tam
+        eşleşme değil — puanlar eşitti, karar FatSecret'ın sırasına kalıyordu ve
+        kızartma kazanıyordu. Ana isim ayırıyor: pepper ≠ fritter."""
+        foods = [{"food_name": "Chili Pepper Fritter"}, {"food_name": "Hot Chili Pepper"}]
+        assert nutrition.pick_best_food(foods, "chili pepper")["food_name"] == "Hot Chili Pepper"
+
+    def test_a_synonym_in_the_qualifier_still_wins_over_a_branded_exact_match(self):
+        """bok choy'un DOĞRU karşılığı ana adında 'choy' geçmiyor — eşanlamlı
+        parantezin içinde. Ana isim bonusu bunu bozmamalı."""
+        foods = [
+            {"food_name": "Chinese Cabbage (Bok-Choy, Pak-Choi)"},
+            {"food_name": "Baby Bok Choy", "brand_name": "Some Farm"},
+            {"food_name": "Bok Choy", "brand_name": "Other Farm"},
+        ]
+        best = nutrition.pick_best_food(foods, "bok choy")
+        assert best["food_name"] == "Chinese Cabbage (Bok-Choy, Pak-Choi)"
+
+
+class TestHeadNoun:
+    @pytest.mark.parametrize("name,expected", [
+        ("grilled chicken breast", "breast"),
+        ("Hot Chili Pepper", "pepper"),
+        ("Chili Pepper Fritter", "fritter"),
+        ("Mushrooms", "mushroom"),                          # tekilleştiriliyor
+        ("Chinese Cabbage (Bok-Choy, Pak-Choi)", "cabbage"),  # parantez atılıyor
+        ("", ""),
+    ])
+    def test_head_noun(self, name, expected):
+        assert nutrition.head_noun(name) == expected
+
+
+class TestFoodTokens:
+    def test_punctuation_is_a_separator(self):
+        """Tire ayraç sayılmazsa "Bok-Choy" tek kelime kalır ve 'choy' hiç
+        görünmez — doğru eşleşme alaka tabanında reddedilirdi."""
+        tokens = nutrition.food_tokens("Chinese Cabbage (Bok-Choy, Pak-Choi)")
+        assert "choy" in tokens and "bok" in tokens and "cabbage" in tokens
+
+    def test_words_are_singularised(self):
+        assert "tomato" in nutrition.food_tokens("Cherry Tomatoes")
+
 
 # ── OAuth 1.0 imzalama ────────────────────────────────────
 
@@ -626,6 +668,45 @@ class TestLookupMacros:
     def test_no_match_returns_none(self, monkeypatch, with_credentials):
         _fake_transport(monkeypatch, [{"foods": {}}])
         assert nutrition.lookup_macros("zzzz") is None
+
+    def test_an_unrelated_match_is_rejected_rather_than_shown_as_fact(self, monkeypatch, with_credentials):
+        """GÖZLENEN VAKA: "bean sprouts" sorgusuna beş farklı FASULYE dönüyor,
+        hiçbirinde 'sprout' geçmiyor. Kabul etmek, yanlış bir sayıyı "aranmış
+        veri" etiketiyle göstermek olurdu — dürüst tahminden daha kötü."""
+        _fake_transport(monkeypatch, [{"foods": {"food": [
+            {"food_id": "1", "food_name": "Black Beans No Salt Added",
+             "food_description": "Per 100g - Calories: 92kcal | Fat: 0.3g | Carbs: 16g | Protein: 6g"},
+            {"food_id": "2", "food_name": "Peruano Beans",
+             "food_description": "Per 100g - Calories: 90kcal | Fat: 0.3g | Carbs: 16g | Protein: 6g"},
+        ]}}])
+
+        assert nutrition.lookup_macros("bean sprouts") is None
+
+    def test_a_qualifier_synonym_is_accepted_by_the_relevance_floor(self, monkeypatch, with_credentials):
+        """Taban TAM ad üzerinden bakıyor (parantez dahil) — yoksa bok choy'un
+        doğru karşılığı reddedilirdi."""
+        _fake_transport(monkeypatch, [{"foods": {"food": {
+            "food_id": "1", "food_name": "Chinese Cabbage (Bok-Choy, Pak-Choi)",
+            "food_description": "Per 100g - Calories: 13kcal | Fat: 0.2g | Carbs: 2.2g | Protein: 1.5g",
+        }}}])
+
+        assert nutrition.lookup_macros("bok choy")["calories"] == 13.0
+
+    def test_rejected_match_falls_back_to_the_model_estimate(self, monkeypatch, with_credentials):
+        """Taban devreye girince özellik KIRILMIYOR — kaynak değişiyor ve
+        arayüz 'estimated' rozetiyle bunu dürüstçe söylüyor."""
+        _fake_transport(monkeypatch, [{"foods": {"food": {
+            "food_id": "1", "food_name": "Black Beans",
+            "food_description": "Per 100g - Calories: 92kcal | Fat: 0.3g | Carbs: 16g | Protein: 6g",
+        }}}])
+
+        plate = nutrition.build_plate([
+            {"name": "bean sprouts", "grams": 80, "calories": 25, "protein_g": 2.6},
+        ])
+
+        assert plate["source"] == "estimate"
+        assert plate["items"][0]["calories"] == 25      # Gemini'nin tahmini korundu
+        assert plate["attribution"] is None
 
     def test_network_failure_returns_none(self, monkeypatch, with_credentials):
         def boom(url, timeout=None):

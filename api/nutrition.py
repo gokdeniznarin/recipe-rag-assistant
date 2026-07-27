@@ -372,6 +372,32 @@ def _strip_qualifier(name: str) -> str:
     return _QUALIFIER_RE.sub("", name or "").strip()
 
 
+_NON_WORD_RE = re.compile(r"[^a-z0-9]+")
+
+
+def food_tokens(name: str) -> set[str]:
+    """Bir gıda adının kelime kümesi (tekilleştirilmiş).
+
+    Noktalama AYRAÇ sayılıyor: "Chinese Cabbage (Bok-Choy, Pak-Choi)" içindeki
+    "Bok-Choy" tireli tek kelime olarak kalsaydı `choy` hiç görünmezdi ve doğru
+    eşleşme reddedilirdi.
+    """
+    cleaned = _NON_WORD_RE.sub(" ", (name or "").lower())
+    return set(canonical_food_name(cleaned).split())
+
+
+def head_noun(name: str) -> str:
+    """Adın ANA İSMİ — İngilizce'de son kelime.
+
+    "hot chili PEPPER" bir biber, "chili pepper FRITTER" bir kızartma. İkisi de
+    sorgunun bütün kelimelerini içeriyor, yani kelime örtüşmesi bunları ayırt
+    edemiyor; ayıran şey hangi yemek oldukları, o da son kelimede.
+    Parantez içi atılıyor: nitelik değil, asıl adın son kelimesi aranıyor.
+    """
+    words = canonical_food_name(_strip_qualifier(name)).split()
+    return words[-1] if words else ""
+
+
 def score_food(food: dict, query: str = "") -> int:
     """Bir arama sonucunun uygunluk puanı (yüksek olan seçilir).
 
@@ -402,6 +428,13 @@ def score_food(food: dict, query: str = "") -> int:
     # (çoğul farkı eşleşmeyi bozmasın).
     if query and canonical_food_name(_strip_qualifier(name)) == canonical_food_name(query):
         score += 5
+
+    # Aynı ANA İSİM: "chili pepper" için hem "Hot Chili Pepper" hem "Chili Pepper
+    # Fritter" sorgunun tüm kelimelerini içeriyor ve ikisi de tam eşleşme DEĞİL,
+    # yani puanları eşitti ve karar FatSecret'ın sırasına kalıyordu — kızartma
+    # kazanıyordu. Ana isim ikisini ayırıyor (pepper vs fritter).
+    if query and head_noun(name) and head_noun(name) == head_noun(query):
+        score += 3
 
     return score
 
@@ -559,6 +592,24 @@ def lookup_macros(food_name: str) -> dict | None:
     best = pick_best_food(foods, name)
     if not best:
         log.info("FatSecret has no match for %r", name[:60])
+        return None
+
+    # ALAKA TABANI — en iyi aday bile sorgunun ANA İSMİNİ hiç içermiyorsa bu bir
+    # eşleşme değil, sadece "en az kötü" sonuç. FatSecret anahtar kelime araması
+    # yapıyor ve elindeki hiçbir şey uymadığında yine de bir şeyler döndürüyor:
+    # "bean sprouts" sorgusuna beş farklı FASULYE dönüyor, hiçbirinde "sprout"
+    # geçmiyor. Onu kabul etmek, yanlış bir sayıyı "aranmış veri" etiketiyle
+    # göstermek olurdu — dürüst bir tahminden DAHA KÖTÜ, çünkü kullanıcı
+    # doğrulanmış sanıyor. None dönünce çağıran Gemini tahminine düşüyor ve
+    # arayüz 'estimated' rozetini gösteriyor.
+    #
+    # Kontrol TAM ad üzerinden (parantez DAHİL): eşanlamlılar orada duruyor —
+    # "Chinese Cabbage (Bok-Choy, Pak-Choi)" bok choy'un DOĞRU karşılığı ve ana
+    # adında 'choy' hiç geçmiyor. Yalnızca ana ada baksaydık onu reddederdik.
+    head = head_noun(name)
+    if head and head not in food_tokens(best.get("food_name", "")):
+        log.info("FatSecret match %r rejected for %r (no %r in it)",
+                 best.get("food_name", "")[:60], name[:60], head)
         return None
 
     from_description = parse_food_description(best.get("food_description", ""))
