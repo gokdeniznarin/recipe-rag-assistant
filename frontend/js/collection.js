@@ -68,13 +68,46 @@ function renderRecipeRow(recipe) {
             aria-label="Remove from this collection">Remove</button>
   `;
 
+  attachRemove(row, recipe.id);
+  return row;
+}
+
+/**
+ * Tarifi artık veritabanında olmayan bir üyelik satırı.
+ *
+ * Önce bunlar `filter(Boolean)` ile SESSİZCE atılıyordu — ama favoriler
+ * sayfasındaki sayaç saklanan `recipe_ids` uzunluğunu gösterdiği için
+ * "1 recipe" yazıp içeride hiçbir şey çıkmıyordu. Sessizce yutmak yerine
+ * durumu gösterip kullanıcıya temizleme imkânı veriyoruz (yemek planındaki
+ * "Recipe unavailable" davranışının aynısı).
+ */
+function renderUnavailableRow(recipeId) {
+  const row = document.createElement('div');
+  row.className = 'collection-recipe-row';
+  row.innerHTML = `
+    <div class="recipe-card recipe-card--unavailable">
+      <div class="recipe-card-body">
+        <h3 class="recipe-name">Recipe unavailable</h3>
+        <p class="recipe-meta">This recipe is no longer in our database.</p>
+      </div>
+    </div>
+    <button class="remove-from-collection" title="Remove from this collection"
+            aria-label="Remove from this collection">Remove</button>
+  `;
+
+  attachRemove(row, recipeId);
+  return row;
+}
+
+/** Koleksiyondan çıkarma — iki satır tipi de aynı akışı kullanıyor. */
+function attachRemove(row, recipeId) {
   // Koleksiyondan çıkar (favoride KALIR — sadece bu gruptan düşer).
   row.querySelector('.remove-from-collection').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     btn.disabled = true;
     try {
       await apiRequest(
-        `/api/collections/${encodeURIComponent(collectionId)}/recipes/${encodeURIComponent(recipe.id)}`,
+        `/api/collections/${encodeURIComponent(collectionId)}/recipes/${encodeURIComponent(recipeId)}`,
         { method: 'DELETE' }
       );
       row.remove();
@@ -91,8 +124,6 @@ function renderRecipeRow(recipe) {
       setTimeout(() => errorEl.classList.add('hidden'), 3000);
     }
   });
-
-  return row;
 }
 
 // ── Yeniden adlandırma ───────────────────────────────────
@@ -182,14 +213,22 @@ deleteConfirm.addEventListener('click', async () => {
     titleEl.textContent = data.name;
     document.title = `${data.name} — Recipe Assistant`;
 
-    // Tarifi bulunamayanları (veri setinden kalkmış) ele.
-    const recipes = (data.recipes || []).filter(Boolean);
-    updateCount(recipes.length);
+    // `recipes` ve `recipe_ids` AYNI SIRADA geliyor (backend id→kart eşlemesini
+    // koruyor), bulunamayan tarif `null` oluyor. Eskiden null'lar `filter`
+    // ile atılıyordu; o zaman favoriler sayfasındaki sayaç (saklanan
+    // recipe_ids uzunluğu) ile burada görünen liste ÇELİŞİYORDU — "1 recipe"
+    // yazıp içerisi boş kalıyordu. Artık her üyelik bir satır alıyor.
+    const recipes = data.recipes || [];
+    const ids = data.recipe_ids || [];
+    updateCount(ids.length);
 
-    if (recipes.length === 0) {
+    if (ids.length === 0) {
       emptyEl.classList.remove('hidden');
     } else {
-      recipes.forEach(recipe => listEl.appendChild(renderRecipeRow(recipe)));
+      ids.forEach((rid, i) => {
+        const recipe = recipes[i];
+        listEl.appendChild(recipe ? renderRecipeRow(recipe) : renderUnavailableRow(rid));
+      });
     }
 
     sectionEl.classList.remove('hidden');

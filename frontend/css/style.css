@@ -2299,3 +2299,18 @@ body.auth-page .auth-container {
   }
   .recipe-hero, .recipe-hero img { max-height: 220px; }
 }
+
+/* Tarifi veri setinden kalkmış üyelik satırı (Faz 20).
+   Sessizce yutmak yerine gösteriliyor — favoriler sayfasındaki sayaç saklanan
+   recipe_ids'i sayıyor, yutulursa "1 recipe" yazıp içerisi boş kalıyordu. */
+.recipe-card--unavailable {
+  flex: 1;
+  background: transparent;
+  border-style: dashed;
+  cursor: default;
+}
+
+.recipe-card--unavailable .recipe-name {
+  color: var(--text-muted);
+  font-style: italic;
+}
