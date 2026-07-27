@@ -773,7 +773,7 @@ class TestBuildPlate:
         assert plate["items"][0]["source"] == "estimate"
         assert plate["attribution"] is None   # tahmine FatSecret atfı verilmez
 
-    def test_looked_up_values_replace_the_estimate_and_are_scaled(self, monkeypatch):
+    def test_looked_up_values_replace_the_estimate_and_are_scaled(self, monkeypatch, with_credentials):
         monkeypatch.setattr(nutrition, "lookup_macros", lambda name: {
             "calories": 165.0, "protein_g": 31.0, "carbs_g": 0.0, "fat_g": 3.6,
             "matched_food": "Grilled Chicken Breast",
@@ -801,7 +801,7 @@ class TestBuildPlate:
         assert plate["items"][0]["grams"] == 2000
         assert plate["items"][0]["calories"] == 2800.0
 
-    def test_a_large_merged_portion_scales_looked_up_data(self, monkeypatch):
+    def test_a_large_merged_portion_scales_looked_up_data(self, monkeypatch, with_credentials):
         """REGRESYON (FatSecret yolu) — en ciddisi: gram burada ÇARPAN olduğu
         için hata sessiz ve 13 katlık bir eksik beyandı."""
         monkeypatch.setattr(nutrition, "lookup_macros",
@@ -820,7 +820,7 @@ class TestBuildPlate:
         plate = nutrition.build_plate([{"name": "rice", "grams": 250}])
         assert plate["items"][0]["grams"] == 250
 
-    def test_partial_lookup_is_reported_as_mixed(self, monkeypatch):
+    def test_partial_lookup_is_reported_as_mixed(self, monkeypatch, with_credentials):
         monkeypatch.setattr(nutrition, "lookup_macros",
                             lambda name: {"calories": 100.0} if name == "rice" else None)
 
@@ -870,25 +870,11 @@ class TestBuildPlate:
         detected = [{"name": f"food {i}", "grams": 100} for i in range(200)]
         assert len(nutrition.build_plate(detected)["items"]) == nutrition.MAX_ITEMS
 
-    def test_lookups_stay_bounded_even_on_a_long_plate(self, monkeypatch):
-        """Öğe sınırı yükseldi ama AĞ maliyeti hâlâ bütçeyle sınırlı — öğeler
-        düşmüyor, yalnızca aranmayanlar tahmine geçiyor."""
-        calls = []
-        clock = {"now": 0.0}
-
-        def slow_lookup(name):
-            calls.append(name)
-            clock["now"] += 6.0
-            return None
-
-        monkeypatch.setattr(nutrition, "lookup_macros", slow_lookup)
-        monkeypatch.setattr(nutrition.time, "perf_counter", lambda: clock["now"])
-
+    def test_a_long_plate_keeps_every_item(self, monkeypatch):
+        """Öğe sınırı yükseldi; uzun bir tabakta hiçbir öğe düşmüyor."""
+        monkeypatch.setattr(nutrition, "lookup_macros", lambda name: None)
         detected = [{"name": f"food {i}", "grams": 100} for i in range(15)]
-        plate = nutrition.build_plate(detected)
-
-        assert len(calls) == 2              # bütçe 10 sn: iki aramadan sonra kesildi
-        assert len(plate["items"]) == 15    # ama HİÇBİR öğe düşmedi
+        assert len(nutrition.build_plate(detected)["items"]) == 15
 
     def test_duplicates_are_merged_before_the_cap_is_applied(self, monkeypatch):
         """SIRA ÖNEMLİ: önce kırpsaydık aynı gıdanın tekrarları bütçeyi yiyip
@@ -900,7 +886,7 @@ class TestBuildPlate:
 
         assert names == ["cherry tomato", "steak"]
 
-    def test_a_repeated_food_is_looked_up_only_once(self, monkeypatch):
+    def test_a_repeated_food_is_looked_up_only_once(self, monkeypatch, with_credentials):
         """Tekilleştirme aynı zamanda FatSecret'a giden istek sayısını düşürüyor."""
         calls = []
         monkeypatch.setattr(nutrition, "lookup_macros",
@@ -911,38 +897,77 @@ class TestBuildPlate:
         assert calls == ["cherry tomato"]
 
     def test_a_slow_service_cannot_hold_the_whole_request_hostage(self, monkeypatch):
-        """Her öğe diğerinden BAĞIMSIZ yeniden deniyor; devre kesici olmadan
-        8 öğe × 2 çağrı × 6 sn timeout = ~96 sn beklerdi. Bütçe dolunca kalan
-        öğeler tahmine düşüyor (fail-open'ın aynısı, tetikleyicisi yavaşlık)."""
-        calls = []
-        clock = {"now": 0.0}
+        """Aramalar PARALEL ama bütçe hâlâ üst sınır: takılan bir servis
+        kullanıcıyı öğe sayısı kadar zaman aşımı boyunca bekletemez. Bütçe
+        dolunca öğeler DÜŞMÜYOR, sadece tahmine geçiyor."""
+        import time as _t
+        monkeypatch.setattr(nutrition, "LOOKUP_BUDGET_SEC", 0.3)
+        monkeypatch.setenv("FATSECRET_CONSUMER_KEY", "k")
+        monkeypatch.setenv("FATSECRET_CONSUMER_SECRET", "s")
 
-        def slow_lookup(name):
-            calls.append(name)
-            clock["now"] += 6.0          # her arama zaman aşımına uğruyor
-            return None
+        def hanging(name):
+            _t.sleep(5)          # bütçeden çok daha uzun
+            return {"calories": 1.0}
 
-        monkeypatch.setattr(nutrition, "lookup_macros", slow_lookup)
-        monkeypatch.setattr(nutrition.time, "perf_counter", lambda: clock["now"])
+        monkeypatch.setattr(nutrition, "lookup_macros", hanging)
 
-        detected = [{"name": f"food {i}", "grams": 100} for i in range(8)]
-        plate = nutrition.build_plate(detected)
+        started = _t.perf_counter()
+        plate = nutrition.build_plate([{"name": f"food {i}", "grams": 100} for i in range(8)])
+        elapsed = _t.perf_counter() - started
 
-        # Bütçe 10 sn: 2 arama (12 sn) sonrası kesiliyor, 8 değil.
-        assert len(calls) == 2
-        assert len(plate["items"]) == 8      # öğelerin hepsi yine dönüyor
-        assert plate["source"] == "estimate"
+        assert elapsed < 3                       # 8 x 5 sn beklemiyor
+        assert len(plate["items"]) == 8          # hiçbir öğe düşmedi
+        assert plate["source"] == "estimate"     # hepsi dürüstçe tahmin
 
     def test_the_budget_does_not_interfere_when_lookups_are_fast(self, monkeypatch):
         calls = []
+        monkeypatch.setenv("FATSECRET_CONSUMER_KEY", "k")
+        monkeypatch.setenv("FATSECRET_CONSUMER_SECRET", "s")
         monkeypatch.setattr(nutrition, "lookup_macros",
                             lambda name: calls.append(name) or {"calories": 10.0})
 
-        detected = [{"name": f"food {i}", "grams": 100} for i in range(8)]
-        plate = nutrition.build_plate(detected)
+        plate = nutrition.build_plate([{"name": f"food {i}", "grams": 100} for i in range(8)])
 
         assert len(calls) == 8              # hepsi arandı
         assert plate["source"] == "fatsecret"
+
+    def test_lookups_run_in_parallel_not_one_after_another(self, monkeypatch):
+        """REGRESYON: sıralı aramada 12 öğe ~6.5 sn sürüyordu ve tek bir yavaş
+        çağrı bütçeyi bitirip kalan öğeleri tahmine düşürüyordu ("çoğu estimated
+        çıktı"). Paralel bekleme bunu ortadan kaldırıyor."""
+        import time as _t
+        monkeypatch.setenv("FATSECRET_CONSUMER_KEY", "k")
+        monkeypatch.setenv("FATSECRET_CONSUMER_SECRET", "s")
+        monkeypatch.setattr(nutrition, "lookup_macros",
+                            lambda name: _t.sleep(0.2) or {"calories": 10.0})
+
+        started = _t.perf_counter()
+        plate = nutrition.build_plate([{"name": f"food {i}", "grams": 100} for i in range(8)])
+        elapsed = _t.perf_counter() - started
+
+        # Sirali olsaydi 8 x 0.2 = 1.6 sn; 4 isci ile ~0.4 sn
+        assert elapsed < 1.0
+        assert plate["source"] == "fatsecret"
+
+    def test_order_is_preserved_despite_parallelism(self, monkeypatch):
+        """Paralel çalışan aramalar farklı sırada bitebilir; öğe/sonuç eşlemesi
+        kaymamalı, yoksa havucun kalorisi salatalığa yazılır."""
+        import time as _t
+        monkeypatch.setenv("FATSECRET_CONSUMER_KEY", "k")
+        monkeypatch.setenv("FATSECRET_CONSUMER_SECRET", "s")
+        table = {"carrot": 41.0, "cucumber": 12.0, "barley": 354.0}
+        # Ilk isim en YAVAS bitiyor -> tamamlanma sirasi girdi sirasindan farkli
+        delays = {"carrot": 0.30, "cucumber": 0.10, "barley": 0.01}
+        monkeypatch.setattr(nutrition, "lookup_macros",
+                            lambda n: _t.sleep(delays[n]) or {"calories": table[n]})
+
+        plate = nutrition.build_plate([
+            {"name": "carrot", "grams": 100}, {"name": "cucumber", "grams": 100},
+            {"name": "barley", "grams": 100},
+        ])
+
+        assert [i["name"] for i in plate["items"]] == ["carrot", "cucumber", "barley"]
+        assert [i["calories"] for i in plate["items"]] == [41.0, 12.0, 354.0]
 
     def test_empty_detection_gives_an_empty_plate_not_an_error(self, monkeypatch):
         monkeypatch.setattr(nutrition, "lookup_macros", lambda name: None)
@@ -1011,7 +1036,7 @@ class TestNutritionEndpoint:
         assert data["totals"]["calories"] == 234.0
         assert data["source"] == "estimate"
 
-    def test_attribution_is_returned_when_looked_up_data_is_used(self, api, auth_client, monkeypatch):
+    def test_attribution_is_returned_when_looked_up_data_is_used(self, api, auth_client, monkeypatch, with_credentials):
         """FatSecret ücretsiz katmanı görünür atıf ŞART koşuyor."""
         main, _ = api
         monkeypatch.setattr(main, "analyze_plate_from_image",

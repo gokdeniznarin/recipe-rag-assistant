@@ -44,6 +44,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from concurrent.futures import ThreadPoolExecutor, wait
 
 from logger import get_logger, log_duration
 
@@ -77,15 +78,24 @@ MAX_ITEMS = 20
 
 # TÜM arama turlarının toplam zaman bütçesi (istek başına).
 #
-# NEDEN GEREKLİ: tek başına zaman aşımı yetmiyor. Her öğe diğerinden BAĞIMSIZ
-# olarak yeniden deniyor, yani FatSecret takılırsa 8 öğe × 2 çağrı × 6 sn =
-# ~96 sn boyunca kullanıcı bekler — üstüne vision'ın ~8 sn'si biner. Devre
-# kesici olmadan tek bir yavaş dış servis bütün isteği rehin alıyor.
+# NEDEN GEREKLİ: tek başına zaman aşımı yetmiyor. Devre kesici olmadan takılan
+# bir servis, öğe sayısı kadar zaman aşımını arka arkaya yaşatır ve kullanıcıyı
+# dakikalarca bekletir. Bütçe dolunca kalan öğeler Gemini tahminine düşüyor —
+# var olan fail-open davranışının aynısı, tetikleyicisi "hata" değil "yavaşlık".
 #
-# Bütçe dolunca kalan öğeler Gemini tahminine düşüyor — yani zaten var olan
-# fail-open davranışının aynısı, sadece tetikleyicisi "hata" değil "yavaşlık".
-# Normal işleyişte hiç devreye girmiyor: gerçek çağrılar ~200-500 ms.
+# ⚠️ BU BÜTÇE BİR KEZ YANLIŞ KALİBRE OLDU: MAX_ITEMS 8→20 çıkarılınca sıralı
+# aramanın taban maliyeti de büyüdü (12 öğe × ~500 ms ≈ 6.5 sn) ve TEK bir
+# yavaş çağrı (ölçüldü: 6.50 sn) bütçeyi bitirip kalan öğelerin hepsini
+# tahmine düşürdü. Kullanıcı bunu "çoğu estimated çıktı" olarak gördü.
+# Asıl çözüm bütçeyi büyütmek değil, aramaları PARALEL yapmaktı (aşağıda) —
+# hepsi ağ beklemesi, sırayla yapılmaları için hiçbir sebep yok.
 LOOKUP_BUDGET_SEC = 10.0
+
+# Eşzamanlı arama sayısı. Çağrılar saf ağ beklemesi olduğu için GIL sorun
+# değil. 4 bilinçli olarak ölçülü: FatSecret'ı sağanağa tutmadan 12 öğelik bir
+# tabağı ~6.5 sn yerine ~2 sn'de bitiriyor. Bir çağrı yavaşlarsa yalnızca kendi
+# grubunu geciktiriyor, diğerlerini değil.
+LOOKUP_WORKERS = 4
 
 # Porsiyon sınırları. İKİ AYRI TAVAN VAR ve karıştırılmamalı:
 #   MAX_GRAMS       — tek bir PARÇA için makul üst sınır ("2500 g'lık tek domates"
@@ -647,6 +657,49 @@ def lookup_macros(food_name: str) -> dict | None:
     return {**macros, "matched_food": best.get("food_name", name)}
 
 
+def lookup_many(names: list[str]) -> list[dict | None]:
+    """Birden çok gıdayı PARALEL arar; sıra korunur, bulunamayanlar None.
+
+    NEDEN PARALEL: her arama saf ağ beklemesi (~500 ms). Sırayla yapıldığında
+    12 öğelik bir tabak 6.5 sn sürüyordu ve bu, zaman bütçesinin neredeyse
+    tamamını yiyordu — tek bir yavaş çağrı (ölçüldü: 6.50 sn) bütçeyi bitirip
+    kalan öğelerin HEPSİNİ tahmine düşürüyordu. Bekleme paralelleştirilince
+    aynı tabak ~2 sn'ye iniyor ve bütçe yalnızca gerçekten patolojik durumlarda
+    devreye giriyor.
+
+    Bütçe dolarsa bekleyen aramalar İPTAL EDİLİYOR ve o öğeler tahmine düşüyor
+    — öğeler DÜŞMÜYOR, yalnızca sayılarının kaynağı değişiyor.
+    """
+    results: list[dict | None] = [None] * len(names)
+    # Anahtar yoksa havuz kurmanın anlamı yok — zaten hepsi None dönecek.
+    if not names or not credentials():
+        return results
+
+    pool = ThreadPoolExecutor(max_workers=LOOKUP_WORKERS)
+    try:
+        futures = {pool.submit(lookup_macros, name): i for i, name in enumerate(names)}
+        done, pending = wait(futures, timeout=LOOKUP_BUDGET_SEC)
+
+        for future in done:
+            try:
+                results[futures[future]] = future.result()
+            except Exception as e:      # lookup_macros zaten fail-open, ama emin olalım
+                log.warning("Lookup failed for %r: %s", names[futures[future]], e)
+
+        if pending:
+            log.warning(
+                "FatSecret lookup budget (%.0fs) spent; %d item(s) fall back to estimates",
+                LOOKUP_BUDGET_SEC, len(pending),
+            )
+    finally:
+        # wait=False ŞART: bekleyen bir arama zaman aşımına uğrayana kadar
+        # sürebilir; onu beklemek bütçeyi anlamsız kılardı. Çalışan iş parçacığı
+        # arkada bitiyor, HTTP_TIMEOUT_SEC ile sınırlı.
+        pool.shutdown(wait=False, cancel_futures=True)
+
+    return results
+
+
 # ═══════════════════════════════════════════════════════════
 #  TABAK BİRLEŞTİRME
 # ═══════════════════════════════════════════════════════════
@@ -663,30 +716,16 @@ def build_plate(detected_items: list[dict]) -> dict:
     # TEKİLLEŞTİRME ÖNCE, kırpma SONRA: sırası tersine olsaydı aynı gıdanın
     # tekrarları MAX_ITEMS bütçesini yiyip gerçekten farklı yemekleri dışarıda
     # bırakırdı (beş kirazdomatesi sekiz öğelik bütçenin beşini harcıyordu).
+    merged = [
+        raw for raw in merge_duplicate_items(detected_items)[:MAX_ITEMS]
+        if str(raw.get("name", "")).strip()
+    ]
+    names = [str(raw["name"]).strip() for raw in merged]
+    lookups = lookup_many(names)
+
     items = []
-    deadline = time.perf_counter() + LOOKUP_BUDGET_SEC
-    budget_spent = False
-
-    for raw in merge_duplicate_items(detected_items)[:MAX_ITEMS]:
-        name = str(raw.get("name", "")).strip()
-        if not name:
-            continue
-
+    for raw, name, looked_up in zip(merged, names, lookups):
         grams = plate_grams(raw.get("grams"))
-
-        # Bütçe dolduysa aramayı BIRAKIYORUZ ve kalan öğeler tahmine düşüyor.
-        # Yavaş bir dış servis, kullanıcıyı dakikalarca bekletmek yerine
-        # yalnızca sayıların kaynağını değiştiriyor.
-        if time.perf_counter() < deadline:
-            looked_up = lookup_macros(name)
-        else:
-            if not budget_spent:
-                log.warning(
-                    "FatSecret lookup budget (%.0fs) spent; remaining items fall back to estimates",
-                    LOOKUP_BUDGET_SEC,
-                )
-                budget_spent = True
-            looked_up = None
 
         if looked_up:
             macros = scale_macros(looked_up, grams)
