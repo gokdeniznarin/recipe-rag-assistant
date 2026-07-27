@@ -2314,3 +2314,160 @@ body.auth-page .auth-container {
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* ═══════════════════════════════════════════════════════ */
+/*  NUTRITION — fotoğraftan besin değeri                   */
+/*  Kamera akışının İKİNCİ okuması. Görsel dil bilerek     */
+/*  sonuç kartlarından farklı: bu bir tarif listesi değil, */
+/*  ölçüm tablosu.                                         */
+/* ═══════════════════════════════════════════════════════ */
+
+.camera-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 0.9rem;
+}
+
+.camera-actions-or {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.nutrition-panel {
+  margin-top: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* ── Toplamlar: dört ölçüm kutusu ──────────────────────── */
+.nutrition-totals {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+}
+
+.nutrition-tile {
+  background: var(--olive);
+  color: #fff;
+  border-radius: var(--radius-md);
+  padding: 1.1rem 0.75rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.nutrition-tile-value {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.75rem;
+  line-height: 1.1;
+  font-weight: 600;
+}
+
+.nutrition-tile-unit {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 500;
+  opacity: 0.75;
+  margin-left: 0.15rem;
+}
+
+.nutrition-tile-label {
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+/* ── Öğe kırılımı ──────────────────────────────────────── */
+.nutrition-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.nutrition-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.nutrition-item-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.nutrition-item-name {
+  font-weight: 600;
+  color: var(--olive);
+}
+
+/* "≈" işareti burada bilerek: porsiyon ölçülmedi, tahmin edildi. */
+.nutrition-item-grams {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.nutrition-item-macros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.nutrition-item-macros b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.nutrition-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.nutrition-matched { font-style: italic; }
+
+/* Hangi satırın aranmış veriye, hangisinin tahmine dayandığı görünür olmalı —
+   tabaktaki öğelerin bir kısmı veritabanında bulunmayabiliyor. */
+.nutrition-estimated {
+  font-weight: 600;
+  color: var(--accent-dk);
+  cursor: help;
+}
+
+/* ── Dürüst sınır + zorunlu atıf ───────────────────────── */
+/* Uyarı değil BİLGİ, o yüzden --error değil --text-muted (weak-match notundaki
+   aynı ayrım). Tıbbi/diyet aracı gibi durmamalı. */
+.nutrition-note {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.nutrition-attribution {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+/* Dört kutu telefonda yan yana sığmıyor → 2x2 */
+@media (max-width: 560px) {
+  .nutrition-totals { grid-template-columns: repeat(2, 1fr); }
+}

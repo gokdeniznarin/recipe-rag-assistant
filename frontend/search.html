@@ -109,6 +109,16 @@
           />
           <button type="submit" class="btn-accent">Search with photo</button>
         </form>
+
+        <!-- Aynı fotoğrafın İKİNCİ okuması: tarif aramak yerine besin değeri.
+             Ayrı bir sayfa/çekim gerektirmiyor — kod tekrarı da yok. -->
+        <div id="camera-actions" class="camera-actions hidden">
+          <span class="camera-actions-or">or</span>
+          <button type="button" id="nutrition-btn" class="btn-outline btn-sm">
+            Nutrition facts
+          </button>
+          <span id="nutrition-status" class="detected-status"></span>
+        </div>
       </div>
     </section>
 
@@ -163,6 +173,26 @@
       </div>
 
       <div id="recipe-list" class="recipe-list"></div>
+    </section>
+
+    <!-- Besin değeri sonucu (kamera akışının ikinci çıktısı) -->
+    <section id="nutrition-panel" class="nutrition-panel hidden">
+      <div class="results-header">
+        <h2 class="results-title">Estimated nutrition</h2>
+        <span id="nutrition-source" class="results-count"></span>
+      </div>
+
+      <div id="nutrition-totals" class="nutrition-totals"></div>
+      <div id="nutrition-items" class="nutrition-items"></div>
+
+      <!-- DÜRÜST SINIR: porsiyon fotoğraftan tahmin ediliyor ve bu doğası gereği
+           kaba (100 g mı 300 g mı belli olmaz; yağ/tereyağı/şeker görünmez).
+           Arayüz tıbbi/diyet aracı gibi durmamalı. -->
+      <p class="nutrition-note">
+        Portion size is estimated from the photo, so these numbers are rough.
+        This is not medical or dietary advice.
+      </p>
+      <p id="nutrition-attribution" class="nutrition-attribution hidden"></p>
     </section>
 
     <!-- Hata mesajı -->

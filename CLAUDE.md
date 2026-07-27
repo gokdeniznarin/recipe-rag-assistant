@@ -51,7 +51,7 @@
 - **Hafta 8 — CANLI:** Backend → Render, frontend → Vercel ✅ (Faz 10). 4 blocker'ın 3'ü çözüldü, in-app tarayıcı Google girişi (④) bilinçli ertelendi.
 - **Hafta 9 — performans:** Faz 11 ✅ — arama LLM'i beklemiyor (8.87sn → 0.32sn), favoriler N+1 kalktı, favori sırası düzeldi.
 - **Hafta 10 — kalite:** Faz 13 logging ✅, Faz 14 model güncellemesi ✅, **Faz 15 test altyapısı + girdi doğrulama + LLM sınıflandırıcı ✅** (Katman 1 + Katman 2: 148 test).
-- **Hafta 11 (şu an buradayız) — zenginleştirme + gelir modeli:** rakip özelliklerini (Samsung Food / ReciMe) ekleyip gelir hikayesi kurma. **Faz 16 Koleksiyonlar ✅** (175 test), **Faz 17 Pantry + yapılandırılmış malzeme verisi ✅** (235 test), **Faz 18 Meal Planner ✅** (316 test), **Faz 19 Alışveriş Listesi ✅** (366 test) — gelir zinciri (Pantry+Plan → eksikler → affiliate CTA) tamamlandı. Yol haritasında kalan opsiyonel adımlar: Cook Mode / porsiyon ölçekleme, beslenme takibi (ikisi de premium hikayesi). Kalan (Faz 15'ten devir): `main`'e merge, README/sunum hazırlığı.
+- **Hafta 11 (şu an buradayız) — zenginleştirme + gelir modeli:** rakip özelliklerini (Samsung Food / ReciMe) ekleyip gelir hikayesi kurma. **Faz 16 Koleksiyonlar ✅** (175 test), **Faz 17 Pantry + yapılandırılmış malzeme verisi ✅** (235 test), **Faz 18 Meal Planner ✅** (316 test), **Faz 19 Alışveriş Listesi ✅** (366 test) — gelir zinciri (Pantry+Plan → eksikler → affiliate CTA) tamamlandı. **Faz 20 tarif görselleri + veri seti 2× ✅** (372 test), **Faz 21 fotoğraftan besin değeri ✅** (487 test). Yol haritasında kalan opsiyonel adımlar: Cook Mode / porsiyon ölçekleme, **günlük besin kaydı** (Faz 21 sadece gösteriyor, kaydetmiyor — premium hikayesi). Kalan (Faz 15'ten devir): `main`'e merge, README/sunum hazırlığı.
 
 ## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
 ### Backend
@@ -60,11 +60,12 @@
 - `ingestion/validate_tags.py` — diyet etiketi ve veri kalitesi doğrulama scripti
 - `ingestion/load_to_chromadb.py` — ChromaDB'ye yükleme. Embedding'i artık elle üretmiyor: `collection.add()`'e sadece `documents` veriliyor, ChromaDB kendi varsayılan fonksiyonuyla (ONNX) embed ediyor. `PersistentClient` ile `api/chroma_data/` klasörüne yazıyor (sunucuya değil). **Linux'ta çalıştırılmalı** — bkz. Faz 8'deki Windows/HNSW bulgusu. Faz 17'de `ingredients` metadata alanı eklendi (`|` ayraçlı metin — ChromaDB liste tutamıyor); yeniden çalıştırılırsa **yetim segment klasörü kontrol edilmeli**, bkz. Faz 17.
 - `ingestion/test_search.py` — arama testleri. Gömülü veritabanını okuyor (sunucu yok). `CHROMA_PATH` env var'ıyla image'daki kopyaya yöneltilebilir — **repodaki `api/chroma_data`'ya yöneltirsen commit'li dosyayı kirletir** (bkz. Faz 8 notları).
-- `api/main.py` — FastAPI backend + CORS middleware (Faz 10'dan beri kendi origin'lerimizle sınırlı): /api/recipes/search, /api/recipes/from-image, **/api/recipes/commentary** (Faz 11), /api/recipes/{recipe_id}, /api/favorites/*, **/api/collections/*** (Faz 16), **/api/pantry/*** + **/api/recipes/from-pantry** (Faz 17), **/api/meal-plan*** (Faz 18), **/api/shopping-list*** (Faz 19) endpoint'leri. Tarifleri image'a gömülü `chroma_data/` klasöründen `PersistentClient` ile okuyor (Faz 8). Arama endpoint'leri LLM'i beklemiyor (Faz 11).
+- `api/main.py` — FastAPI backend + CORS middleware (Faz 10'dan beri kendi origin'lerimizle sınırlı): /api/recipes/search, /api/recipes/from-image, **/api/recipes/commentary** (Faz 11), /api/recipes/{recipe_id}, /api/favorites/*, **/api/collections/*** (Faz 16), **/api/pantry/*** + **/api/recipes/from-pantry** (Faz 17), **/api/meal-plan*** (Faz 18), **/api/shopping-list*** (Faz 19), **/api/nutrition/from-image** (Faz 21 — ChromaDB'ye hiç dokunmayan tek arama-dışı endpoint) endpoint'leri. Tarifleri image'a gömülü `chroma_data/` klasöründen `PersistentClient` ile okuyor (Faz 8). Arama endpoint'leri LLM'i beklemiyor (Faz 11).
 - `api/chroma_data/` — **git'e commit edilmiş** gömülü tarif veritabanı (**73MB**, Faz 20'de 9.795 tarife çıktı: `chroma.sqlite3` + HNSW indeks dosyaları). `load_to_chromadb.py` üretiyor, Dockerfile `COPY . .` ile image'a alıyor.
 - `api/logger.py` — **merkezi logging + süre ölçümü** (Faz 13). Renkli seviye formatter'ı (`ColorFormatter`), `@timed` decorator'ı ve `timed_block` context manager'ı. Uygulamada `print` kalmadı. `python api/logger.py` ile seviyeleri/renkleri tek başına gösteren bir demo bloğu var.
 - `api/auth.py` — tek iş: Firebase Admin SDK ile `verify_id_token()` → e-posta. `get_current_user_email` dependency'si korumalı endpoint'lerde kullanılıyor. (Eskiden JWT + bcrypt + kullanıcı kayıt/giriş vardı; Firebase geçişiyle ~140 satırdan ~30 satıra düştü.)
-- `api/llm.py` — Gemini API ile LLM cevap üretimi (`generate_answer`) + fotoğraftan malzeme tanıma (`detect_ingredients_from_image`) + **sorgu sınıflandırma** (`is_food_request`, Faz 15f — non-food sorguları aramadan önce eliyor, fail-open). Çoklu model fallback zinciri.
+- `api/llm.py` — Gemini API ile LLM cevap üretimi (`generate_answer`) + fotoğraftan malzeme tanıma (`detect_ingredients_from_image`) + **sorgu sınıflandırma** (`is_food_request`, Faz 15f — non-food sorguları aramadan önce eliyor, fail-open) + **tabak analizi** (`analyze_plate_from_image`, Faz 21 — yemek + porsiyon + kaba besin tahmini TEK çağrıda; JSON modu, `_parse_plate_json` savunmacı). Çoklu model fallback zinciri.
+- `api/nutrition.py` — **besin değeri** (Faz 21). FatSecret Platform API istemcisi (**OAuth 1.0**, stdlib `hmac`/`urllib` — yeni bağımlılık yok) + saf fonksiyonlar (`scale_macros`, `total_macros`, `merge_duplicate_items`, `parse_food_description`, `signature_base_string`/`sign`). **Import anında yan etki YOK** — anahtarlar her çağrıda okunuyor. Tamamen **fail-open**: anahtar yoksa/hata alırsa Gemini tahminine düşüyor, `source` alanı kaynağı dürüstçe söylüyor. Firestore'a **dokunmuyor** (kayıt tutulmuyor).
 - `api/filters.py` — kullanıcı sorgusundan diyet/süre/kalori filtresi çıkarımı
 - `api/validation.py` — **girdi doğrulama** (Faz 15). Tek saf fonksiyon: `validate_query()` sorgu kullanılabilir değilse kullanıcıya gösterilecek mesajı döner (kurallar dizginin **biçimine** bakıyor — harf var mı, uzunluk, tek harf tekrarı). Aramadan önce çağrılıyor, `1235533443` gibi girdiler hiç iş yapılmadan reddediliyor. (Faz 15f'de buradaki mesafe eşiği `is_weak_match` kaldırıldı — anlamsal karar artık `llm.is_food_request`'te.)
 - `api/favorites.py` — favoriler sistemi (Repository Pattern'den esinlenmiş, kendi veri deposunu kendi yönetiyor). **Firestore** kullanıyor (Faz 9; öncesinde ChromaDB'ydi). `get_favorites` en son ekleneni üstte döner (Faz 11; sıralama bellekte — bkz. Faz 11 notu). Faz 6'daki Firebase Auth migrasyonunda **tek satır değişmemişti** — favoriler e-posta anahtarlı ve e-posta her iki auth sisteminde de aynı kimlik. Faz 9'da bunun tersi oldu: favoriler baştan yazıldı ama `main.py` hiç değişmedi (aynı fonksiyon imzaları, aynı `ValueError`'lar).
@@ -80,7 +81,7 @@
 ### Frontend
 - `frontend/index.html` — giriş/kayıt sayfası (Sign in / Create account sekmeleri, "Continue with Google" butonu) **+ altında herkese açık landing içeriği** (Faz 19: özellik kartları, "how it works", footer + Associates açıklaması). Firebase compat SDK script'leri + `firebase.js`, diğer JS'lerden önce yükleniyor (sıra önemli).
 - `frontend/privacy.html` — **gizlilik & veri sayfası** (Faz 19). Giriş gerektirmiyor. `CONTACT_EMAIL` yer tutucusu doldurulmalı.
-- `frontend/search.html` — ana arama sayfası (Text search / Camera search sekmeleri, mikrofon butonu)
+- `frontend/search.html` — ana arama sayfası (Text search / Camera search / From my pantry sekmeleri, mikrofon butonu) + Faz 21'de kamera paneline **"Nutrition facts"** butonu ve besin değeri paneli
 - `frontend/recipe.html` — tarif detay sayfası (instructions + kalp butonu ile favori toggle + Faz 16'da "Add to collection" seçicisi)
 - `frontend/favorites.html` — "Your recipes": üstte koleksiyon grid'i (Faz 16), altta "All saved" listesi (boş durum ekranı ile)
 - `frontend/collection.html` — **tek koleksiyon görünümü** (Faz 16): yeniden adlandır / sil (onay modalı) / tariften çıkar
@@ -93,7 +94,7 @@
 - `frontend/js/config.js` — `window.API_BASE`'i ortama göre kuruyor (yerel/LAN → `localhost:8080`, canlı → Render). `api.js`'ten önce yüklenir (Faz 10).
 - `frontend/js/api.js` — ortak API katmanı (backend adresini `window.API_BASE`'den alır; Firebase ID token'ı header'a ekleyen fetch wrapper, `authReady` tabanlı auth guard, 401'de otomatik logout, kullanıcı menüsü/email + dropdown sign out, doğrulanmamış e-posta için hatırlatma bandı)
 - `frontend/js/auth.js` — giriş/kayıt formu mantığı + Google girişi (Firebase `signInWithPopup`), hesap bağlama (`linkWithCredential`), kayıtta `sendEmailVerification()`, şifre sıfırlama (`sendPasswordResetEmail`; Faz 12)
-- `frontend/js/search.js` — arama sayfası, mode tabs (Faz 17'de üçüncüsü: **From my pantry**), kamera stream (`getUserMedia`) + "Add to pantry", sesli arama (`SpeechRecognition`), sonuç render (Faz 17'de eşleşme rozeti). AI yorumunu ayrı istekle çekiyor (`loadCommentary`, iskelet animasyonu + `commentarySeq` yarış koruması; Faz 11)
+- `frontend/js/search.js` — arama sayfası, mode tabs (Faz 17'de üçüncüsü: **From my pantry**), kamera stream (`getUserMedia`) + "Add to pantry", sesli arama (`SpeechRecognition`), sonuç render (Faz 17'de eşleşme rozeti). AI yorumunu ayrı istekle çekiyor (`loadCommentary`, iskelet animasyonu + `commentarySeq` yarış koruması; Faz 11). **Faz 21: `renderNutrition`** — aynı fotoğrafın ikinci okuması; `showLoading` besin panelini de gizliyor (merkezi yer: iki okuma aynı anda ekranda kalmasın)
 - `frontend/js/recipe.js` — detay sayfası, `parseInstructions()` (R vector kalıntılarını filtreliyor) + Faz 16 koleksiyon seçicisi (lazy-load checkbox listesi, kalp↔koleksiyon senkronu)
 - `frontend/js/collection.js` — tek koleksiyon sayfası (Faz 16): rename/delete/remove akışları
 - `frontend/js/pantry.js` — dolap sayfası (Faz 17): çip render, ekleme, çıkarma
@@ -120,7 +121,9 @@
   - `api/tests/test_meal_plan.py` — 81 test: Katman 1 `week_start_for` (10 test — doküman ID'sini belirlediği için off-by-one'a en açık yer) / `validate_date` (artık gün regresyonu, `bounded=False`) / `validate_slot` (**frontend kopyasına karşı drift koruması**) / `upsert_entry` / `sort_entries` + Katman 1.5 Firestore yazma mantığı (sahte doküman) + Katman 2 endpoint sözleşmesi (kart eşleme, boş hafta → ChromaDB atlanıyor, tekilleştirme, hafta normalizasyonu, `/week` yolunun gölgelenmemesi, **favorilere dokunulmaması**).
 - **Alışveriş Listesi (Faz 19):**
   - `api/tests/test_shopping.py` — 50 test: Katman 1 paylaşılan `ingredient_in_pantry` + **rozet↔liste tutarlılık testi**, `aggregate_ingredients` / `missing_ingredients` / `build_list` (bayat işaretin zararsızlığı, custom dedup) + Katman 1.5 overlay Firestore yazma (sahte doküman) + Katman 2 endpoint sözleşmesi (boş plan → ChromaDB atlanıyor, dolap çıkarması, overlay, silinmiş tarif, normalize, custom `/`).
-- **Toplam: 366 test + 1 xfail**, ~3 sn, container/ağ gerekmiyor.
+- **Besin değeri (Faz 21):**
+  - `api/tests/test_nutrition.py` — 115 test: Katman 1 ölçekleme/toplama/ayrıştırma + `merge_duplicate_items` (gerçek fotoğrafta gözlenen kirazdomatesi vakası) + **OAuth imzası BAĞIMSIZ vektöre karşı** (Twitter'ın yayınlanmış OAuth 1.0a örneği — kendi HMAC'ini kendi HMAC'iyle doğrulamak totolojik olurdu, ayrıca yanlış imza *sessizce* fail-open'a düşeceği için başka türlü fark edilmezdi) + Katman 1.5 sahte HTTP ile `lookup_macros`'un tam zinciri + Katman 2 endpoint sözleşmesi (kota → 200+CORS, **ChromaDB'ye dokunulmaması**).
+- **Toplam: 487 test + 1 xfail**, ~2 sn, container/ağ gerekmiyor.
 - Çalıştırma: `python -m pytest` · `-v` test adlarını gösterir · `--lf` sadece son kırılanları çalıştırır.
 - Windows notu: konsol cp1254 olduğu için Türkçe karakterli mesajlar bozuk görünür (çökme değil). `$env:PYTHONIOENCODING = "utf-8"` düzeltiyor.
 
@@ -164,10 +167,106 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 - **`nut_free` etiketinde açık var** (Faz 7'de tesadüfen fark edildi): "nut free cookies for kids" araması `Pine Nut and Almond Cookies` ve `wheat free peanut butter cookies` döndürüyor — ikisi de `nut_free: True` etiketli, yani yanlış. **KÖK SEBEP FAZ 15'TE BULUNDU** (eski tahmin "bileşik adlar kural listesine takılmıyor" YANLIŞTI) — ayrıntı için Faz 15b. Hata henüz **düzeltilmedi**; `xfail(strict=True)` testi olarak kayıtlı (`ingestion/tests/test_clean_data.py`), düzeltilince test XPASS verip suite'i kırar ve işaretin kaldırılmasını zorlar.
 
 ## Şu An Üzerinde Çalışılıyor
-- **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Faz 6–19'un tamamı bu branch'te. `main` el değmemiş durumda. **Canlı deploy `firebase-auth` dalından yapılıyor** (hem Render hem Vercel bu dalı izliyor), dolayısıyla merge sonrası deploy dalını `main`'e çevirmek gerekecek.
+- **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Faz 6–21'in tamamı bu branch'te. `main` el değmemiş durumda. **Canlı deploy `firebase-auth` dalından yapılıyor** (hem Render hem Vercel bu dalı izliyor), dolayısıyla merge sonrası deploy dalını `main`'e çevirmek gerekecek.
 - Repo **GitHub'da**: `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private). Sırlar (`firebase-key.json`, `.env`) gitignored, repoda yok — Render'da env var olarak duruyor.
 
-## Güncel Durum: Faz 20 (Tarif görselleri + veri seti 2× büyütüldü) ✅
+## Güncel Durum: Faz 21 (Fotoğraftan besin değeri — FatSecret) ✅
+
+**Tetikleyici:** Kullanıcı isteği — "kullanıcı tabak/meyve/sebze fotoğrafı çektiğinde besin değerlerini versin". Yol haritasındaki **"beslenme takibi (premium)"** adımının kapısı. Araştırması Faz 20'de yapılmıştı (aşağıdaki bölüm), bu fazda **implement edildi**.
+
+### Karar: kamera akışına İKİNCİ BUTON (ayrı sayfa değil)
+Aynı fotoğrafın **iki ayrı okuması**: "Search with photo" → *bununla ne pişirebilirim*, "Nutrition facts" → *bunda ne var*. `capturedBase64` zaten elde olduğu için sıfır kod tekrarı, ikinci çekim yok. Ayrı sayfa alternatifi elendi — kullanıcıyı aynı fotoğrafı iki kez çektirmeye zorlardı.
+
+**Kapsam kararı (kullanıcı, 2026-07-27): SADECE GÖSTER.** "Günlük besin kaydına ekle" yapılmadı — yeni Firestore koleksiyonu + yeni sayfa demekti. Premium hikâyesinin doğal yeri, ama bu fazın kapsamı değil.
+
+### 🔑 OAuth 1.0 — özelliği MÜMKÜN KILAN teknik detay
+| | Durum |
+|---|---|
+| **OAuth 2.0** | En az 1 IP whitelist **ZORUNLU** (max 15, aralık sadece Premier) |
+| **OAuth 1.0** | IP kısıtı **YOK** — her istek Consumer Secret ile **imzalanıyor** (HMAC-SHA1) |
+
+Render ücretsiz katmanında **sabit giden IP yok** (paylaşımlı CIDR; dedicated IP Pro plan $100/ay). Yani **OAuth 2.0 yolu kapalı, 1.0 yolu açık.** İmza gerçekliği kanıtladığı için IP kilidine gerek kalmıyor.
+
+**Yeni bağımlılık YOK:** imzalama `hmac`/`hashlib`/`base64`, istek `urllib.request` — hepsi stdlib.
+
+### TEK Gemini çağrısı (kota kararı)
+Vision **hem tanıma hem kendi besin tahminini** aynı çağrıda veriyor. Ayrı çağrılar olsaydı her fotoğraf **2 hak** yerdi (kota model başına günde 20) ve FatSecret cevap verdiğinde ikinci çağrı zaten **boşa** gitmiş olurdu.
+
+### Fail-open: anahtar OLMADAN da çalışıyor
+`.env`'de yalnızca `GEMINI_API_KEY` var, FatSecret anahtarları **ortamda değil**. O yüzden fallback bir taslak değil, **birincil yol** olarak kuruldu:
+
+```
+Gemini vision (tanıma + porsiyon + kaba tahmin)
+   └→ FatSecret erişilebiliyorsa  → aranmış veri  (source: "fatsecret")
+   └→ anahtar yok / hata / kota   → Gemini tahmini (source: "estimate")
+```
+
+- **`source` alanı kullanıcıya DÜRÜSTÇE söyleniyor** — LLM'in sayısı *üretilmiş* (doğrulanamaz), FatSecret'ınki *aranmış*. Tabakta ikisi karışabildiği için üçüncü bir değer var: `"mixed"`.
+- **Porsiyon HER ZAMAN vision'dan** — FatSecret fotoğrafa bakamaz.
+- **Atıf yalnızca FatSecret verisi GERÇEKTEN kullanıldığında** dönüyor. Her yanıta koymak, tahminle üretilmiş sayılara o kaynağı atfetmek olurdu — sözleşmenin istediğinin tersi (yanıltıcı atıf).
+- Anahtar eklendiğinde **kod değişmeden** aranmış veriye geçiyor.
+
+### 🔴 Gerçek fotoğrafla bulunan hata: aynı gıda 5 kez listeleniyordu
+`test_photo.jpg` ile canlı çalıştırıldığında vision kirazdomatesleri **BEŞ AYRI öğe** olarak döndürdü (25+15+10+20+25 g). Üç yerden bozuyordu: arayüzde beş özdeş satır, `MAX_ITEMS` bütçesinin tek gıdaya harcanması, FatSecret'a aynı sorgu için beş istek.
+
+**İKİ katmanlı düzeltildi** (prompt bir GARANTİ DEĞİL — model davranışı sürüm sürüm değişiyor, Faz 14'te tam bunu yaşadık):
+1. Prompt sıkılaştırıldı ("her KİND bir kez, parça başına satır açma").
+2. **Asıl koruma kodda:** `merge_duplicate_items` — kanonik ada göre birleştirip gram/makroları topluyor.
+
+**Sıra kritik: TEKİLLEŞTİRME önce, kırpma sonra.** Tersi olsaydı tekrarlar `MAX_ITEMS` bütçesini yiyip gerçekten farklı yemekleri dışarıda bırakırdı. Teste bağlandı.
+
+Doğrulama sonrası: **3 ayrı öğe** (green chili pepper 95g · cherry tomatoes 210g · eggplant 250g) — Faz 14'te aynı fotoğraf için kaydedilen üç malzemeyle tutarlı.
+
+### `canonical_food_name` neden `pantry.canonical_ingredient`'ı KULLANMIYOR
+Aynı fikir ama **bilerek kopya**: `pantry.py` import anında `firestore.client()` çağırıyor. Import etmek, besin modülüne gereksiz bir **Firestore bağımlılığı** takardı ve bu modülün *import anında yan etkisiz* kalması gerekiyor (Faz 15a dersi). İhtiyaç duyulan kural da oradakinden çok daha dar.
+
+### Endpoint
+```
+POST /api/nutrition/from-image  {image_base64}  →  {items, totals, source, attribution}
+```
+- **ChromaDB'ye HİÇ dokunmuyor** — kullanıcı tarif aramıyor; 9.795 tarifte bir elmanın karşılığı zaten yok. Render'daki ~6 sn embedding maliyeti hiç ödenmiyor (teste bağlandı).
+- **`is_food_request` YOK** — o sınıflandırıcı METİN için yazıldı, girdi burada fotoğraf. Yemek yoksa vision boş liste dönüyor.
+- **Hata → 200 + `{"error"}`, ASLA 500** (Faz 11b dersi: 500 CORS middleware'ine uğramadan çıkar, tarayıcıda yanıltıcı "blocked by CORS policy" görünür). Testte CORS header'ı da doğrulanıyor.
+
+### Frontend
+- `search.html` — kamera paneline `#camera-actions` (or + "Nutrition facts") + `#nutrition-panel`.
+- `search.js` — `renderNutrition` (`Logger.timed` ile sarmalı), `showLoading` besin panelini de gizliyor (**merkezi yer**: iki okuma aynı anda ekranda kalmasın), sessionStorage'a `nutrition` eklendi (geri tuşu; yeni aramada `nutrition: null`).
+- **Dürüst sınır arayüzde yazılı:** *"Portion size is estimated from the photo... not medical or dietary advice."* Uyarı değil bilgi olduğu için `--error` değil `--text-muted`.
+- `style.css` — 4'lü ölçüm kutusu (mobilde 2×2), öğe kırılımı, `estimated` rozeti (hangi satır tahmin, hangisi aranmış).
+
+### Test (372 → **487**, +115)
+- **Katman 1:** `clamp_grams` / `scale_macros` / `total_macros` / `overall_source` / `as_list` / `parse_food_description` / `macros_from_serving` / `pick_serving` / `pick_best_food` / `canonical_food_name` / `merge_duplicate_items` (**gözlenen kirazdomatesi vakası** dahil) / `llm._parse_plate_json`.
+- **OAuth imzası BAĞIMSIZ VEKTÖRE karşı:** Twitter'ın yayınlanmış OAuth 1.0a örneği. Kendi HMAC'imizi kendi HMAC'imizle karşılaştırmak totolojik olurdu — ve **yanlış imza sessizce fail-open'a düşeceği için başka türlü fark edilmezdi** (özellik "çalışıyor" görünür, FatSecret hiç devreye girmez).
+- **Katman 1.5 — sahte HTTP:** `lookup_macros`'un tam zinciri (tek istekle biten metrik yol, `food.get`'e düşen yol, **hataların 200 GÖVDESİNDE gelmesi**, tek-nesne yanıtı, ağ hatası, bozuk JSON, secret'ın tel üzerinde görünmemesi).
+- **Katman 2:** auth, boş tanıma, kota → 200+CORS, ChromaDB'ye dokunulmaması, sınıflandırıcının çağrılmaması.
+
+### Doğrulama ✅
+| Kontrol | Sonuç |
+|---|---|
+| Python testleri | **487 geçiyor** + 1 xfail (~2 sn) |
+| Gerçek fotoğrafla uçtan uca (Docker) | HTTP 200, 3 öğe, toplam 139 kcal |
+| Vision süresi | 7.6 sn (lite model, ilk çağrı) |
+| ChromaDB'ye dokunma | **0** (query/get çağrılmadı) |
+| JS syntax (13 dosya) | hepsi geçti |
+| `search.js` → `search.html` ID eşleşmesi | **37/37** |
+| CSS sınıfları | **19/19** stilli |
+| `git status api/chroma_data` | temiz |
+
+### Bilinen sınırlar
+- **⚠️ FatSecret yolu CANLI DOĞRULANMADI** — anahtarlar ortamda yok. İmza yayınlanmış vektöre karşı doğrulandı ve HTTP zinciri sahte transport'la test edildi, ama **gerçek API'ye ilk çağrı hâlâ kanıtlanmamış.** Anahtar eklendiğinde ilk iş bu denenmeli (log'da `fatsecret foods.search took ...` satırı görünmeli).
+- **Porsiyon tahmini doğası gereği kaba** — 100 g mı 300 g mı belli olmaz; yağ/tereyağı/şeker fotoğrafta görünmez. $250'lık API'de de böyle. Veri kaynağı iyileşiyor, **fiziksel belirsizlik kalıyor**.
+- **Öğe sınırı 8** — her öğe en az bir HTTP turu.
+- **Günlük kayıt yok** (kapsam kararı) — premium hikâyesinin doğal yeri.
+- **`ml` gram sayılıyor** — sıvılarda yoğunluk 1 g/ml varsayılıyor (su için doğru, yağ/bal için değil).
+
+### Yerelde test
+`docker compose up -d --build api` (backend `COPY` ile image'a giriyor, **rebuild şart**) + `docker restart recipe_frontend` + `Ctrl+Shift+R`. Kamera sekmesi → fotoğraf çek → "Nutrition facts".
+
+**Opsiyonel env var'lar:** `FATSECRET_CONSUMER_KEY` / `FATSECRET_CONSUMER_SECRET`. `docker-compose.yml` zaten `env_file: .env` kullandığı için **compose değişikliği gerekmiyor** — `.env`'e eklemek yeterli. README'ye de yazıldı.
+
+---
+
+## Faz 20 (Tarif görselleri + veri seti 2× büyütüldü) ✅
 
 **Tetikleyici:** Kullanıcı "tarifleri FatSecret'tan alalım, orada görsel var" dedi. Bu **elendi** (lisanslı veri, indirilip gömülemez + RAG pipeline'ı yok olurdu — bkz. aşağıdaki not), ama araştırma sırasında **çok daha iyi bir şey bulundu: aradığımız veri zaten elimizdeydi.**
 
@@ -250,9 +349,9 @@ Kullanıcı önerdi, değerlendirildi, **elendi**: (1) FatSecret verisi **lisans
 
 ---
 
-## 🔬 ARAŞTIRILDI ama YAPILMADI: fotoğraftan besin değeri (FatSecret)
+## 🔬 ARAŞTIRMA ARŞİVİ: fotoğraftan besin değeri (FatSecret)
 
-> **DURUM: KODDA HİÇBİR ŞEY YOK.** Araştırma yapıldı, FatSecret hesabı açıldı, mimari kararlaştırıldı — **implementasyon başlamadı.** `api/` ve `frontend/` içinde "fatsecret" geçen tek satır bile yok. Bu bölüm araştırmayı saklıyor ki ileride sıfırdan yapılmasın.
+> **DURUM: ✅ FAZ 21'DE UYGULANDI.** Bu bölüm Faz 20'deki **araştırmanın** kaydı; uygulanmış hâli ve gerçek kararlar için **Faz 21**'e bak. Aşağıdaki iki "karar verilmemiş nokta" da Faz 21'de karara bağlandı (sadece göster + kamera akışına ikinci buton). Araştırma saklanıyor çünkü **elenen alternatiflerin gerekçeleri** (USDA yedeği, ücretli görüntü tanıma katmanı, Premier Free şartları) hâlâ geçerli.
 
 **Fikir (kullanıcıdan):** kullanıcı bir tabak / meyve / sebze fotoğrafı çeker, uygulama yaklaşık besin değerlerini gösterir. Yol haritasındaki **"beslenme takibi (premium)"** adımının kapısı.
 
@@ -298,9 +397,9 @@ FatSecret'ın onlarca metodundan **yalnızca 2'si** kullanılacak. **Atıf zorun
 ### Dürüst sınır (hangi kaynak seçilirse seçilsin)
 **Porsiyon fotoğraftan tahmin ediliyor ve bu doğası gereği kaba:** 100 g mı 300 g mı belli olmaz, yağ/tereyağı/şeker fotoğrafta görünmez. $250'lık API'de de böyle. Veri kaynağı iyileşiyor, **fiziksel belirsizlik kalıyor** — arayüz "yaklaşık tahmin" dilini kullanmalı ve tıbbi/diyet aracı gibi durmamalı (diyabet, yeme bozukluğu riski).
 
-### Karar verilmemiş iki nokta
-1. Sonuç **sadece gösterilsin** mi, yoksa **"günlük besin kaydına ekle"** de olsun mu? (İkincisi yeni Firestore koleksiyonu + sayfa — premium hikâyesine oturur, kapsamı büyütür.)
-2. Yerleşim: **kamera akışına ikinci buton** (önerilen — aynı fotoğraf, "Tarif ara" **veya** "Besin değeri", sıfır kod tekrarı) mı, **ayrı sayfa** mı?
+### ~~Karar verilmemiş iki nokta~~ → ikisi de Faz 21'de karara bağlandı ✅
+1. Sonuç **sadece gösteriliyor.** "Günlük besin kaydına ekle" yapılmadı (yeni Firestore koleksiyonu + sayfa demekti) — premium hikâyesi olarak duruyor.
+2. Yerleşim: **kamera akışına ikinci buton** (önerilen seçenek). Ayrı sayfa elendi — kullanıcıyı aynı fotoğrafı iki kez çektirmeye zorlardı.
 
 ---
 

@@ -4,7 +4,13 @@ from pydantic import BaseModel, Field
 import chromadb
 from filters import extract_filters
 from validation import validate_query
-from llm import generate_answer, detect_ingredients_from_image, is_food_request
+from llm import (
+    generate_answer,
+    detect_ingredients_from_image,
+    is_food_request,
+    analyze_plate_from_image,
+)
+from nutrition import build_plate
 from auth import get_current_user_email
 from favorites import add_favorite, get_favorites, remove_favorite
 from collections_store import (
@@ -337,6 +343,62 @@ def search_recipes_from_image(
     }
 
 
+# ═══════════════════════════════════════════════════════════
+#  NUTRITION — fotoğraftan yaklaşık besin değeri.
+#  Kamera akışının İKİNCİ okuması: aynı fotoğraf ya tarif aramak ("bununla ne
+#  pişirebilirim") ya da besin değeri ("bunda ne var") için kullanılıyor.
+#  Veri akışı nutrition.py'de: Gemini tabağı tanıyor, FatSecret sayıları
+#  veriyor, FatSecret yoksa Gemini'nin tahmini kalıyor (fail-open).
+# ═══════════════════════════════════════════════════════════
+
+class NutritionImageRequest(BaseModel):
+    image_base64: str
+
+
+@app.post("/api/nutrition/from-image")
+# Vision çağrısı + öğe başına FatSecret araması içeriyor; eşik from-image'la aynı.
+@timed(slow_ms=5000)
+def nutrition_from_image(
+    request: NutritionImageRequest,
+    user_email: str = Depends(get_current_user_email),
+):
+    """Fotoğraftaki yemeğin yaklaşık besin değerleri.
+
+    Arama endpoint'lerinin aksine ChromaDB'ye HİÇ dokunmuyor: kullanıcı burada
+    tarif aramıyor, elindeki tabağı soruyor. 9.795 tarifimizde bir elmanın ya da
+    restoranda yenen bir tabağın karşılığı yok — bu yüzden ayrı bir veri kaynağı
+    (FatSecret) var.
+
+    `is_food_request` BURADA YOK: girdi metin değil fotoğraf, sınıflandırıcı
+    metin için yazılmış. Fotoğrafta yemek yoksa vision zaten boş liste dönüyor
+    ve aşağıda anlaşılır bir mesajla karşılanıyor (from-image'daki desen).
+    """
+    # Vision çağrısı ZORUNLU ve hata yakalanmazsa endpoint 500 döner; o 500 CORS
+    # middleware'ine uğramadan çıktığı için tarayıcıda gerçek sebep yerine
+    # yanıltıcı bir "blocked by CORS policy" hatası görünür (Faz 11b dersi).
+    try:
+        detected = analyze_plate_from_image(request.image_base64)
+    except Exception as e:
+        log.error("Nutrition vision error: %s", e)
+        quota_exhausted = "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)
+        return {
+            "error": (
+                "Daily AI quota reached, so nutrition lookup is unavailable right now."
+                if quota_exhausted
+                else "Could not read the photo. Please try again."
+            )
+        }
+
+    if not detected:
+        log.warning("No food detected in nutrition photo")
+        return {"error": "No food detected in the photo. Try a clearer shot of the plate."}
+
+    # Model çıktısı — %r (log injection).
+    log.info("Plate items: %r", ", ".join(str(d.get("name", "")) for d in detected))
+
+    # FatSecret erişilemezse build_plate sessizce Gemini tahminine düşüyor;
+    # burada ayrıca yakalanacak bir hata yolu yok (fail-open modülün içinde).
+    return build_plate(detected)
 
 
 

@@ -1,5 +1,6 @@
 import os
 import base64
+import json
 import time
 from dotenv import load_dotenv
 from google import genai
@@ -204,6 +205,92 @@ If no food ingredients are visible, respond with "no ingredients detected".
 
     ingredients = [item.strip() for item in raw_text.split(",")]
     return ingredients
+
+
+def _decode_image(image_base64: str) -> bytes:
+    """base64 metnini bayta çevirir; "data:image/jpeg;base64," önekini temizler."""
+    if "," in image_base64:
+        image_base64 = image_base64.split(",")[1]
+    return base64.b64decode(image_base64)
+
+
+def _parse_plate_json(raw_text: str) -> list[dict]:
+    """Vision'ın JSON çıktısını öğe listesine çevirir — SAVUNMACI.
+
+    `response_mime_type="application/json"` istenmiş olsa bile modelin çıktıyı
+    ```json çitiyle sarması ya da tek bir nesne (liste değil) döndürmesi mümkün.
+    Bozuk çıktıda patlamak yerine boş liste dönüyoruz: çağıran bunu "yemek
+    tanınamadı" olarak ele alıp anlaşılır bir mesaj gösteriyor.
+    """
+    text = (raw_text or "").strip()
+    if not text:
+        return []
+
+    # ```json … ``` çitini soy
+    if text.startswith("```"):
+        text = text.split("```")[1] if "```" in text[3:] else text[3:]
+        if text.lstrip().lower().startswith("json"):
+            text = text.lstrip()[4:]
+
+    try:
+        data = json.loads(text.strip())
+    except (ValueError, TypeError):
+        log.warning("Could not parse plate JSON: %r", (raw_text or "")[:200])
+        return []
+
+    # {"items": [...]} beklenen biçim; model bazen doğrudan liste döndürüyor.
+    if isinstance(data, dict):
+        data = data.get("items", [])
+    if not isinstance(data, list):
+        return []
+
+    return [item for item in data if isinstance(item, dict) and str(item.get("name", "")).strip()]
+
+
+@timed(slow_ms=5000)
+def analyze_plate_from_image(image_base64: str) -> list[dict]:
+    """Fotoğraftaki yemekleri TANIR + porsiyonunu gram olarak TAHMİN eder.
+
+    detect_ingredients_from_image'ın kardeşi ama farklı soruyu soruyor: orada
+    "bu malzemelerle ne pişirebilirim" için ham malzeme adları lazım; burada
+    "bu tabakta ne kadar var" için SERVİS EDİLDİĞİ HALİYLE yemek ve porsiyonu
+    lazım. Aynı fotoğraf, iki farklı okuma.
+
+    TEK ÇAĞRIDA BESİN TAHMİNİ DE İSTENİYOR (kota bilinçli bir karar): kota model
+    başına günde 20 istek. Tanıma ve tahmin ayrı çağrılar olsaydı her fotoğraf
+    iki hak yerdi. FatSecret erişilebiliyorsa bu tahminler zaten aranmış verinin
+    yerine geçiyor (nutrition.build_plate) — yani ikinci çağrı çoğu zaman boşa
+    gitmiş olurdu.
+    """
+    image_bytes = _decode_image(image_base64)
+
+    prompt = """Look at this photo of food and identify each distinct food item you can see, as it is served.
+
+For each item, estimate the portion size in grams as shown in the photo, and estimate its nutrition FOR THAT PORTION (not per 100g).
+
+Rules:
+- Use simple, searchable food names in English ("grilled chicken breast", "white rice", "apple"). No brand names.
+- List each KIND of food once. If there are several pieces of the same food (for example five cherry tomatoes), report them as a single item whose grams are the combined weight — never one entry per piece.
+- Combine what is clearly one dish into one item; list genuinely different foods separately.
+- If the photo contains no food at all, return an empty items list.
+
+Respond with ONLY JSON in exactly this shape:
+{"items": [{"name": "white rice", "grams": 180, "calories": 234, "protein_g": 4.9, "carbs_g": 50.6, "fat_g": 0.5}]}
+"""
+
+    response = _generate(
+        VISION_MODELS,
+        [
+            {"inline_data": {"mime_type": "image/jpeg", "data": image_bytes}},
+            prompt,
+        ],
+        # JSON modu: çıktıyı serbest metinden ayıklamaya çalışmak yerine modelden
+        # doğrudan yapılandırılmış cevap istiyoruz. _parse_plate_json yine de
+        # savunmacı — mime type bir garanti değil, bir talep.
+        config=types.GenerateContentConfig(response_mime_type="application/json"),
+    )
+
+    return _parse_plate_json(response.text)
 
 
 # --- TEST ---

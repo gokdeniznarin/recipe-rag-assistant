@@ -24,6 +24,15 @@ environment variable:
 - `FIREBASE_CREDENTIALS_JSON` — Firebase service-account JSON'ının **tam içeriği**
   (dosya değil, metin olarak yapıştırılır)
 
+Opsiyonel (besin değeri özelliği için):
+
+- `FATSECRET_CONSUMER_KEY` / `FATSECRET_CONSUMER_SECRET` — FatSecret Platform API
+  (OAuth 1.0). **Tanımlı olmasalar da uygulama çalışır:** besin değerleri o zaman
+  Gemini'nin tahmininden geliyor, yanıttaki `source` alanı da bunu söylüyor.
+  Anahtar eklendiğinde kod değişmeden aranmış veriye geçiliyor.
+  ⚠️ OAuth **1.0** kullanılıyor, 2.0 değil — 2.0 en az bir IP'nin whitelist'e
+  alınmasını şart koşuyor ve Render'ın ücretsiz katmanında sabit giden IP yok.
+
 ## Yerel geliştirme
 `docker compose up -d --build` — API `localhost:8080`'de. Yerelde anahtarlar
 `.env` (Gemini) ve `api/firebase-key.json` (Firebase) üzerinden okunuyor; ikisi de
