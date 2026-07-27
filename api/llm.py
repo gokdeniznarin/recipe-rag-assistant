@@ -269,9 +269,15 @@ def analyze_plate_from_image(image_base64: str) -> list[dict]:
 For each item, estimate the portion size in grams as shown in the photo, and estimate its nutrition FOR THAT PORTION (not per 100g).
 
 Rules:
-- Use simple, searchable food names in English ("grilled chicken breast", "white rice", "apple"). No brand names.
+- Name each item the way a nutrition database would label it: the plain food name, one or two words where possible, in English. No brand names.
+- Leave out decorative words: colours, "fresh", "spicy", "assorted", "medley", "mix", "selection". They make the name unsearchable.
+  "fresh red and yellow chilies" -> "chili pepper"
+  "spicy bean sprout salad"      -> "bean sprouts"
+  "white rice and grain mix"     -> "white rice"
+  "mushroom medley"              -> "mushrooms"
+- BUT keep a cooking method when it changes the nutrition ("grilled chicken breast", "fried egg", "boiled potato"). Drop it only when it is purely descriptive.
+- If two different foods are on the plate, list them separately rather than inventing a combined name for them.
 - List each KIND of food once. If there are several pieces of the same food (for example five cherry tomatoes), report them as a single item whose grams are the combined weight — never one entry per piece.
-- Combine what is clearly one dish into one item; list genuinely different foods separately.
 - If the photo contains no food at all, return an empty items list.
 
 Respond with ONLY JSON in exactly this shape:
