@@ -81,7 +81,8 @@
 ### Frontend
 - `frontend/index.html` — giriş/kayıt sayfası (Sign in / Create account sekmeleri, "Continue with Google" butonu) **+ altında herkese açık landing içeriği** (Faz 19: özellik kartları, "how it works", footer + Associates açıklaması). Firebase compat SDK script'leri + `firebase.js`, diğer JS'lerden önce yükleniyor (sıra önemli).
 - `frontend/privacy.html` — **gizlilik & veri sayfası** (Faz 19). Giriş gerektirmiyor. `CONTACT_EMAIL` yer tutucusu doldurulmalı.
-- `frontend/search.html` — ana arama sayfası (Text search / Camera search / From my pantry sekmeleri, mikrofon butonu) + Faz 21'de kamera paneline **"Nutrition facts"** butonu ve besin değeri paneli
+- `frontend/search.html` — ana arama sayfası (Text search / Camera search / From my pantry sekmeleri, mikrofon butonu)
+- `frontend/nutrition.html` — **besin değeri sayfası** (Faz 21): kamera VEYA fotoğraf yükleme → "Analyze photo" → ölçüm tablosu. Arama sayfasından bağımsız.
 - `frontend/recipe.html` — tarif detay sayfası (instructions + kalp butonu ile favori toggle + Faz 16'da "Add to collection" seçicisi)
 - `frontend/favorites.html` — "Your recipes": üstte koleksiyon grid'i (Faz 16), altta "All saved" listesi (boş durum ekranı ile)
 - `frontend/collection.html` — **tek koleksiyon görünümü** (Faz 16): yeniden adlandır / sil (onay modalı) / tariften çıkar
@@ -89,12 +90,14 @@
 - `frontend/plan.html` — **haftalık plan** (Faz 18): 7×3 ızgara, hafta gezinme, boş slotta tarif seçici, "Clear week", "Shopping list →" linki (Faz 19)
 - `frontend/shopping.html` — **alışveriş listesi** (Faz 19): checkbox'lı satırlar, elle ekleme, "Shop this list →" CTA, hafta gezinme, iki boş durum
 - `frontend/css/style.css` — tüm sayfalar için ortak CSS (design tokens, layout, components, user menu dropdown)
+- `frontend/js/camera.js` — **ortak kamera modülü** (Faz 21): `getUserMedia` + canvas + retake + dosyadan yükleme. `search.js` ve `nutrition.js` ikisi de bunu kullanıyor; sayfaya özel hiçbir şey bilmiyor (`onCapture`/`onReset`/`onError` ile bildiriyor). 17 testlik sahte-DOM harness'ı var.
+- `frontend/js/nutrition.js` — **besin değeri sayfası** (Faz 21): Camera modülüne bağlanıyor, `/api/nutrition/from-image`'a gidiyor, ölçüm tablosunu çiziyor.
 - `frontend/js/firebase.js` — Firebase init + `authReady` promise'i (oturum durumu **kesinleşene** kadar bekler). Her sayfada compat SDK script'lerinden sonra, diğer JS'lerden önce yüklenir.
 - `frontend/js/logger.js` — **frontend logging + süre ölçümü** (Faz 13). `api/logger.py`'nin tarayıcı tarafındaki eşi: aynı satır biçimi, aynı seviyeler, aynı "yavaşsa sarı" kuralı. `Logger.get(scope)`, `Logger.timed(fn, ...)` (decorator'ın JS'teki higher-order function karşılığı), `Logger.duration(...)`. Ayarlar `localStorage` üzerinden (`log_level`, `slow_ms`) — tarayıcıda ortam değişkeni yok. Her sayfada, kendisini kullanan dosyalardan önce yüklenir.
 - `frontend/js/config.js` — `window.API_BASE`'i ortama göre kuruyor (yerel/LAN → `localhost:8080`, canlı → Render). `api.js`'ten önce yüklenir (Faz 10).
 - `frontend/js/api.js` — ortak API katmanı (backend adresini `window.API_BASE`'den alır; Firebase ID token'ı header'a ekleyen fetch wrapper, `authReady` tabanlı auth guard, 401'de otomatik logout, kullanıcı menüsü/email + dropdown sign out, doğrulanmamış e-posta için hatırlatma bandı)
 - `frontend/js/auth.js` — giriş/kayıt formu mantığı + Google girişi (Firebase `signInWithPopup`), hesap bağlama (`linkWithCredential`), kayıtta `sendEmailVerification()`, şifre sıfırlama (`sendPasswordResetEmail`; Faz 12)
-- `frontend/js/search.js` — arama sayfası, mode tabs (Faz 17'de üçüncüsü: **From my pantry**), kamera stream (`getUserMedia`) + "Add to pantry", sesli arama (`SpeechRecognition`), sonuç render (Faz 17'de eşleşme rozeti). AI yorumunu ayrı istekle çekiyor (`loadCommentary`, iskelet animasyonu + `commentarySeq` yarış koruması; Faz 11). **Faz 21: `renderNutrition`** — aynı fotoğrafın ikinci okuması; `showLoading` besin panelini de gizliyor (merkezi yer: iki okuma aynı anda ekranda kalmasın)
+- `frontend/js/search.js` — arama sayfası, mode tabs (Faz 17'de üçüncüsü: **From my pantry**), kamera stream (`getUserMedia`) + "Add to pantry", sesli arama (`SpeechRecognition`), sonuç render (Faz 17'de eşleşme rozeti). AI yorumunu ayrı istekle çekiyor (`loadCommentary`, iskelet animasyonu + `commentarySeq` yarış koruması; Faz 11). Faz 21'de kamera mantığı ortak `js/camera.js`'e taşındı
 - `frontend/js/recipe.js` — detay sayfası, `parseInstructions()` (R vector kalıntılarını filtreliyor) + Faz 16 koleksiyon seçicisi (lazy-load checkbox listesi, kalp↔koleksiyon senkronu)
 - `frontend/js/collection.js` — tek koleksiyon sayfası (Faz 16): rename/delete/remove akışları
 - `frontend/js/pantry.js` — dolap sayfası (Faz 17): çip render, ekleme, çıkarma
@@ -174,10 +177,26 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 
 **Tetikleyici:** Kullanıcı isteği — "kullanıcı tabak/meyve/sebze fotoğrafı çektiğinde besin değerlerini versin". Yol haritasındaki **"beslenme takibi (premium)"** adımının kapısı. Araştırması Faz 20'de yapılmıştı (aşağıdaki bölüm), bu fazda **implement edildi**.
 
-### Karar: kamera akışına İKİNCİ BUTON (ayrı sayfa değil)
-Aynı fotoğrafın **iki ayrı okuması**: "Search with photo" → *bununla ne pişirebilirim*, "Nutrition facts" → *bunda ne var*. `capturedBase64` zaten elde olduğu için sıfır kod tekrarı, ikinci çekim yok. Ayrı sayfa alternatifi elendi — kullanıcıyı aynı fotoğrafı iki kez çektirmeye zorlardı.
+### Karar: AYRI SAYFA (`nutrition.html`) — önceki "kamera sekmesine ikinci buton" kararı GERİ ALINDI
+İlk sürüm kamera akışına ikinci bir buton koyuyordu ("Search with photo" / "Nutrition facts"), gerekçe sıfır kod tekrarıydı. **Kullanıcı çalışır hâlini görüp değiştirdi (2026-07-27):** besin değeri kendi başına bir özellik, tarif aramanın bir alt seçeneği değil. Arama sayfasının başlığı "Find your next meal" — besin değeri oraya ait değil.
+
+Ayrı sayfanın **tek teknik bedeli** kamera kodunun paylaşılması gerekmesiydi; kopyalamak yerine **`frontend/js/camera.js`** ortak modülüne çıkarıldı (aşağıda). Yani ayrılma kod tekrarı getirmedi — ilk kararın gerekçesi ortadan kalktı.
+
+**Fotoğraf YÜKLEME de eklendi** (`<input type="file">`): masaüstünde kamerası olmayan kullanıcı için ve **sunumda hazır bir fotoğrafla göstermek** için. Yüklenen görsel uzun kenarı 1280px'e indiriliyor — telefon fotoğrafı 12MP olabiliyor ve base64'e çevrilince ~8MB'lık gövde çıkıyor (kameradan gelen kare zaten 640–1280).
 
 **Kapsam kararı (kullanıcı, 2026-07-27): SADECE GÖSTER.** "Günlük besin kaydına ekle" yapılmadı — yeni Firestore koleksiyonu + yeni sayfa demekti. Premium hikâyesinin doğal yeri, ama bu fazın kapsamı değil.
+
+### `frontend/js/camera.js` — ortak kamera modülü
+İki sayfa aynı akışı kullanıyor, soruları farklı: `search.html` *"bununla ne pişirebilirim"*, `nutrition.html` *"bunda ne var"*. `getUserMedia` + canvas + retake mantığını ikisine kopyalamak, "aynı kuralı iki yere yazma" ilkesinin (Faz 15d/19) ihlali olurdu.
+
+- **Sayfaya özel hiçbir şey bilmiyor:** hangi butonların gösterileceğine ve fotoğrafla ne yapılacağına çağıran karar veriyor (`onCapture` / `onReset` / `onError`).
+- `Camera.attach({...})` → `{ stop, reset, loadFile, getPhoto }`. Logger deseniyle aynı: klasik `<script>`, global sabit, modül sistemi yok.
+- Çekilen ve yüklenen fotoğraf **aynı UI yoluna** düşüyor (ikisi de canvas'a çiziliyor), yani iki kaynak için ayrı durum yönetimi yok.
+- **17 testlik sahte-DOM harness'ı** var (node): açma, çekim, retake, izin reddi, geçersiz dosya türü, `stop()` idempotentliği.
+
+**Refactor sırasında iki gerçek hata yakalandı** (ikisi de search.js'i komple kırardı):
+1. Mode tab'ı silinmiş `cameraStream` değişkenine bakmaya devam ediyordu → sekme değiştirince `ReferenceError`.
+2. Daha kötüsü: `applyModeFromUrl()` sayfa yüklenirken `tab.click()` çağırıyor → `stopCamera()` → henüz initialize edilmemiş `camera` sabiti (**TDZ**). `pantry.html → "Find recipes with these →"` akışı komple kırılırdı. Kamera kurulumu mode tab'larının ÜSTÜNE alındı.
 
 ### 🔑 OAuth 1.0 — özelliği MÜMKÜN KILAN teknik detay
 | | Durum |
@@ -251,10 +270,11 @@ POST /api/nutrition/from-image  {image_base64}  →  {items, totals, source, att
 - **Hata → 200 + `{"error"}`, ASLA 500** (Faz 11b dersi: 500 CORS middleware'ine uğramadan çıkar, tarayıcıda yanıltıcı "blocked by CORS policy" görünür). Testte CORS header'ı da doğrulanıyor.
 
 ### Frontend
-- `search.html` — kamera paneline `#camera-actions` (or + "Nutrition facts") + `#nutrition-panel`.
-- `search.js` — `renderNutrition` (`Logger.timed` ile sarmalı), `showLoading` besin panelini de gizliyor (**merkezi yer**: iki okuma aynı anda ekranda kalmasın), sessionStorage'a `nutrition` eklendi (geri tuşu; yeni aramada `nutrition: null`).
+- **`nutrition.html` / `js/nutrition.js` (yeni, ayrı sayfa)** — kendi kamerası + "Upload a photo" + "Analyze photo" + sonuç paneli + boş durum. Nav'a "Nutrition" linki eklendi (Plan · Pantry · Shopping · **Nutrition** · Favorites, 8 sayfada).
+- **`js/camera.js` (yeni, ortak)** — search.js de artık bunu kullanıyor; kamera mantığı tek yerde.
+- `search.js` — besin değerinden **tamamen bağımsız** hâle geldi (kalıntı 0, teste bağlandı).
 - **Dürüst sınır arayüzde yazılı:** *"Portion size is estimated from the photo... not medical or dietary advice."* Uyarı değil bilgi olduğu için `--error` değil `--text-muted`.
-- `style.css` — 4'lü ölçüm kutusu (mobilde 2×2), öğe kırılımı, `estimated` rozeti (hangi satır tahmin, hangisi aranmış).
+- `style.css` — 4'lü ölçüm kutusu (mobilde 2×2), öğe kırılımı, `estimated` rozeti (hangi satır tahmin, hangisi aranmış), `.visually-hidden` (dosya girdisi: `display:none` KULLANILMIYOR — klavyeyle erişilemez hale gelirdi).
 
 ### Test (372 → **510**, +138)
 - **Katman 1:** `clamp_grams` / `scale_macros` / `total_macros` / `overall_source` / `as_list` / `parse_food_description` / `macros_from_serving` / `pick_serving` / `pick_best_food` / `canonical_food_name` / `merge_duplicate_items` (**gözlenen kirazdomatesi vakası** dahil) / `llm._parse_plate_json`.

@@ -28,26 +28,49 @@ const detectedList   = document.getElementById('detected-list');
 const addDetectedBtn = document.getElementById('add-detected-btn');
 const addDetectedStatus = document.getElementById('add-detected-status');
 
-// Besin değeri (kamera akışının ikinci okuması)
-const cameraActions      = document.getElementById('camera-actions');
-const nutritionBtn       = document.getElementById('nutrition-btn');
-const nutritionStatus    = document.getElementById('nutrition-status');
-const nutritionPanel     = document.getElementById('nutrition-panel');
-const nutritionSource    = document.getElementById('nutrition-source');
-const nutritionTotals    = document.getElementById('nutrition-totals');
-const nutritionItems     = document.getElementById('nutrition-items');
-const nutritionAttribution = document.getElementById('nutrition-attribution');
-
 // Dolap elemanları
 const pantryForm        = document.getElementById('pantry-form');
 const pantryExtra       = document.getElementById('pantry-extra');
 const pantrySummaryList = document.getElementById('pantry-summary-list');
 const pantrySearchBtn   = document.getElementById('pantry-search-btn');
 
-let cameraStream     = null;
-let capturedBase64   = null;
 let detectedNames    = [];      // son fotoğrafta tanınanlar (dolaba eklemek için)
 let pantryLoaded     = false;   // dolap özeti bir kez çekilsin (lazy)
+
+// ── Kamera ───────────────────────────────────────────────
+// getUserMedia / canvas / retake mantığı ortak Camera modülünde (js/camera.js) —
+// besin değeri sayfası da aynısını kullanıyor, iki yere kopyalanmadı.
+// Buradaki geri çağrılar yalnızca BU sayfaya özel olanı yapıyor.
+const camera = Camera.attach({
+  preview: cameraPreview,
+  canvas: cameraCanvas,
+  startBtn: startCameraBtn,
+  captureBtn: captureBtn,
+  retakeBtn: retakeBtn,
+  onCapture: () => {
+    cameraForm.classList.remove('hidden');
+  },
+  onReset: () => {
+    cameraForm.classList.add('hidden');
+    detectedBox.classList.add('hidden');
+    detectedNames = [];
+
+    // Retake ekrandaki fotoğraf türevlerini siliyor; KAYIT da aynısını yapmalı.
+    // Yoksa eski fotoğrafın tarif sonuçları ve malzemeleri geri tuşunda yeniden
+    // görünüyordu (saveSearchState merge yaptığı için alanlar hayatta kalıyor).
+    // Yalnızca KAMERA kaydı temizleniyor: kullanıcı önce metin/dolap araması
+    // yapıp sonra kameraya geçtiyse o sonuçlar korunmalı.
+    const saved = readSearchState();
+    if (saved && saved.mode === 'camera') {
+      saveSearchState({ data: null, commentary: null, detected: null });
+    }
+  },
+  onError: showError,
+});
+
+function stopCamera() {
+  camera.stop();
+}
 
 // ── Mode tabs ────────────────────────────────────────────
 document.querySelectorAll('.mode-tab').forEach(btn => {
@@ -60,10 +83,9 @@ document.querySelectorAll('.mode-tab').forEach(btn => {
     cameraPanel.classList.toggle('hidden', mode !== 'camera');
     pantryPanel.classList.toggle('hidden', mode !== 'pantry');
 
-    // Kamera sekmesinden çıkıldığında stream'i kapat
-    if (mode !== 'camera' && cameraStream) {
-      stopCamera();
-    }
+    // Kamera sekmesinden çıkıldığında stream'i kapat (Camera.stop kendisi
+    // açık akış olup olmadığına bakıyor, ayrıca kontrol gerekmiyor)
+    if (mode !== 'camera') stopCamera();
 
     // Dolap özetini yalnızca sekmeye ilk girişte çek (lazy — her sayfa
     // yüklemesinde gereksiz bir Firestore okuması yapmayalım)
@@ -83,10 +105,6 @@ document.querySelectorAll('.mode-tab').forEach(btn => {
 function showLoading() {
   loading.classList.remove('hidden');
   results.classList.add('hidden');
-  // Besin paneli de gizleniyor: tarif sonuçları ve besin değeri aynı fotoğrafın
-  // İKİ ayrı okuması, ikisi birden ekranda kalırsa hangisinin güncel olduğu
-  // belirsizleşir. Merkezi yer burası — her arama yolu buradan geçiyor.
-  nutritionPanel.classList.add('hidden');
   searchError.classList.add('hidden');
 }
 
@@ -283,8 +301,8 @@ textForm.addEventListener('submit', async (e) => {
       showError(data.error);
     } else {
       renderResults(data);
-      // commentary/nutrition: null — yeni arama, öncekinin çıktısını taşımasın
-      saveSearchState({ mode: 'text', query, data, commentary: null, detected: null, nutrition: null });
+      // commentary: null — yeni arama, öncekinin yorumunu taşımasın
+      saveSearchState({ mode: 'text', query, data, commentary: null, detected: null });
       loadCommentary(query, data.results);   // bilerek await edilmiyor
     }
   } catch (err) {
@@ -294,86 +312,9 @@ textForm.addEventListener('submit', async (e) => {
   }
 });
 
-// ── Kamera ───────────────────────────────────────────────
-startCameraBtn.addEventListener('click', async () => {
-  try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment' }  // varsa arka kamera
-    });
-    cameraPreview.srcObject = cameraStream;
-    startCameraBtn.classList.add('hidden');
-    captureBtn.classList.remove('hidden');
-  } catch (err) {
-    showError('Could not access the camera. Check browser permissions.');
-  }
-});
-
-captureBtn.addEventListener('click', () => {
-  // Video'dan tek bir kareyi canvas'a çiz
-  cameraCanvas.width  = cameraPreview.videoWidth;
-  cameraCanvas.height = cameraPreview.videoHeight;
-  const ctx = cameraCanvas.getContext('2d');
-  ctx.drawImage(cameraPreview, 0, 0);
-
-  // base64'e çevir
-  capturedBase64 = cameraCanvas.toDataURL('image/jpeg', 0.85);
-
-  // UI güncelle: preview'ı dondur, form'u göster
-  stopCamera();
-  cameraPreview.classList.add('hidden');
-  cameraCanvas.classList.remove('hidden');
-
-  captureBtn.classList.add('hidden');
-  retakeBtn.classList.remove('hidden');
-  cameraForm.classList.remove('hidden');
-  cameraActions.classList.remove('hidden');
-  nutritionStatus.textContent = '';      // önceki fotoğrafın mesajı kalmasın
-  nutritionBtn.disabled = false;
-});
-
-retakeBtn.addEventListener('click', async () => {
-  capturedBase64 = null;
-  cameraCanvas.classList.add('hidden');
-  cameraPreview.classList.remove('hidden');
-  retakeBtn.classList.add('hidden');
-  cameraForm.classList.add('hidden');
-  cameraActions.classList.add('hidden');
-  detectedBox.classList.add('hidden');
-  nutritionPanel.classList.add('hidden');
-  detectedNames = [];
-
-  // Retake ekrandaki fotoğraf türevlerini siliyor; KAYIT da aynısını yapmalı.
-  // Yoksa yeni fotoğrafın besin değeri, ESKİ fotoğrafın tarif sonuçlarının ve
-  // malzemelerinin yanında geri yükleniyordu (saveSearchState merge yaptığı
-  // için eski alanlar hayatta kalıyor) — geri tuşunda görünür bir tutarsızlık.
-  // Yalnızca KAMERA kaydı temizleniyor: kullanıcı önce metin/dolap araması
-  // yapıp sonra kameraya geçtiyse o sonuçlar korunmalı.
-  const saved = readSearchState();
-  if (saved && saved.mode === 'camera') {
-    saveSearchState({ data: null, commentary: null, detected: null, nutrition: null });
-  }
-
-  // Kamerayı tekrar aç
-  try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment' }
-    });
-    cameraPreview.srcObject = cameraStream;
-    captureBtn.classList.remove('hidden');
-  } catch {
-    startCameraBtn.classList.remove('hidden');
-  }
-});
-
-function stopCamera() {
-  if (cameraStream) {
-    cameraStream.getTracks().forEach(t => t.stop());
-    cameraStream = null;
-  }
-}
-
 cameraForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+  const capturedBase64 = camera.getPhoto();
   if (!capturedBase64) return;
 
   showLoading();
@@ -401,7 +342,7 @@ cameraForm.addEventListener('submit', async (e) => {
       // doldurur. Tanınan malzemeler yeterli, kutu onlarla geri kuruluyor.
       saveSearchState({
         mode: 'camera', query: cameraExtra.value.trim(),
-        data, commentary: null, detected: detectedNames, nutrition: null,
+        data, commentary: null, detected: detectedNames,
       });
       loadCommentary(data.combined_query, data.results);   // bilerek await edilmiyor
     }
@@ -414,114 +355,6 @@ cameraForm.addEventListener('submit', async (e) => {
 
 // Sayfa kapatılırken kamerayı serbest bırak
 window.addEventListener('beforeunload', stopCamera);
-
-
-// ── Besin değeri (aynı fotoğraf, ikinci okuma) ───────────
-// Tarif araması "bununla ne pişirebilirim", bu ise "bunda ne var" sorusunu
-// cevaplıyor. Ayrı bir sayfa/çekim gerekmiyor: capturedBase64 zaten elimizde.
-const MACRO_FIELDS = [
-  { key: 'calories',  label: 'Calories', unit: 'kcal' },
-  { key: 'protein_g', label: 'Protein',  unit: 'g' },
-  { key: 'carbs_g',   label: 'Carbs',    unit: 'g' },
-  { key: 'fat_g',     label: 'Fat',      unit: 'g' },
-];
-
-// Kaynağı DÜRÜSTÇE söylüyoruz: aranmış veri ile üretilmiş tahmin aynı şey değil.
-// Bir tabakta ikisi karışabiliyor (bazı öğeler bulunur, bazıları bulunmaz).
-const SOURCE_LABELS = {
-  fatsecret: 'Looked up in a nutrition database',
-  mixed:     'Partly looked up, partly AI-estimated',
-  estimate:  'AI estimate',
-};
-
-function macroValue(item, field) {
-  const raw = Number(item[field.key]);
-  const value = Number.isFinite(raw) ? raw : 0;
-  // Kalori tam sayı okunur, makrolar ondalıklı anlamlı.
-  return field.key === 'calories' ? String(Math.round(value)) : String(Math.round(value * 10) / 10);
-}
-
-const renderNutrition = Logger.timed(function (data) {
-  results.classList.add('hidden');       // iki okuma aynı anda durmasın
-  nutritionSource.textContent = SOURCE_LABELS[data.source] || SOURCE_LABELS.estimate;
-
-  // Toplamlar
-  nutritionTotals.innerHTML = MACRO_FIELDS.map(field => `
-    <div class="nutrition-tile">
-      <span class="nutrition-tile-value">${escapeHtml(macroValue(data.totals || {}, field))}<span class="nutrition-tile-unit">${field.unit}</span></span>
-      <span class="nutrition-tile-label">${field.label}</span>
-    </div>
-  `).join('');
-
-  // Öğe kırılımı
-  nutritionItems.innerHTML = (data.items || []).map(item => {
-    // matched_food yalnızca veritabanında BAŞKA bir adla bulunduğunda gösteriliyor
-    // — aynıysa tekrar etmek gürültü olurdu.
-    const matched = item.matched_food && item.matched_food.toLowerCase() !== item.name.toLowerCase()
-      ? `<span class="nutrition-matched">matched as “${escapeHtml(item.matched_food)}”</span>`
-      : '';
-    const estimated = item.source === 'estimate'
-      ? '<span class="nutrition-estimated" title="Not found in the nutrition database; these numbers are an AI estimate">estimated</span>'
-      : '';
-
-    return `
-      <div class="nutrition-item">
-        <div class="nutrition-item-head">
-          <span class="nutrition-item-name">${escapeHtml(item.name)}</span>
-          <span class="nutrition-item-grams">≈ ${escapeHtml(String(item.grams))} g</span>
-        </div>
-        <div class="nutrition-item-macros">
-          ${MACRO_FIELDS.map(f => `<span><b>${escapeHtml(macroValue(item, f))}</b>${f.unit === 'kcal' ? ' kcal' : ' g'} ${f.label.toLowerCase()}</span>`).join('')}
-        </div>
-        <div class="nutrition-item-meta">${matched}${estimated}</div>
-      </div>
-    `;
-  }).join('');
-
-  // ZORUNLU ATIF: FatSecret ücretsiz katmanı veriyi kullanan uygulamadan görünür
-  // atıf istiyor. Backend bunu yalnızca gerçekten o veri kullanıldığında
-  // dönüyor, o yüzden burada koşulsuz basılmıyor.
-  if (data.attribution) {
-    nutritionAttribution.textContent = data.attribution;
-    nutritionAttribution.classList.remove('hidden');
-  } else {
-    nutritionAttribution.classList.add('hidden');
-  }
-
-  nutritionPanel.classList.remove('hidden');
-}, 'renderNutrition', 'search', 100);
-
-nutritionBtn.addEventListener('click', async () => {
-  if (!capturedBase64) return;
-
-  nutritionBtn.disabled = true;
-  nutritionStatus.textContent = 'Analyzing…';
-  showLoading();
-
-  try {
-    const data = await apiRequest('/api/nutrition/from-image', {
-      method: 'POST',
-      body: JSON.stringify({ image_base64: capturedBase64 }),
-    });
-
-    if (data.error) {
-      showError(data.error);
-      nutritionStatus.textContent = '';
-    } else {
-      renderNutrition(data);
-      nutritionStatus.textContent = '';
-      // Geri tuşunda korunsun (Faz 20 deseni). Fotoğrafın kendisi yine
-      // SAKLANMIYOR — sessionStorage kotasını doldururdu.
-      saveSearchState({ mode: 'camera', nutrition: data });
-    }
-  } catch (err) {
-    showError('Could not reach the server.');
-    nutritionStatus.textContent = '';
-  } finally {
-    hideLoading();
-    nutritionBtn.disabled = false;
-  }
-});
 
 
 // ── Dolaba ekleme (kameradan) ────────────────────────────
@@ -605,7 +438,7 @@ pantryForm.addEventListener('submit', async (e) => {
       renderResults(data);
       saveSearchState({
         mode: 'pantry', query: pantryExtra.value.trim(),
-        data, commentary: null, detected: null, nutrition: null,
+        data, commentary: null, detected: null,
       });
       loadCommentary(data.combined_query, data.results);   // bilerek await edilmiyor
     }
@@ -694,9 +527,7 @@ function stopListening() {
   try { await authReady; } catch { /* oturum belirlenemedi, yine de devam */ }
 
   const st = readSearchState();
-  // Besin değeri TEK BAŞINA kaydedilmiş olabilir (kullanıcı fotoğraf çekip tarif
-  // aramadan doğrudan besin değerine baktıysa), o yüzden `data` şart değil.
-  if (!st || (!st.data && !st.nutrition)) return;
+  if (!st || !st.data) return;
 
   // SAHİPLİK KONTROLÜ: kayıt başka bir kullanıcıya aitse geri yükleme ve sil.
   // Çıkışta zaten temizleniyor (api.js), ama çıkışın çalışmadığı yollar var:
@@ -731,19 +562,13 @@ function stopListening() {
     detectedBox.classList.remove('hidden');
   }
 
-  if (st.data) {
-    renderResults(st.data);
+  renderResults(st.data);
 
-    if (st.commentary) {
-      llmSkeleton.classList.add('hidden');
-      llmText.innerHTML = formatCommentary(st.commentary);
-      llmBox.classList.remove('hidden');
-    }
+  if (st.commentary) {
+    llmSkeleton.classList.add('hidden');
+    llmText.innerHTML = formatCommentary(st.commentary);
+    llmBox.classList.remove('hidden');
   }
-
-  // renderNutrition sonuç panelini gizliyor, o yüzden tarif sonuçlarından SONRA:
-  // ikisi de kaydedilmişse en son bakılan besin değeri ekranda kalır.
-  if (st.nutrition) renderNutrition(st.nutrition);
 
   searchLog.debug('Restored previous search from this tab');
 })();

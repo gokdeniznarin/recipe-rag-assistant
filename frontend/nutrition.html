@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nutrition — Recipe Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="app-header-inner">
+      <a href="search.html" class="brand">
+        <span class="brand-mark">✦</span>
+        <span class="brand-name">Recipe Assistant</span>
+      </a>
+      <nav class="app-nav">
+  <a href="plan.html" class="nav-link">Plan</a>
+  <a href="pantry.html" class="nav-link">Pantry</a>
+  <a href="shopping.html" class="nav-link">Shopping</a>
+  <a href="nutrition.html" class="nav-link">Nutrition</a>
+  <a href="favorites.html" class="nav-link">Favorites</a>
+
+  <div class="user-menu">
+    <button id="user-btn" class="user-btn">
+      <span id="user-email">…</span>
+      <span class="chevron">▾</span>
+    </button>
+    <div id="user-dropdown" class="user-dropdown hidden">
+      <button id="logout-btn" class="dropdown-item">Sign out</button>
+    </div>
+  </div>
+</nav>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="search-hero">
+      <h1 class="page-title">What's on your plate?</h1>
+      <p class="page-sub">Take a photo of a meal, a fruit or a vegetable to see its approximate nutrition.</p>
+    </section>
+
+    <section class="search-panel">
+      <div class="camera-block">
+        <video id="camera-preview" class="camera-preview" autoplay playsinline></video>
+        <canvas id="camera-canvas" class="hidden"></canvas>
+
+        <div class="camera-controls">
+          <button id="start-camera-btn" class="btn-outline">Start camera</button>
+          <!-- Dosyadan yükleme: masaüstünde kamerası olmayan kullanıcı için, ve
+               sunumda hazır bir fotoğrafla göstermek için. Gerçek <input> gizli,
+               tıklama etiketten geliyor (dosya girdisi stillenemeyen bir eleman). -->
+          <label for="photo-upload" class="btn-outline upload-label">Upload a photo</label>
+          <input type="file" id="photo-upload" accept="image/*" class="visually-hidden" />
+
+          <button id="capture-btn" class="btn-accent hidden">Take photo</button>
+          <button id="retake-btn" class="btn-outline hidden">Use a different photo</button>
+        </div>
+
+        <div id="analyze-row" class="camera-actions hidden">
+          <button type="button" id="analyze-btn" class="btn-accent">Analyze photo</button>
+          <span id="analyze-status" class="detected-status"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Yükleniyor durumu -->
+    <div id="loading" class="loading hidden">
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+    </div>
+
+    <!-- Sonuç -->
+    <section id="nutrition-panel" class="nutrition-panel hidden">
+      <div class="results-header">
+        <h2 class="results-title">Estimated nutrition</h2>
+        <span id="nutrition-source" class="results-count"></span>
+      </div>
+
+      <div id="nutrition-totals" class="nutrition-totals"></div>
+      <div id="nutrition-items" class="nutrition-items"></div>
+
+      <!-- DÜRÜST SINIR: porsiyon fotoğraftan tahmin ediliyor ve bu doğası gereği
+           kaba (100 g mı 300 g mı belli olmaz; yağ/tereyağı/şeker görünmez).
+           Arayüz tıbbi/diyet aracı gibi durmamalı. -->
+      <p class="nutrition-note">
+        Portion size is estimated from the photo, so these numbers are rough.
+        This is not medical or dietary advice.
+      </p>
+      <p id="nutrition-attribution" class="nutrition-attribution hidden"></p>
+    </section>
+
+    <!-- Boş durum: henüz fotoğraf yok -->
+    <section id="nutrition-empty" class="nutrition-empty">
+      <p>Start the camera or upload a photo, then choose <strong>Analyze photo</strong>.</p>
+    </section>
+
+    <!-- Hata mesajı -->
+    <div id="nutrition-error" class="page-error hidden"></div>
+  </main>
+
+  <!-- Firebase (compat SDK) -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="js/firebase.js"></script>
+  <script src="js/logger.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/camera.js"></script>
+  <script src="js/nutrition.js"></script>
+</body>
+</html>

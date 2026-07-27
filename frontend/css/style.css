@@ -2316,10 +2316,9 @@ body.auth-page .auth-container {
 }
 
 /* ═══════════════════════════════════════════════════════ */
-/*  NUTRITION — fotoğraftan besin değeri                   */
-/*  Kamera akışının İKİNCİ okuması. Görsel dil bilerek     */
-/*  sonuç kartlarından farklı: bu bir tarif listesi değil, */
-/*  ölçüm tablosu.                                         */
+/*  NUTRITION — fotoğraftan besin değeri (nutrition.html)  */
+/*  Kendi sayfası. Görsel dil bilerek sonuç kartlarından   */
+/*  farklı: bu bir tarif listesi değil, ölçüm tablosu.     */
 /* ═══════════════════════════════════════════════════════ */
 
 .camera-actions {
@@ -2331,10 +2330,30 @@ body.auth-page .auth-container {
   margin-top: 0.9rem;
 }
 
-.camera-actions-or {
-  font-size: 0.85rem;
+/* Dosya girdisi stillenemeyen bir eleman: gerçek <input> ekran okuyucudan
+   kaçmadan gizleniyor, tıklama <label>'dan geliyor. display:none KULLANILMAZ —
+   klavyeyle erişilemez hale gelirdi. */
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.upload-label { cursor: pointer; }
+
+/* Klavyeyle gizli input'a odaklanınca etiket odaklanmış görünsün */
+.visually-hidden:focus + .upload-label,
+.upload-label:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.nutrition-empty {
+  margin-top: 2rem;
+  text-align: center;
   color: var(--text-muted);
-  font-style: italic;
+  font-size: 0.95rem;
 }
 
 .nutrition-panel {
