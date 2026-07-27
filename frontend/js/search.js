@@ -109,10 +109,25 @@ function saveSearchState(patch) {
   try {
     sessionStorage.setItem(
       SEARCH_STATE_KEY,
-      JSON.stringify({ ...(readSearchState() || {}), ...patch })
+      JSON.stringify({
+        ...(readSearchState() || {}),
+        ...patch,
+        // Kaydın SAHİBİ. sessionStorage sekmeye özel ama kullanıcıya özel
+        // değil — bu alan olmadan aynı sekmede hesap değiştirildiğinde
+        // önceki kullanıcının aramaları yeni kullanıcıya görünüyordu.
+        owner: currentUserEmail(),
+      })
     );
   } catch {
     // Depolama yoksa özellik sessizce devre dışı kalır — arama yine çalışır.
+  }
+}
+
+function currentUserEmail() {
+  try {
+    return (auth.currentUser && auth.currentUser.email) || null;
+  } catch {
+    return null;
   }
 }
 
@@ -530,11 +545,29 @@ function stopListening() {
 // URL'de parametre varsa (ör. pantry.html'den gelen ?mode=pantry) geri yükleme
 // YAPILMIYOR — o durumda kullanıcı yeni bir arama niyetiyle geliyor, eski
 // sonuçları göstermek kafa karıştırır.
-(function restorePreviousSearch() {
+(async function restorePreviousSearch() {
   if (window.location.search) return;
+
+  // authReady BEKLENMELİ: sayfa yüklenir yüklenmez `auth.currentUser` henüz
+  // null olabilir (Firebase oturumu kalıcı depodan geri yüklüyor). Beklemezsek
+  // sahiplik kontrolü tam da en gerekli olduğu anda — hesap değiştirildikten
+  // sonraki ilk yüklemede — sessizce atlanırdı.
+  try { await authReady; } catch { /* oturum belirlenemedi, yine de devam */ }
 
   const st = readSearchState();
   if (!st || !st.data) return;
+
+  // SAHİPLİK KONTROLÜ: kayıt başka bir kullanıcıya aitse geri yükleme ve sil.
+  // Çıkışta zaten temizleniyor (api.js), ama çıkışın çalışmadığı yollar var:
+  // 401 ile düşen oturum, sekmenin başka bir hesapla açılması, yarıda kalan
+  // signOut. Ortak bilgisayarda başkasının aramasını göstermek kabul edilemez,
+  // o yüzden iki katmanlı.
+  const me = currentUserEmail();
+  if (st.owner && me && st.owner !== me) {
+    try { sessionStorage.removeItem(SEARCH_STATE_KEY); } catch {}
+    searchLog.debug('Discarded search state saved by a different account');
+    return;
+  }
 
   // Mod sekmesi (tıklamak paneli de değiştiriyor, mantık tek yerde kalsın)
   if (st.mode && st.mode !== 'text') {

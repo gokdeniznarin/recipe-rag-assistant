@@ -239,6 +239,12 @@ df_sample = with_images.sample(n=10000, random_state=42)
 - **try/catch şart:** Safari gizli modda `sessionStorage` **okurken bile** `SecurityError` fırlatıyor — Faz 13b'de `logger.js` tam bu yüzden uygulamayı düşürmüştü. Depolama yoksa özellik sessizce devre dışı kalıyor, arama çalışmaya devam ediyor (node testinde doğrulandı).
 - Geri yükleme kodu dosyanın **sonunda**: `renderResults` / `formatCommentary` tanımlı olmalı.
 
+**🔴 Gizlilik hatası ve düzeltmesi (kullanıcı canlıda yakaladı):** `sessionStorage` **sekmeye** özel ama **kullanıcıya** özel DEĞİL — aynı sekmede hesap değiştirildiğinde önceki kullanıcının aramaları yeni kullanıcıya görünüyordu. Ortak bilgisayarda kabul edilemez. **İki katmanlı** düzeltildi:
+1. **Çıkışta siliniyor** — `api.js`'te `clearSessionScopedData()`, `logout()` içinde (401 otomatik çıkışı da aynı fonksiyondan geçiyor).
+2. **Kayda sahip e-postası yazılıyor** (`owner`), geri yüklerken eşleşmiyorsa kayıt **silinip** geri yüklenmiyor. Çıkışın çalışmadığı yolları kapsıyor: süresi dolan oturum, yarıda kalan `signOut`, sekmenin başka hesapla açılması.
+
+**Zamanlama tuzağı:** geri yükleme `await authReady` ile başlıyor. Beklenmezse sayfa yüklenir yüklenmez `auth.currentUser` **null** olur (Firebase oturumu kalıcı depodan geri yüklüyor) ve sahiplik kontrolü **tam da en gerekli olduğu anda** — hesap değiştirdikten sonraki ilk yüklemede — sessizce atlanırdı. Faz 6'daki `authReady` dersinin aynısı.
+
 ### Neden tarifler FatSecret'tan ALINMADI
 Kullanıcı önerdi, değerlendirildi, **elendi**: (1) FatSecret verisi **lisanslı**, API'den çekip kendi veritabanına gömmek sözleşmeye aykırı; (2) daha önemlisi **projenin çekirdeği yok olurdu** — anlamsal arama ancak veri bizde olursa mümkün, dışarıdan anahtar-kelime API'si kullanmak "RAG sistemi kurdum"u "API çağırdım"a çevirirdi; (3) Faz 8/17/18/19'un tamamı bu şemaya bağlı. FatSecret yalnızca **besin değeri** için düşünülüyor (ayrı özellik, ChromaDB'ye dokunmaz).
 

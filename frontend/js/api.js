@@ -67,8 +67,27 @@ async function getToken() {
   return token;
 }
 
+/**
+ * Oturuma bağlı istemci verisini temizler (Faz 20).
+ *
+ * sessionStorage sekmeye özel ama KULLANICIYA ÖZEL DEĞİL: aynı sekmede hesap
+ * değiştirildiğinde önceki kullanıcının arama sonuçları ekranda kalıyordu.
+ * Ortak bir bilgisayarda bu bir gizlilik sızıntısı — çıkışta siliniyor.
+ * (İkinci savunma hattı search.js'te: kayıt sahibinin e-postası da saklanıyor
+ * ve eşleşmezse geri yüklenmiyor — 401 ile düşen oturum gibi çıkışın
+ * çalışmadığı yolları da kapsasın diye.)
+ */
+function clearSessionScopedData() {
+  try {
+    sessionStorage.removeItem('search_state_v1');
+  } catch {
+    // Depolama erişilemiyorsa zaten yazılmamıştır.
+  }
+}
+
 function logout() {
   const start = performance.now();
+  clearSessionScopedData();
   auth.signOut().then(() => {
     // Çıkış da giriş gibi tamamen istemci tarafında: Firebase yerel oturumu
     // siliyor, sunucumuza istek gitmiyor. Genelde milisaniyeler sürer.
