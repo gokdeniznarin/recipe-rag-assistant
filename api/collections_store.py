@@ -96,7 +96,12 @@ def get_collections(user_email: str) -> list[dict]:
         data = doc.to_dict()
         result.append({
             "id": doc.id,
-            "name": data["name"],
+            # `.get` ile — `data["name"]` idi ve alanı olmayan TEK bir doküman
+            # KeyError fırlatıp endpoint'i 500 yapıyordu, yani bozuk bir kayıt
+            # favoriler sayfasının tamamını açılmaz hâle getiriyordu. Canlı
+            # görüldü (konsoldan elle düzenlenmiş bir dokümanda). Bir kaydın
+            # bozukluğu diğerlerini götürmemeli.
+            "name": data.get("name") or "(untitled)",
             "recipe_ids": data.get("recipe_ids", []),
             "created_at": data.get("created_at", ""),
         })
@@ -114,7 +119,7 @@ def get_collection_detail(user_email: str, collection_id: str) -> dict:
     data = _owned_doc(user_email, collection_id).to_dict()
     return {
         "id": collection_id,
-        "name": data["name"],
+        "name": data.get("name") or "(untitled)",   # bkz. get_collections
         "recipe_ids": data.get("recipe_ids", []),
         "created_at": data.get("created_at", ""),
     }
