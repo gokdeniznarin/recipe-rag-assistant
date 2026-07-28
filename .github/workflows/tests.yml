@@ -52,4 +52,10 @@ jobs:
       # JS için test çatısı yok (sade tarayıcı JS'i). Bu script sözdizimini ve
       # HTML↔JS element eşleşmesini kontrol ediyor — ikisi de bu projede gerçek,
       # sayfayı komple düşüren hatalar yakaladı.
-      - run: node scripts/check_frontend.js
+      - name: Static checks
+        run: node scripts/check_frontend.js
+
+      # camera.js iki sayfanın paylaştığı bir durum makinesi ve şimdiye kadar
+      # içinde iki gerçek hata çıktı. Sözdizimi kontrolü onları göremezdi.
+      - name: Camera module behaviour
+        run: node scripts/test_camera.js

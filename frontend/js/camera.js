@@ -25,6 +25,11 @@ const Camera = (function () {
     //     + onCapture(dataUrl) / onReset() / onError(mesaj)
     let stream = null;
     let photo = null;
+    // Fotoğrafın KAYNAĞI: 'camera' | 'file'. reset() buna bakıyor — çekilen bir
+    // fotoğrafı "yeniden çek" demek kamerayı açmak demek, ama yüklenen bir
+    // dosyada aynı şeyi yapmak kullanıcının hiç istemediği bir izin istemi ve
+    // yanan bir kamera ışığı üretiyor.
+    let source = null;
 
     function stop() {
       if (stream) {
@@ -49,7 +54,8 @@ const Camera = (function () {
 
     // Çekilen ya da yüklenen fotoğraf artık canvas'ta — tek gösterim yolu var,
     // dolayısıyla iki kaynak da aynı UI durumuna düşüyor.
-    function showPhoto() {
+    function showPhoto(from) {
+      source = from;
       photo = el.canvas.toDataURL('image/jpeg', JPEG_QUALITY);
       stop();
       el.preview.classList.add('hidden');
@@ -64,17 +70,30 @@ const Camera = (function () {
       el.canvas.width = el.preview.videoWidth;
       el.canvas.height = el.preview.videoHeight;
       el.canvas.getContext('2d').drawImage(el.preview, 0, 0);
-      showPhoto();
+      showPhoto('camera');
     }
 
     async function reset() {
+      const fromCamera = source === 'camera';
       photo = null;
+      source = null;
       el.canvas.classList.add('hidden');
       el.preview.classList.remove('hidden');
       el.retakeBtn.classList.add('hidden');
       if (el.onReset) el.onReset();
-      // Kamera açılamazsa (izin reddi, cihazda kamera yok) kullanıcı kilitli
-      // kalmasın diye "Start camera" geri gelir.
+
+      // DOSYADAN gelen bir fotoğrafta kamerayı açmak yanlış olurdu: kullanıcı
+      // kamerayı hiç istemedi, "başka bir fotoğraf kullan" dedi. Başlangıç
+      // durumuna dönüyoruz — "Start camera" ve "Upload a photo" yeniden yan
+      // yana, kullanıcı hangisini isterse onu seçiyor.
+      if (!fromCamera) {
+        el.startBtn.classList.remove('hidden');
+        return;
+      }
+
+      // Kameradan çekildiyse "yeniden çek" beklenen davranış: doğrudan aç.
+      // Açılamazsa (izin reddi, cihazda kamera yok) kullanıcı kilitli kalmasın
+      // diye "Start camera" geri gelir.
       if (!(await open())) el.startBtn.classList.remove('hidden');
     }
 
@@ -95,7 +114,7 @@ const Camera = (function () {
           el.canvas.width = Math.round(img.width * scale);
           el.canvas.height = Math.round(img.height * scale);
           el.canvas.getContext('2d').drawImage(img, 0, 0, el.canvas.width, el.canvas.height);
-          showPhoto();
+          showPhoto('file');
         };
         img.onerror = () => {
           if (el.onError) el.onError('That image could not be read.');
