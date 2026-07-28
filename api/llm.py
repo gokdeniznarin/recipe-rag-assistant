@@ -61,12 +61,16 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 # zincir onları zaten sessizce atlar — yani en kötü ihtimalde bir ağ turu.
 #
 # 5 model → 7: akış başına günlük kapasite 100 → 140 istek.
+#
+# ⚠️ `gemini-3-flash-preview` EKLENDİ VE AYNI GÜN ÇIKARILDI: sabah 3219 ms
+# ölçüldü, öğleden sonra **43793 ms**. 13 kat oynama. Kapasite kazancı, tek
+# başına 44 saniyelik bir bekleme yaratabilecek bir modeli taşımaya değmiyor.
+# Ölçümün TEK SEFERLİK yapılmasının yetmediğinin kanıtı olarak kayıtta duruyor.
 COMMENTARY_MODELS = (
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
     "gemini-3.1-flash-lite-preview",
     "gemini-2.5-flash",
-    "gemini-3-flash-preview",
     "gemini-3.6-flash",
     "gemini-3.5-flash",
 )
@@ -74,11 +78,24 @@ VISION_MODELS = (
     "gemini-3.1-flash-lite",
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite-preview",
-    "gemini-3-flash-preview",
     "gemini-2.5-flash",
     "gemini-3.6-flash",
     "gemini-3.5-flash",
 )
+
+# Model başına zaman aşımı (SDK'nın kendi `http_options.timeout`'u, MİLİSANİYE —
+# ölçümle doğrulandı: 50 → 93 ms'de koptu, 30000 → geçti).
+#
+# NEDEN GEREKLİ: zincir bugüne kadar yalnızca "bu model KULLANILAMIYOR"
+# (429/404/503) durumunda sonrakine geçiyordu. Yavaş ama sonunda cevap veren
+# bir model hiçbir korumaya takılmıyordu ve her şeyi bloke ediyordu — canlıda
+# ölçüldü: **AI yorumu 37.8 saniye**. Oysa zincirde 0.5 saniyede cevap veren
+# modeller bekliyordu.
+#
+# 10 sn bilinçli: sağlıklı modeller 0.5–1.5 sn'de dönüyor, yani normal işleyişte
+# hiç devreye girmiyor; ama patolojik bir modelde beklemeyi 44 sn yerine 10 sn
+# ile sınırlıyor. FatSecret'taki LOOKUP_BUDGET_SEC ile aynı fikir.
+MODEL_TIMEOUT_MS = 10_000
 
 
 def _generate(models: tuple[str, ...], contents, config=None):
@@ -91,6 +108,16 @@ def _generate(models: tuple[str, ...], contents, config=None):
     config: opsiyonel GenerateContentConfig. Sınıflandırıcı temperature=0
     veriyor (deterministik olsun); yorum/vision varsayılanı kullanıyor (None).
     """
+    # Zaman aşımını çağıranın config'ine ENJEKTE ediyoruz — çağıranlar kendi
+    # ayarlarını veriyor (sınıflandırıcı temperature=0, tabak analizi JSON modu)
+    # ve onları ezmek istemiyoruz. model_copy: pydantic nesnesi, yerinde
+    # değiştirmek çağıranın sabitini kirletirdi.
+    http = types.HttpOptions(timeout=MODEL_TIMEOUT_MS)
+    config = (
+        types.GenerateContentConfig(http_options=http) if config is None
+        else config.model_copy(update={"http_options": http})
+    )
+
     last_error = None
     for model in models:
         # Her model denemesi ayrı ölçülüyor: hangi modelin ne kadar sürdüğü
@@ -112,7 +139,11 @@ def _generate(models: tuple[str, ...], contents, config=None):
             # Faz 6'da ölçülmüştü: ücretsiz katmanda bir modelin sürekli 503
             # vermesi gerçek bir durum (o zaman SDK retry'ları aramayı 20 sn'ye
             # çıkarmıştı). Aday model testinde de 6 çağrının birinde görüldü.
-            unavailable = any(
+            # Zaman aşımı da "bu modeli atla": sınıf ADINDAN bakılıyor, mesajdan
+            # değil — httpx "The handshake operation timed out" diyor, yani
+            # "timeout" kelimesi mesajda hiç geçmiyor ve dizgi araması kaçırırdı.
+            timed_out = "timeout" in type(e).__name__.lower()
+            unavailable = timed_out or any(
                 s in text
                 for s in ("429", "RESOURCE_EXHAUSTED", "404", "NOT_FOUND",
                           "503", "UNAVAILABLE")

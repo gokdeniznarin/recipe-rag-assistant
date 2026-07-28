@@ -9,6 +9,8 @@ Faz 11b'nin "hata olsa bile 200 + CORS" kuralı. Kurulum için conftest.py'ye ba
 CLAUDE.md'de "doğrulandı" diye geçen bu davranışların çoğu bugüne kadar ELLE
 kontrol edilmişti; bu testler onları tekrarlanabilir hale getiriyor.
 """
+from unittest.mock import MagicMock
+
 import pytest
 
 
@@ -283,9 +285,67 @@ class TestGenerateFallbackChain:
             llm._generate(("a", "b"), "p")
         assert calls == ["a"]        # ikinciye HİÇ geçmedi
 
-    def test_both_chains_grew_to_seven_models(self, api):
+    def test_a_timeout_falls_back_instead_of_blocking(self, api, monkeypatch):
+        """REGRESYON: zincir yalnızca "kullanılamıyor" durumunda geçiyordu.
+        Yavaş ama sonunda cevap veren bir model hiçbir korumaya takılmıyordu —
+        canlıda AI yorumu 37.8 sn sürdü, oysa zincirde 0.5 sn'lik modeller
+        bekliyordu."""
         llm = self._llm(api)
-        assert len(llm.COMMENTARY_MODELS) == 7
-        assert len(llm.VISION_MODELS) == 7
+        calls = []
+
+        class ReadTimeout(Exception):
+            """httpx'in gerçek sınıfı gibi: mesajında "timeout" GEÇMİYOR."""
+
+        def slow(model, contents, config=None):
+            calls.append(model)
+            if len(calls) == 1:
+                raise ReadTimeout("The handshake operation timed out")
+            return type("R", (), {"text": "ok"})()
+
+        monkeypatch.setattr(llm.client.models, "generate_content", slow)
+
+        assert llm._generate(("a", "b"), "p").text == "ok"
+        assert calls == ["a", "b"]
+
+    def test_the_caller_config_is_copied_not_mutated(self, api, monkeypatch):
+        """Çağıranlar kendi ayarlarını veriyor (sınıflandırıcı temperature=0,
+        tabak analizi JSON modu). Zaman aşımı YERİNDE eklenirse çağıranın
+        modül seviyesindeki nesnesi kalıcı olarak kirlenirdi, o yüzden kopya.
+
+        NOT: conftest `google.genai`'yi mock'ladığı için burada gerçek pydantic
+        davranışı doğrulanamıyor — yalnızca kopyalamanın çağrıldığı. Gerçek
+        alan korunumu konteynerde canlı doğrulandı.
+        """
+        llm = self._llm(api)
+        monkeypatch.setattr(llm.client.models, "generate_content",
+                            lambda model, contents, config=None: type("R", (), {"text": "ok"})())
+
+        caller_config = MagicMock()
+        llm._generate(("a",), "p", config=caller_config)
+
+        caller_config.model_copy.assert_called_once()
+        update = caller_config.model_copy.call_args.kwargs["update"]
+        assert "http_options" in update
+
+    def test_a_config_is_always_sent_even_without_a_caller_one(self, api, monkeypatch):
+        llm = self._llm(api)
+        seen = {}
+        monkeypatch.setattr(llm.client.models, "generate_content",
+                            lambda model, contents, config=None: seen.update(config=config)
+                            or type("R", (), {"text": "ok"})())
+        llm._generate(("a",), "p")
+        assert seen["config"] is not None      # zaman aşımı taşıyan config
+
+    def test_the_unstable_preview_model_was_removed(self, api):
+        """Sabah 3219 ms, öğleden sonra 43793 ms ölçüldü — kapasite kazancı
+        44 saniyelik bir beklemeyi göze almaya değmiyor."""
+        llm = self._llm(api)
+        assert "gemini-3-flash-preview" not in llm.COMMENTARY_MODELS
+        assert "gemini-3-flash-preview" not in llm.VISION_MODELS
+
+    def test_both_chains_have_the_same_models_in_different_order(self, api):
+        llm = self._llm(api)
+        assert len(llm.COMMENTARY_MODELS) == 6
+        assert set(llm.COMMENTARY_MODELS) == set(llm.VISION_MODELS)
         # Çapraz başlangıç korunuyor: iki akış taze havuzla giriyor
         assert llm.COMMENTARY_MODELS[0] != llm.VISION_MODELS[0]

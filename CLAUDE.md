@@ -373,8 +373,32 @@ Teorik değil: **Faz 6'da yaşanmıştı** (`gemini-flash-latest` sürekli 503, 
 
 **Ağ hatası ve 400 hâlâ fırlatılıyor** — sıradaki model de aynı hatayı verecektir, denemeye devam etmek yanıltıcı olurdu.
 
-### Test (527 → **533**, +6)
-`test_api_contract.py` → `TestGenerateFallbackChain`: 503 regresyon testi, 429/404/503'ün üçünün de zinciri sürdürdüğü (parametrize), 400'ün fırlatılıp **ikinci modele hiç geçilmediği**, iki zincirin 7'şer model olduğu ve **çapraz başlangıcın korunduğu**.
+### 🔴 Canlıda çıkan asıl kusur: zincirin YAVAŞLIĞA karşı koruması yoktu
+Kullanıcı canlıda **AI yorumunun 37.8 saniyede** geldiğini bildirdi (ölçülmüş normal: 666–999 ms). Sebep: `_generate` yalnızca *"bu model KULLANILAMIYOR"* (429/404/503) durumunda sonrakine geçiyordu. **Yavaş ama sonunda cevap veren** bir model hiçbir korumaya takılmıyor ve her şeyi bloke ediyordu — oysa zincirde 0.5 sn'de cevap veren modeller bekliyordu.
+
+**Ölçüm (aynı gün, öğleden sonra):**
+| Model | Gecikme |
+|---|---:|
+| `gemini-3.5-flash-lite` (1. sıra) | 4824 ms *(Faz 14'te 742 ms)* |
+| `gemini-3.1-flash-lite` | 556 ms |
+| `gemini-3.1-flash-lite-preview` | 489 ms |
+| `gemini-2.5-flash` | 764 ms |
+| **`gemini-3-flash-preview`** | **43793 ms** ← sabah 3219 ms ölçülmüştü |
+| `gemini-3.6-flash` | 1376 ms |
+| `gemini-3.5-flash` | 893 ms |
+
+**İki düzeltme:**
+1. **`gemini-3-flash-preview` ÇIKARILDI** — aynı gün eklenip aynı gün çıkarıldı. Sabah 3.2 sn, öğleden sonra 43.8 sn; **13 kat oynama**. Kapasite kazancı, tek başına 44 saniyelik bekleme yaratabilecek bir modeli taşımaya değmiyor. Kayıtta duruyor çünkü **tek seferlik ölçümün yetmediğinin** kanıtı. (7 → 6 model, kapasite 140 → 120.)
+2. **Model başına zaman aşımı** (`MODEL_TIMEOUT_MS = 10_000`) — SDK'nın kendi `http_options.timeout`'u. Birim **milisaniye**, ölçümle doğrulandı (50 → 93 ms'de koptu, 30000 → geçti). Zaman aşımı da "bu modeli atla" sayılıyor. FatSecret'taki `LOOKUP_BUDGET_SEC` ile aynı fikir: zincir "kullanılamıyor"u biliyordu, "kullanılamayacak kadar yavaş"ı bilmiyordu.
+
+**İki incelik:**
+- **Zaman aşımı çağıranın config'ine ENJEKTE ediliyor**, `model_copy` ile — çağıranlar kendi ayarlarını veriyor (sınıflandırıcı `temperature=0`, tabak analizi JSON modu) ve yerinde değiştirmek modül seviyesindeki nesneyi kalıcı kirletirdi. Gerçek pydantic ile doğrulandı: temperature korunuyor, çağıranın nesnesi temiz kalıyor.
+- **Zaman aşımı sınıf ADINDAN tanınıyor**, mesajdan değil: httpx *"The handshake operation timed out"* diyor, yani `"timeout"` kelimesi mesajda **hiç geçmiyor** ve dizgi araması kaçırırdı.
+
+**Dürüst kalan durum:** 1. sıradaki `gemini-3.5-flash-lite` bugün 7–8 sn veriyor, yani 10 sn eşiğinin altında kaldığı için kullanılıyor ve yorum ~8 sn sürüyor. Zaman aşımı bir **güvenlik valfi** (38/44 sn felaketini önlüyor), gecikme optimizasyonu değil. Sıralamayı günün ölçümüne göre değiştirmek bilinçli olarak YAPILMADI — Faz 14'te not edildiği gibi ücretsiz katman gecikmeleri günden güne oynuyor ve bugünün hızlısı yarının yavaşı olabiliyor. Ayrıca çapraz başlangıç (iki akışın farklı modelle girmesi) korunmalı.
+
+### Test (527 → **537**, +10)
+`test_api_contract.py` → `TestGenerateFallbackChain`: 503 ve **zaman aşımı** regresyon testleri (zaman aşımı sahte sınıfının mesajında bilerek "timeout" geçmiyor), 429/404/503'ün üçünün de zinciri sürdürdüğü (parametrize), 400'ün fırlatılıp **ikinci modele hiç geçilmediği**, config kopyalamanın çağrıldığı, kararsız preview'ın çıkarıldığı, iki zincirin aynı 6 modeli farklı sırayla taşıdığı ve **çapraz başlangıcın korunduğu**. *(Config'in gerçek pydantic davranışı conftest `google.genai`'yi mock'ladığı için testte doğrulanamıyor — konteynerde canlı doğrulandı.)*
 
 ### Doğrulama ✅
 Yeni zincirle dört yolun hepsi gerçek Gemini'ye karşı çalıştırıldı: yorum, sınıflandırıcı (`borscht`→True, `capital of france`→False), malzeme tanıma, tabak analizi. 533 test geçiyor.
