@@ -1,0 +1,55 @@
+name: tests
+
+# Her push ve pull request'te çalışır. Dal adı yazılmadı: bugün varsayılan dal
+# `firebase-auth`, ileride `main` olacak — filtre koysaydık taşınma sırasında
+# CI sessizce hiç koşmayan bir hâle düşerdi.
+on: [push, pull_request]
+
+jobs:
+  python:
+    name: pytest (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.13 üretimdeki sürüm (Dockerfile: python:3.13-slim). 3.12 ileriye
+        # dönük bir uyarı ağı — bir bağımlılığın sürüme özel davranışı olursa
+        # burada görünür.
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: api/requirements-dev.txt
+
+      - name: Bağımlılıkları kur
+        run: pip install -r api/requirements-dev.txt
+
+      - name: Testler
+        # Testler ağa ÇIKMIYOR: conftest firebase/firestore/gemini'yi sys.modules
+        # üzerinden, ChromaDB'yi patch ile sahteliyor. Dolayısıyla CI'da API
+        # anahtarı gerekmiyor.
+        run: python -m pytest -q
+
+      - name: Gömülü veritabanı kirlenmedi mi
+        # ChromaDB bir klasörü AÇARKEN BİLE chroma.sqlite3'e yazıyor. conftest
+        # bunu engelliyor ama koruma sessizce bozulabilir — o zaman commit'li
+        # 73MB'lık dosya her test koşusunda değişir. Bu adım onu yakalar.
+        run: git diff --exit-code --stat -- api/chroma_data
+
+  frontend:
+    name: frontend kontrolleri
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # JS için test çatısı yok (sade tarayıcı JS'i). Bu script sözdizimini ve
+      # HTML↔JS element eşleşmesini kontrol ediyor — ikisi de bu projede gerçek,
+      # sayfayı komple düşüren hatalar yakaladı.
+      - run: node scripts/check_frontend.js

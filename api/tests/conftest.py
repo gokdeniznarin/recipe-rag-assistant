@@ -29,9 +29,23 @@ import pytest
 for _name in ("firebase_admin", "google.cloud", "google.cloud.firestore_v1", "google.genai"):
     sys.modules.setdefault(_name, MagicMock())
 
-# `from google import genai` bunu arıyor; google gerçek namespace paketi olduğu
-# için genai'yi ayrıca sys.modules'e koymak gerekiyor.
-sys.modules.setdefault("google", MagicMock())
+# ⚠️ `google` GERÇEK BİR NAMESPACE PAKETİ — protobuf, google-cloud ve
+# google-genai onu paylaşıyor. Komple MagicMock ile değiştirmek chromadb'yi
+# kırıyor: telemetri zinciri `from google.protobuf import ...` yapıyor ve
+# "No module named 'google.protobuf'; 'google' is not a package" alıyor.
+#
+# Bu uzun süre FARK EDİLMEDİ çünkü geliştirme makinesinde `google` conftest'ten
+# önce import edilmiş oluyordu ve `setdefault` boşa düşüyordu. Temiz bir
+# ortamda (CI, yeni kurulum) mock kazanıyor ve 127 test hata veriyor. CI'ın
+# ilk koşusunda yakalandı.
+#
+# Gerçek paket varsa ona DOKUNULMUYOR: `from google import genai` zaten
+# çalışıyor, çünkü Python `google.genai`'yi sys.modules'te bulup üst pakete
+# öznitelik olarak bağlıyor (yukarıdaki setdefault onu sahteledi).
+try:
+    import google  # noqa: F401
+except ImportError:                       # google-genai kurulu değilse
+    sys.modules.setdefault("google", MagicMock())
 
 
 def _default_collection() -> MagicMock:

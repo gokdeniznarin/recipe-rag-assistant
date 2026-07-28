@@ -173,7 +173,44 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 - **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Faz 6–21'in tamamı bu branch'te. `main` el değmemiş durumda. **Canlı deploy `firebase-auth` dalından yapılıyor** (hem Render hem Vercel bu dalı izliyor), dolayısıyla merge sonrası deploy dalını `main`'e çevirmek gerekecek.
 - Repo **GitHub'da**: `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private). Sırlar (`firebase-key.json`, `.env`) gitignored, repoda yok — Render'da env var olarak duruyor.
 
-## Güncel Durum: Faz 23 (Navigasyon yeniden tasarımı — sidebar) ✅
+## Güncel Durum: Faz 24 (CI + README — sunum hazırlığı) ✅
+
+### GitHub Actions (`.github/workflows/tests.yml`)
+537 test vardı ama **hiçbiri otomatik koşmuyordu**. İki iş: `pytest` (Python 3.12 + 3.13 matrisi) ve `node scripts/check_frontend.js`. Dal filtresi **bilerek yok** — bugün varsayılan dal `firebase-auth`, ileride `main` olacak; filtre koysaydık taşınma sırasında CI sessizce hiç koşmayan bir hâle düşerdi.
+
+**Ekstra adım: `git diff --exit-code -- api/chroma_data`.** ChromaDB bir klasörü açarken bile `chroma.sqlite3`'e yazıyor; conftest bunu engelliyor ama koruma sessizce bozulabilir ve o zaman commit'li 73MB'lık dosya her koşuda değişir.
+
+### 🔴 CI daha ilk koşusunda gizli bir kırılganlık yakaladı
+Temiz bir konteynerde `pytest` **127 hata** verdi (bende 537 geçiyordu). Sebep `conftest.py`:
+
+```python
+sys.modules.setdefault("google", MagicMock())
+```
+
+`google` **gerçek bir namespace paketi** — protobuf, google-cloud ve google-genai onu paylaşıyor. MagicMock ile değiştirilince chromadb'nin telemetri zinciri `from google.protobuf import ...` yapıp *"'google' is not a package"* alıyor.
+
+**Neden bugüne kadar görünmedi:** geliştirme makinesinde `google` conftest'ten önce import edilmiş oluyordu, `setdefault` boşa düşüyor ve gerçek paket hayatta kalıyordu. Temiz ortamda mock kazanıyor. Yani suite "çalışıyor" görünüyordu ama **taşınabilir değildi** — CI'ın var olma sebebi tam olarak bu.
+
+Düzeltme: gerçek paket varsa ona dokunulmuyor (`try: import google`), yalnızca gerçekten yoksa sahteleniyor. `from google import genai` yine çalışıyor çünkü `google.genai` zaten sys.modules'te sahtelenmiş durumda.
+
+**Python 3.12 ve 3.13'te temiz konteynerde doğrulandı: 537 geçiyor.**
+
+### `scripts/check_frontend.js`
+JS için test çatısı yok (sade tarayıcı JS'i). Bu script bu oturumda ELLE yaptığım ve **gerçek hata yakalayan** iki kontrolü kalıcı hale getiriyor: (1) her JS dosyası derleniyor mu, (2) sayfaya özel script'in `getElementById` ile aradığı her ID o HTML'de var mı, (3) sidebar'lı sayfalarda `api.js`'in aradığı iskelet tam mı.
+
+**Paylaşılan dosyalar (api.js, logger.js, camera.js…) 2. kontrolün DIŞINDA** — her sayfada yükleniyorlar ve olmayan elemanlara `if (!el) return` ile korunuyorlar, yani orada eksik ID hata değil normal durum.
+
+### README yeniden yazıldı (İngilizce)
+Eskisi yalnızca API'yi anlatıyordu ve *"bu repo API'yi barındırıyor"* diyordu — oysa frontend de burada. Yenisi: canlı link + CI rozeti, özellik tablosu, **mermaid mimari diyagramı**, ölçüme dayanan kararlar (LLM'i beklememe 8.87→0.32sn, torch kaldırma 2.83→1.14GB, mesafe eşiğinin ELENMESİ, model zinciri, OAuth 1.0), veri hikayesi (miktarların %27 hizalı olduğu için elenmesi dahil), test katmanları, kurulum, deploy ve **dürüst bilinen sınırlar** bölümü.
+
+`.env.example` eklendi (README ona atıf yapıyor). `.gitignore`'daki `.env` deseni onu yakalamıyor — doğrulandı.
+
+### Kalan tek adım: varsayılan dalı `main` yapmak
+`origin/main` **hiç push edilmemiş**; GitHub'ın varsayılanı `firebase-auth`. Yani CLAUDE.md'de yazan "main'e merge" aslında yanlış — ortada merge edilecek bir şey yok, sadece yeniden adlandırma gerekiyor. **GitHub arayüzünden yapılmalı** (Settings → Branches → rename), sonra Render ve Vercel'in izlediği dal güncellenmeli.
+
+---
+
+## Faz 23 (Navigasyon yeniden tasarımı — sidebar) ✅
 
 **Tetikleyici:** Kullanıcı geri bildirimi — *"sağ üstteki özelliklerin sıralaması mantıksız oldu, yanlarında kocaman bir e-posta adresi var"*. Renkler beğenildi, **palete dokunulmadı**.
 

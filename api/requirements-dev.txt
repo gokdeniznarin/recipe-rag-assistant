@@ -3,3 +3,13 @@
 # Çalıştırma: python -m pytest
 -r requirements.txt
 pytest
+
+# Test suite'i ingestion'ı da kapsıyor (ingestion/tests/test_clean_data.py) ve
+# clean_data.py pandas'a bağlı. pandas ingestion'ın bağımlılığı, API'nin değil —
+# o yüzden requirements.txt'te yok ve image'a da girmiyor.
+pandas
+
+# Katman 2 testleri FastAPI TestClient kullanıyor; Starlette'in testclient'ı
+# httpx'i import ediyor. Pratikte başka paketlerle birlikte geliyor ama CI'ın
+# tekrarlanabilir olması için açıkça yazılı.
+httpx
