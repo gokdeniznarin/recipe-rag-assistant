@@ -181,9 +181,47 @@ async function apiRequest(path, options = {}) {
 // ── Kullanıcı menüsü ─────────────────────────────────────
 function loadUserEmail() {
   const emailEl = document.getElementById('user-email');
-  if (!emailEl) return;
   // E-posta zaten Firebase kullanıcısında mevcut — ekstra istek gerekmez.
-  emailEl.textContent = (auth.currentUser && auth.currentUser.email) || 'Account';
+  const email = (auth.currentUser && auth.currentUser.email) || '';
+  if (emailEl) emailEl.textContent = email || 'Account';
+
+  // Baş harfli avatar. E-posta artık kimlik göstergesi DEĞİL (21 karakterlik
+  // bir adres navigasyonla yarışıyordu); avatar o rolü üstleniyor, adres
+  // yanında küçük ve kırpılmış duruyor.
+  const avatarEl = document.getElementById('user-avatar');
+  if (avatarEl) avatarEl.textContent = (email[0] || '?');
+}
+
+
+// ── Sidebar: aktif sayfa + mobil çekmece ─────────────────
+function initSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;   // index.html / privacy.html — sidebar'ı yok
+
+  // Bulunduğun sayfayı işaretle. Üst barda bu hiç yoktu: kullanıcı nerede
+  // olduğunu yalnızca sayfa başlığından anlıyordu.
+  const here = window.location.pathname.split('/').pop() || 'search.html';
+  sidebar.querySelectorAll('.side-link').forEach(link => {
+    if (link.getAttribute('href') === here) link.classList.add('active');
+  });
+
+  const toggle = document.getElementById('nav-toggle');
+  const overlay = document.getElementById('nav-overlay');
+  if (!toggle || !overlay) return;
+
+  function setOpen(open) {
+    sidebar.classList.toggle('open', open);
+    overlay.classList.toggle('hidden', !open);
+    toggle.setAttribute('aria-expanded', String(open));
+  }
+
+  toggle.addEventListener('click', () => setOpen(!sidebar.classList.contains('open')));
+  overlay.addEventListener('click', () => setOpen(false));
+  // Escape ile kapanmak bir çekmecenin beklenen davranışı; klavye kullanıcısı
+  // aksi halde odağı geri almak için tab'lamak zorunda kalır.
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') setOpen(false);
+  });
 }
 
 // ── Email doğrulama hatırlatması ─────────────────────────
@@ -272,6 +310,7 @@ function initUserMenu() {
   }
 
   loadUserEmail();
+  initSidebar();
   showVerifyBannerIfNeeded();
 }
 

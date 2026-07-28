@@ -9,34 +9,50 @@
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
-<body>
+<body class="has-sidebar">
 
-  <!-- Header -->
-  <header class="app-header">
-    <div class="app-header-inner">
-      <a href="search.html" class="brand">
-        <span class="brand-mark">✦</span>
-        <span class="brand-name">Recipe Assistant</span>
-      </a>
-      <nav class="app-nav">
-  <a href="plan.html" class="nav-link">Plan</a>
-  <a href="pantry.html" class="nav-link">Pantry</a>
-  <a href="shopping.html" class="nav-link">Shopping</a>
-  <a href="nutrition.html" class="nav-link">Nutrition</a>
-  <a href="favorites.html" class="nav-link">Favorites</a>
-  
-  <div class="user-menu">
-    <button id="user-btn" class="user-btn">
-      <span id="user-email">…</span>
-      <span class="chevron">▾</span>
-    </button>
-    <div id="user-dropdown" class="user-dropdown hidden">
-      <button id="logout-btn" class="dropdown-item">Sign out</button>
-    </div>
+  <!-- Mobil üst bar: yalnızca dar ekranda görünür (CSS) -->
+  <div class="mobile-bar">
+    <button id="nav-toggle" class="nav-toggle" aria-label="Open menu"
+            aria-controls="sidebar" aria-expanded="false">☰</button>
+    <a href="search.html" class="brand">
+      <span class="brand-mark">✦</span>
+      <span class="brand-name">Recipe Assistant</span>
+    </a>
   </div>
-</nav>
+  <div id="nav-overlay" class="nav-overlay hidden"></div>
+
+  <!-- Sidebar. Gruplar akış zincirini görünür kılıyor:
+       Pantry → Plan → Shopping (elimde ne var → ne pişireceğim → ne almalıyım) -->
+  <aside id="sidebar" class="sidebar">
+    <a href="search.html" class="brand">
+      <span class="brand-mark">✦</span>
+      <span class="brand-name">Recipe Assistant</span>
+    </a>
+
+    <nav class="side-nav">
+      <a href="search.html" class="side-link side-link--primary">Search</a>
+
+      <p class="side-heading">Kitchen</p>
+      <a href="pantry.html" class="side-link">Pantry</a>
+      <a href="plan.html" class="side-link">Meal plan</a>
+      <a href="shopping.html" class="side-link">Shopping list</a>
+
+      <p class="side-heading">Tools</p>
+      <a href="nutrition.html" class="side-link">Nutrition</a>
+
+      <p class="side-heading">Saved</p>
+      <a href="favorites.html" class="side-link">Your recipes</a>
+    </nav>
+
+    <div class="side-user">
+      <div class="side-user-row">
+        <span id="user-avatar" class="user-avatar"></span>
+        <span id="user-email" class="side-user-email">…</span>
+      </div>
+      <button id="logout-btn" class="side-signout">Sign out</button>
     </div>
-  </header>
+  </aside>
 
   <!-- Ana içerik -->
   <main class="page">

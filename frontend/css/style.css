@@ -2490,3 +2490,206 @@ body.auth-page .auth-container {
 @media (max-width: 560px) {
   .nutrition-totals { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ═══════════════════════════════════════════════════════ */
+/*  SIDEBAR NAVIGASYON                                     */
+/*                                                         */
+/*  Üst bardan buraya taşındı. Sebepler:                   */
+/*   1. 6 hedef tek satıra sığmıyordu ve sıra TARİHSELDİ   */
+/*      (her faz sonuna bir link eklemiş), akışı           */
+/*      göstermiyordu.                                     */
+/*   2. Arama nav'da HİÇ YOKTU — uygulamanın ana işine     */
+/*      tek yol logoya tıklamaktı.                         */
+/*   3. E-posta 220px'lik bir butonda navigasyonla         */
+/*      yarışıyordu; kimlik göstergesi olmalı.             */
+/*   4. Mobilde hiç düzenleme yoktu (yalnızca padding      */
+/*      küçülüyordu), 5 link + e-posta 360px'e sığmaz.     */
+/*                                                         */
+/*  Gruplar akış zincirini görünür kılıyor:                */
+/*  Pantry → Plan → Shopping (elimde ne var → ne           */
+/*  pişireceğim → ne almalıyım).                           */
+/*                                                         */
+/*  privacy.html eski .app-header'ı kullanmaya devam       */
+/*  ediyor (herkese açık sayfa, nav'ı yok) — o kurallar    */
+/*  KALDIRILMADI.                                          */
+/* ═══════════════════════════════════════════════════════ */
+
+.has-sidebar {
+  /* Sidebar `fixed`; içeriği sarmalayan bir div'e gerek kalmasın diye
+     boşluğu body açıyor. Böylece 8 sayfada yalnızca header bloğu değişti,
+     sayfa yapısı hiç bozulmadı. */
+  padding-left: 240px;
+}
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 240px;
+  background: var(--olive);
+  color: var(--bg);
+  display: flex;
+  flex-direction: column;
+  padding: 1.4rem 0 1rem;
+  z-index: 40;
+  overflow-y: auto;
+}
+
+.sidebar .brand {
+  color: var(--bg);            /* .brand varsayılanı olive — burada görünmez olurdu */
+  padding: 0 1.25rem 1.5rem;
+}
+
+.side-nav {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.side-heading {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(245, 240, 232, 0.45);
+  padding: 1.15rem 1.25rem 0.4rem;
+}
+
+.side-link {
+  display: block;
+  padding: 0.55rem 1.25rem;
+  color: rgba(245, 240, 232, 0.82);
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 500;
+  border-left: 3px solid transparent;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.side-link:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+}
+
+/* Bulunduğun sayfa: aksan çubuğu. Üst barda hiç yoktu — kullanıcı nerede
+   olduğunu yalnızca sayfa başlığından anlıyordu. */
+.side-link.active {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-left-color: var(--accent);
+}
+
+/* Arama ana iş: gruplardan ayrı ve üstte duruyor */
+.side-link--primary {
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+}
+
+/* ── Kullanıcı bloğu (en altta) ───────────────────────── */
+.side-user {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 0.9rem 1.25rem 0;
+  margin-top: 0.5rem;
+}
+
+.side-user-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+
+/* Baş harfli avatar — e-postanın yerine geçiyor. 21 karakterlik bir adres
+   yerine 30px'lik bir daire; e-posta yanında ama küçük ve kırpılmış. */
+.user-avatar {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.side-user-email {
+  font-size: 0.78rem;
+  color: rgba(245, 240, 232, 0.6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-signout {
+  width: 100%;
+  padding: 0.45rem;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-sm);
+  color: rgba(245, 240, 232, 0.85);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.side-signout:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+/* ── Mobil: dar ekranda çekmece ───────────────────────── */
+/* Üst bar yalnızca burada görünüyor; masaüstünde sidebar zaten markayı
+   taşıdığı için gereksiz. */
+.mobile-bar { display: none; }
+
+.nav-toggle {
+  background: transparent;
+  border: 0;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--olive);
+  cursor: pointer;
+  padding: 0.2rem 0.5rem 0.2rem 0;
+}
+
+.nav-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 39;
+}
+
+@media (max-width: 900px) {
+  .has-sidebar { padding-left: 0; }
+
+  .mobile-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0.85rem 1rem;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+  }
+
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 2px 0 20px rgba(0, 0, 0, 0.2);
+  }
+
+  .sidebar.open { transform: translateX(0); }
+}
+
+/* Çekmece animasyonu hareket hassasiyeti ayarına saygı duyuyor */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
+}

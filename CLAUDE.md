@@ -95,7 +95,7 @@
 - `frontend/js/firebase.js` — Firebase init + `authReady` promise'i (oturum durumu **kesinleşene** kadar bekler). Her sayfada compat SDK script'lerinden sonra, diğer JS'lerden önce yüklenir.
 - `frontend/js/logger.js` — **frontend logging + süre ölçümü** (Faz 13). `api/logger.py`'nin tarayıcı tarafındaki eşi: aynı satır biçimi, aynı seviyeler, aynı "yavaşsa sarı" kuralı. `Logger.get(scope)`, `Logger.timed(fn, ...)` (decorator'ın JS'teki higher-order function karşılığı), `Logger.duration(...)`. Ayarlar `localStorage` üzerinden (`log_level`, `slow_ms`) — tarayıcıda ortam değişkeni yok. Her sayfada, kendisini kullanan dosyalardan önce yüklenir.
 - `frontend/js/config.js` — `window.API_BASE`'i ortama göre kuruyor (yerel/LAN → `localhost:8080`, canlı → Render). `api.js`'ten önce yüklenir (Faz 10).
-- `frontend/js/api.js` — ortak API katmanı (backend adresini `window.API_BASE`'den alır; Firebase ID token'ı header'a ekleyen fetch wrapper, `authReady` tabanlı auth guard, 401'de otomatik logout, kullanıcı menüsü/email + dropdown sign out, doğrulanmamış e-posta için hatırlatma bandı)
+- `frontend/js/api.js` — ortak API katmanı (backend adresini `window.API_BASE`'den alır; Firebase ID token'ı header'a ekleyen fetch wrapper, `authReady` tabanlı auth guard, 401'de otomatik logout, kullanıcı e-postası + baş harfli avatar, **`initSidebar`** — aktif sayfa vurgusu + mobil çekmece (Faz 23), doğrulanmamış e-posta için hatırlatma bandı)
 - `frontend/js/auth.js` — giriş/kayıt formu mantığı + Google girişi (Firebase `signInWithPopup`), hesap bağlama (`linkWithCredential`), kayıtta `sendEmailVerification()`, şifre sıfırlama (`sendPasswordResetEmail`; Faz 12)
 - `frontend/js/search.js` — arama sayfası, mode tabs (Faz 17'de üçüncüsü: **From my pantry**), kamera stream (`getUserMedia`) + "Add to pantry", sesli arama (`SpeechRecognition`), sonuç render (Faz 17'de eşleşme rozeti). AI yorumunu ayrı istekle çekiyor (`loadCommentary`, iskelet animasyonu + `commentarySeq` yarış koruması; Faz 11). Faz 21'de kamera mantığı ortak `js/camera.js`'e taşındı
 - `frontend/js/recipe.js` — detay sayfası, `parseInstructions()` (R vector kalıntılarını filtreliyor) + Faz 16 koleksiyon seçicisi (lazy-load checkbox listesi, kalp↔koleksiyon senkronu)
@@ -173,7 +173,46 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 - **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Faz 6–21'in tamamı bu branch'te. `main` el değmemiş durumda. **Canlı deploy `firebase-auth` dalından yapılıyor** (hem Render hem Vercel bu dalı izliyor), dolayısıyla merge sonrası deploy dalını `main`'e çevirmek gerekecek.
 - Repo **GitHub'da**: `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private). Sırlar (`firebase-key.json`, `.env`) gitignored, repoda yok — Render'da env var olarak duruyor.
 
-## Güncel Durum: Faz 21 (Fotoğraftan besin değeri — FatSecret) ✅
+## Güncel Durum: Faz 23 (Navigasyon yeniden tasarımı — sidebar) ✅
+
+**Tetikleyici:** Kullanıcı geri bildirimi — *"sağ üstteki özelliklerin sıralaması mantıksız oldu, yanlarında kocaman bir e-posta adresi var"*. Renkler beğenildi, **palete dokunulmadı**.
+
+### Üst barda dört sorun vardı
+1. **Sıra TARİHSELDİ** — her faz sonuna bir link eklemişti (Plan · Pantry · Shopping · Nutrition · Favorites), akışı göstermiyordu.
+2. **Arama nav'da HİÇ YOKTU** — uygulamanın ana işine tek yol sol üstteki logoya tıklamaktı; kimse bunu bilemez.
+3. **E-posta 220px'lik bir butonda** navigasyonla yarışıyordu (21 karakterlik adres), oysa kimlik göstergesi olmalıydı.
+4. **Mobilde hiç düzenleme yoktu** — CSS'te yalnızca padding/font küçülüyordu; 5 link + e-posta butonu 360px'e sığmaz.
+
+### Sidebar (240px, koyu zeytin)
+Renk paletten: aynı `--olive`, besin değeri kutularında zaten kullanılıyor; krem içeriği çerçeveliyor.
+
+**Gruplar akış zincirini GÖRÜNÜR kılıyor** — sunumda parmakla gösterilebilir:
+```
+Search                          ← artık nav'da, gruplardan ayrı
+KITCHEN   Pantry → Meal plan → Shopping list
+TOOLS     Nutrition
+SAVED     Your recipes
+────────  (G) e-posta · Sign out
+```
+
+- **Baş harfli avatar** e-postanın yerine geçti; adres yanında küçük ve kırpılmış.
+- **Aktif sayfa turuncu çubukla** işaretli — üst barda bu hiç yoktu, kullanıcı nerede olduğunu yalnızca başlıktan anlıyordu.
+- **900px altında çekmece** (hamburger + overlay + Escape ile kapanma).
+
+### İçeriği sarmalayan div YOK
+Sidebar `position: fixed`, boşluğu `body.has-sidebar { padding-left: 240px }` açıyor. Böylece 8 sayfada **yalnızca header bloğu** değişti, sayfa yapısına hiç dokunulmadı — `<main class="page">` olduğu yerde kaldı.
+
+**`privacy.html` eski `.app-header`'ını KORUYOR** (herkese açık sayfa, nav'ı yok) — o CSS kuralları silinmedi. `index.html` zaten header'sız.
+
+### Doğrulama ✅
+- 8 sayfa dönüştürüldü, eski header kalıntısı (`app-nav`/`app-header`/`user-dropdown`) **0**
+- `api.js`'in aradığı tüm ID'ler + 6 nav linki 8 sayfada da tam
+- **Çekmece mantığı 9 senaryoda** sahte-DOM ile test edildi: aktif link eşleşmesi, hamburger, overlay tıklaması, Escape, başka tuşun kapatmaması, `aria-expanded` senkronu
+- 15 JS dosyası derleniyor, 14 yeni CSS sınıfı stilli, 537 backend testi geçiyor
+
+---
+
+## Faz 21 (Fotoğraftan besin değeri — FatSecret) ✅
 
 **Tetikleyici:** Kullanıcı isteği — "kullanıcı tabak/meyve/sebze fotoğrafı çektiğinde besin değerlerini versin". Yol haritasındaki **"beslenme takibi (premium)"** adımının kapısı. Araştırması Faz 20'de yapılmıştı (aşağıdaki bölüm), bu fazda **implement edildi**.
 
