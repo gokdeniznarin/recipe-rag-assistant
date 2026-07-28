@@ -23,6 +23,13 @@ const apiLog = Logger.get('api');
 const SLOW_THRESHOLDS = [
   [/\/api\/recipes\/commentary/, 5000],
   [/\/api\/recipes\/from-image/, 8000],
+  // Besin değeri: vision + öğe başına FatSecret araması. Fotoğrafın base64
+  // yüklemesi FRONTEND ölçümüne dahil ama backend'inkine değil (o istek
+  // geldikten sonra başlıyor), o yüzden eşik backend'in 5 sn'sinden yüksek.
+  // Eklenmezse varsayılan 1 sn'ye düşüyordu ve normal çalışan her istek sarı
+  // yanıyordu — backend YEŞİL derken tarayıcı SARI diyor, yani uyarı anlamını
+  // yitiriyor. Faz 13b'de diğer uçlar için tam bu düzeltilmişti.
+  [/\/api\/nutrition\/from-image/, 8000],
 ];
 
 function thresholdFor(path) {
