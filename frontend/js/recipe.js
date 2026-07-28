@@ -35,6 +35,9 @@ const planConfirm    = document.getElementById('plan-confirm');
 const planModalError = document.getElementById('plan-modal-error');
 const planStatus     = document.getElementById('plan-status');
 
+const similarSection = document.getElementById('similar-section');
+const similarList    = document.getElementById('similar-list');
+
 const infoTime     = document.getElementById('info-time');
 const infoCalories = document.getElementById('info-calories');
 const infoProtein  = document.getElementById('info-protein');
@@ -100,6 +103,37 @@ function renderRecipe(recipe) {
       .map(step => `<li>${escapeHtml(step)}</li>`)
       .join('');
   }
+
+  renderSimilar(recipe.similar || []);
+}
+
+// Öneriler backend'de AYNI yanıtla geliyor (maliyeti ~6 ms, ayrı bir istek
+// Render'da ~230 ms ağ turu olurdu). Boşsa bölüm hiç görünmüyor — silinmiş bir
+// tarifte ya da beklenmedik bir hatada sayfa sessizce eski hâline dönüyor.
+function renderSimilar(recipes) {
+  if (recipes.length === 0) {
+    similarSection.classList.add('hidden');
+    return;
+  }
+
+  // Kart markup'ı arama sonuçlarıyla AYNI (api.js'teki ortak recipeThumbHtml) —
+  // aynı bileşeni üçüncü kez elle yazmamak için.
+  similarList.innerHTML = recipes.map(r => `
+    <a href="recipe.html?id=${encodeURIComponent(r.id)}" class="recipe-card">
+      ${recipeThumbHtml(r)}
+      <div class="recipe-card-body">
+        <h3 class="recipe-name">${escapeHtml(r.name)}</h3>
+        <p class="recipe-meta">
+          ${r.category ? escapeHtml(r.category) : ''}
+          ${r.total_time_min > 0 ? ` · ${r.total_time_min} min` : ''}
+          ${r.calories > 0 ? ` · ${Math.round(r.calories)} cal` : ''}
+        </p>
+      </div>
+      <span class="recipe-arrow">→</span>
+    </a>
+  `).join('');
+
+  similarSection.classList.remove('hidden');
 }
 
 /**

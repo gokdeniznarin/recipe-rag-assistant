@@ -173,7 +173,44 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 - **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Faz 6–21'in tamamı bu branch'te. `main` el değmemiş durumda. **Canlı deploy `firebase-auth` dalından yapılıyor** (hem Render hem Vercel bu dalı izliyor), dolayısıyla merge sonrası deploy dalını `main`'e çevirmek gerekecek.
 - Repo **GitHub'da**: `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private). Sırlar (`firebase-key.json`, `.env`) gitignored, repoda yok — Render'da env var olarak duruyor.
 
-## Güncel Durum: Faz 24 (CI + README — sunum hazırlığı) ✅
+## Güncel Durum: Faz 25 (Benzer tarifler — öneri sistemi) ✅
+
+**Tetikleyici:** "Projeye ne eklenebilir?" Tarif detay sayfası **çıkmaz sokaktı** — okuyup geri dönmekten başka yol yoktu.
+
+### ⚠️ Bu RAG DEĞİL — adlandırma düzeltmesi
+İlk sunumumda "RAG'i derinleştirir" demiştim, **kullanıcı haklı olarak itiraz etti.** RAG = Retrieval-**Augmented Generation**; iki yarısı var. Bu özellik yalnızca *retrieval* kullanıyor, LLM'e hiç gidilmiyor. Doğru adı **öneri sistemi**. Aynı vektör indeksini kullanıyor olmak onu RAG yapmıyor. (RAG'e çevirmek mümkündü — listeye bir LLM açıklaması eklemek — ama her tarif görüntülemeye bir Gemini çağrısı bindirirdi, yapılmadı.)
+
+### ⚡ Asıl teknik bulgu: saklanmış vektörle sorgu encode'u ATLIYOR
+Aynı konteynerde ölçüldü:
+
+| İşlem | Süre |
+|---|---:|
+| `get(include=["embeddings"])` | **1.1 ms** |
+| `query(query_texts=[...])` | **303 ms** ← ONNX encode DAHİL |
+| `query(query_embeddings=[...])` | **5.3 ms** ← encode YOK |
+
+Encode bu projenin en pahalı adımı (Render'da ~6 sn, Faz 13c/17). Tarifin vektörü zaten veritabanında durduğu için öneri listesi normal bir aramadan **~600 kat ucuz**. Gerçek veriyle uçtan uca: detay endpoint'i **4–6 ms** (öneriler dahil).
+
+### Kararlar
+- **AYNI YANITTA dönüyor**, ayrı endpoint'te değil: maliyet ~6 ms, oysa Render'da fazladan bir istek ~230 ms ağ turu + ikinci token doğrulaması. Ayırmak kullanıcıyı yavaşlatırdı. (Commentary AYRI çünkü o Gemini'yi bekliyor — o gerekçe burada yok.)
+- **`limit + 1` çekiliyor**: en yakın sonuç HER ZAMAN tarifin kendisi (mesafe 0.000), düşürülüyor.
+- **Hata yutuluyor**: öneriler sayfanın ikincil parçası, gelmemesi tarifi göstermemek için sebep değil.
+- **numpy tuzağı**: `embeddings` numpy dizisi, `if not embeddings` **ValueError** fırlatır — `len(...) == 0` kullanılıyor. Teste bağlandı.
+
+### Kalite (gerçek veri)
+```
+Mexican Chocolate Pound Cake → Mexican Hot Chocolate Cupcakes
+                               Mexican Chocolate Streusel Cake
+                               Chocolate Pound Cake With Glaze
+```
+Hem "Mexican" hem "chocolate" hem "cake" boyutunu yakalıyor — tek kelime eşleşmesi değil.
+
+### Test (537 → **543**, +6)
+`TestSimilarRecipes`: öneri dönüyor, **kendisi listeden çıkarılıyor**, **`query_embeddings` kullanılıyor `query_texts` DEĞİL** (encode atlanıyor mu — asıl performans iddiası), embedding yoksa boş liste, hata sayfayı kırmıyor, **hiçbir LLM çağrılmıyor** (öneri sistemi, RAG değil).
+
+---
+
+## Faz 24 (CI + README — sunum hazırlığı) ✅
 
 ### GitHub Actions (`.github/workflows/tests.yml`)
 537 test vardı ama **hiçbiri otomatik koşmuyordu**. İki iş: `pytest` (Python 3.12 + 3.13 matrisi) ve `node scripts/check_frontend.js`. Dal filtresi **bilerek yok** — bugün varsayılan dal `firebase-auth`, ileride `main` olacak; filtre koysaydık taşınma sırasında CI sessizce hiç koşmayan bir hâle düşerdi.

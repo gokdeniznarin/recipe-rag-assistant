@@ -402,6 +402,41 @@ def nutrition_from_image(
 
 
 
+# Tarif sayfasının altında kaç öneri gösterileceği.
+SIMILAR_COUNT = 6
+
+
+def _similar_recipes(recipe_id: str, limit: int = SIMILAR_COUNT) -> list[dict]:
+    """Bu tarife anlamsal olarak en yakın diğer tarifler.
+
+    ⚡ SAKLANMIŞ VEKTÖRLE sorgulanıyor (`query_embeddings`), metinle değil.
+    Fark ölçüldü (aynı konteyner, aynı koleksiyon):
+
+        collection.get(include=["embeddings"])   1.1 ms
+        query(query_texts=[...])                 303 ms   ← ONNX encode DAHİL
+        query(query_embeddings=[...])            5.3 ms   ← encode YOK
+
+    Encode bu projenin en pahalı adımı — Render'ın 0.1 vCPU'sunda ~6 sn
+    (Faz 13c/17 ölçümleri). Tarifin vektörü zaten veritabanında durduğu için
+    burada o adım tamamen atlanıyor: öneri listesi, normal bir aramadan
+    ~600 kat ucuz.
+
+    Bu bir ÖNERİ SİSTEMİ, RAG DEĞİL: yalnızca retrieval var, LLM'e hiç
+    gidilmiyor. (RAG olması için sonuçların LLM'e verilip bir açıklama
+    üretilmesi gerekirdi — bilinçli olarak yapılmadı, her tarif görüntülemeye
+    bir Gemini çağrısı bindirirdi.)
+    """
+    stored = collection.get(ids=[recipe_id], include=["embeddings"])
+    embeddings = stored.get("embeddings")
+    # DİKKAT: numpy dizisi — `if not embeddings` ValueError fırlatır.
+    if embeddings is None or len(embeddings) == 0:
+        return []
+
+    # limit+1 çekiliyor: en yakın sonuç tarifin KENDİSİ (mesafe 0.000).
+    results = collection.query(query_embeddings=[embeddings[0]], n_results=limit + 1)
+    return [c for c in _cards_from_query(results) if c["id"] != recipe_id][:limit]
+
+
 @app.get("/api/recipes/{recipe_id}")
 @timed
 def get_recipe_detail(recipe_id: str, user_email: str = Depends(get_current_user_email)):
@@ -417,8 +452,23 @@ def get_recipe_detail(recipe_id: str, user_email: str = Depends(get_current_user
 
     meta = results["metadatas"][0]
 
+    # Öneriler AYNI YANITTA dönüyor, ayrı bir endpoint'te değil: maliyeti
+    # ölçüldü (~6 ms), oysa Render'da fazladan bir istek ~230 ms ağ turu +
+    # ikinci bir token doğrulaması demek. Yani ayırmak kullanıcıyı yavaşlatırdı.
+    # (Yorum/commentary AYRI tutuluyor çünkü o Gemini'yi bekliyor — buradaki
+    # gerekçe orada geçerli değil.)
+    #
+    # Hata YUTULUYOR: öneri listesi sayfanın ikincil bir parçası, gelmemesi
+    # tarif detayını göstermemek için sebep değil.
+    try:
+        similar = _similar_recipes(recipe_id)
+    except Exception as e:
+        log.error("Similar recipes failed for %r: %s", recipe_id, e)
+        similar = []
+
     return {
         "id": results["ids"][0],
+        "similar": similar,
         "name": meta["name"],
         "category": meta["category"],
         "total_time_min": meta["total_time_min"],

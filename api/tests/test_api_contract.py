@@ -349,3 +349,111 @@ class TestGenerateFallbackChain:
         assert set(llm.COMMENTARY_MODELS) == set(llm.VISION_MODELS)
         # Çapraz başlangıç korunuyor: iki akış taze havuzla giriyor
         assert llm.COMMENTARY_MODELS[0] != llm.VISION_MODELS[0]
+
+
+class TestSimilarRecipes:
+    """Tarif sayfasındaki öneri listesi.
+
+    ÖNERİ SİSTEMİ, RAG DEĞİL: yalnızca retrieval, LLM'e hiç gidilmiyor.
+    """
+
+    def _stub_embeddings(self, collection, vector=None):
+        """collection.get'i embedding döndürecek şekilde ayarlar.
+
+        Gerçek ChromaDB numpy dizisi döndürüyor; sahtesi de öyle döndürmeli,
+        çünkü kod `len(...) == 0` ile kontrol ediyor — `if not embeddings`
+        numpy'da ValueError fırlatırdı ve bu ayrım kolayca kaçırılır.
+        """
+        import numpy as np
+        base = collection.get.return_value
+
+        def fake_get(ids=None, include=None, **kwargs):
+            if include and "embeddings" in include:
+                return {"ids": list(ids or []),
+                        "embeddings": np.array([vector if vector is not None else [0.1] * 384])}
+            return base
+
+        collection.get.side_effect = fake_get
+
+    def test_similar_recipes_are_returned(self, api, auth_client, collection):
+        main, _ = api
+        self._stub_embeddings(collection)
+        meta = collection.query.return_value["metadatas"][0][0]
+        collection.query.return_value = {
+            "documents": [["a", "b"]],
+            "metadatas": [[meta, meta]],
+            "ids": [["17450", "999"]],
+        }
+
+        data = auth_client.get("/api/recipes/17450").json()
+
+        assert [r["id"] for r in data["similar"]] == ["999"]
+
+    def test_the_recipe_itself_is_excluded(self, api, auth_client, collection):
+        """En yakın sonuç HER ZAMAN tarifin kendisi (mesafe 0) — düşürülmeli."""
+        main, _ = api
+        self._stub_embeddings(collection)
+        meta = collection.query.return_value["metadatas"][0][0]
+        collection.query.return_value = {
+            "documents": [["a"]], "metadatas": [[meta]], "ids": [["17450"]],
+        }
+
+        data = auth_client.get("/api/recipes/17450").json()
+
+        assert data["similar"] == []
+
+    def test_it_queries_by_stored_vector_not_by_text(self, api, auth_client, collection):
+        """KRİTİK: metinle sorgu ONNX encode tetikler (Render'da ~6 sn).
+        Saklanmış vektörle sorgu o adımı tamamen atlıyor (ölçüldü: 5.3 ms)."""
+        main, _ = api
+        self._stub_embeddings(collection)
+
+        auth_client.get("/api/recipes/17450")
+
+        kwargs = collection.query.call_args.kwargs
+        assert "query_embeddings" in kwargs
+        assert "query_texts" not in kwargs
+
+    def test_a_missing_embedding_yields_no_suggestions(self, api, auth_client, collection):
+        import numpy as np
+        main, _ = api
+        base = collection.get.return_value
+        collection.get.side_effect = lambda ids=None, include=None, **k: (
+            {"ids": [], "embeddings": np.array([])} if include and "embeddings" in include else base
+        )
+
+        data = auth_client.get("/api/recipes/17450").json()
+
+        assert data["similar"] == []
+        assert data["name"] == "Test Recipe"      # detay yine geldi
+
+    def test_a_failure_does_not_break_the_page(self, api, auth_client, collection):
+        """Öneriler sayfanın İKİNCİL parçası — gelmemesi tarifi göstermemek
+        için sebep değil."""
+        main, _ = api
+        base = collection.get.return_value
+
+        def exploding_get(ids=None, include=None, **kwargs):
+            if include and "embeddings" in include:
+                raise RuntimeError("index unavailable")
+            return base
+
+        collection.get.side_effect = exploding_get
+
+        response = auth_client.get("/api/recipes/17450")
+
+        assert response.status_code == 200
+        assert response.json()["similar"] == []
+        assert response.json()["name"] == "Test Recipe"
+
+    def test_no_llm_is_involved(self, api, auth_client, collection, monkeypatch):
+        """Bu bir öneri sistemi, RAG değil — hiçbir Gemini çağrısı olmamalı."""
+        main, _ = api
+        self._stub_embeddings(collection)
+        calls = []
+        monkeypatch.setattr(main, "generate_answer", lambda *a, **k: calls.append(1))
+        monkeypatch.setattr(main, "is_food_request", lambda *a, **k: calls.append(1) or True)
+
+        auth_client.get("/api/recipes/17450")
+
+        assert calls == []
