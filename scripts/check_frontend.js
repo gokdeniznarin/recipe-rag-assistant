@@ -28,10 +28,10 @@ for (const file of jsFiles) {
   try {
     new vm.Script(source, { filename: file });
   } catch (e) {
-    fail(`${file} derlenmiyor :: ${e.message}`);
+    fail(`${file} does not parse :: ${e.message}`);
   }
 }
-if (!failures) ok(`${jsFiles.length} JS dosyası derleniyor`);
+if (!failures) ok(`${jsFiles.length} JS files parse`);
 
 // ── 2. Sayfaya özel script'in aradığı ID'ler HTML'de var mı ──
 // YALNIZCA sayfaya özel script kontrol ediliyor (son <script src="js/...">).
@@ -45,7 +45,7 @@ for (const page of fs.readdirSync(ROOT).filter(f => f.endsWith('.html'))) {
 
   const scripts = [...html.matchAll(/<script src="js\/([^"]+)"><\/script>/g)].map(m => m[1]);
   for (const s of scripts) {
-    if (!fs.existsSync(path.join(JS_DIR, s))) fail(`${page}: js/${s} yok`);
+    if (!fs.existsSync(path.join(JS_DIR, s))) fail(`${page}: js/${s} does not exist`);
   }
 
   const own = scripts.filter(s => !SHARED.has(s));
@@ -58,8 +58,8 @@ for (const page of fs.readdirSync(ROOT).filter(f => f.endsWith('.html'))) {
       [...source.matchAll(/getElementById\(['"]([^'"]+)['"]\)/g)].map(m => m[1])
     );
     const missing = [...wanted].filter(id => !ids.has(id));
-    if (missing.length) fail(`${page} ← js/${script}: eksik ID → ${missing.join(', ')}`);
-    else ok(`${page} ← js/${script} (${wanted.size} ID)`);
+    if (missing.length) fail(`${page} <- js/${script}: missing id(s) -> ${missing.join(', ')}`);
+    else ok(`${page} <- js/${script} (${wanted.size} ids)`);
   }
 }
 
@@ -71,8 +71,8 @@ for (const page of fs.readdirSync(ROOT).filter(f => f.endsWith('.html'))) {
   const html = fs.readFileSync(path.join(ROOT, page), 'utf8');
   if (!html.includes('class="sidebar"')) continue;
   const missing = SIDEBAR_IDS.filter(id => !html.includes(`id="${id}"`));
-  if (missing.length) fail(`${page}: sidebar iskeletinde eksik → ${missing.join(', ')}`);
+  if (missing.length) fail(`${page}: sidebar shell missing -> ${missing.join(', ')}`);
 }
 
-console.log(failures === 0 ? '\nfrontend kontrolleri geçti' : `\n${failures} sorun`);
+console.log(failures === 0 ? '\nfrontend checks passed' : `\n${failures} problem(s)`);
 process.exit(failures === 0 ? 0 : 1);

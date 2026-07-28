@@ -26,23 +26,23 @@ jobs:
           cache: pip
           cache-dependency-path: api/requirements-dev.txt
 
-      - name: Bağımlılıkları kur
+      - name: Install dependencies
         run: pip install -r api/requirements-dev.txt
 
-      - name: Testler
+      - name: Run tests
         # Testler ağa ÇIKMIYOR: conftest firebase/firestore/gemini'yi sys.modules
         # üzerinden, ChromaDB'yi patch ile sahteliyor. Dolayısıyla CI'da API
         # anahtarı gerekmiyor.
         run: python -m pytest -q
 
-      - name: Gömülü veritabanı kirlenmedi mi
+      - name: Embedded database unchanged
         # ChromaDB bir klasörü AÇARKEN BİLE chroma.sqlite3'e yazıyor. conftest
         # bunu engelliyor ama koruma sessizce bozulabilir — o zaman commit'li
         # 73MB'lık dosya her test koşusunda değişir. Bu adım onu yakalar.
         run: git diff --exit-code --stat -- api/chroma_data
 
   frontend:
-    name: frontend kontrolleri
+    name: frontend checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
