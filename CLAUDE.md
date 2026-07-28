@@ -7,7 +7,7 @@
 - **Backend:** Python, FastAPI
 - **Veritabanı:** İki yer, ama **rolleri kesin ayrı** (Faz 8–9'da netleşti): **ChromaDB** yalnızca tarifler için — semantic search + metadata filtreleme aynı yerde yapılıyor (MongoDB kullanılmadı), veri salt-okunur ve image'a gömülü, ortada sunucu yok. **Firestore** ise çalışma anında değişen kullanıcı verisi için — favoriler, koleksiyonlar (Faz 16), dolap/pantry (Faz 17), yemek planı (Faz 18) ve alışveriş listesi overlay'i (Faz 19). Eski "sadece ChromaDB" kararı favorileri de oraya koyuyordu; bu yanlıştı — her favori kaydına sahte bir `[[0.0] * 384]` embedding yazılıyordu, yani vektör veritabanı anahtar-değer deposu gibi kullanılıyordu. Ayrıca kalıcı disk ihtiyacının tek sebebi buydu ve deploy'u kilitliyordu.
 - **Embedding modeli:** `all-MiniLM-L6-v2` (İngilizce arayüz kararı verildiği için çok dilli model şart değil). Model **ChromaDB'nin kendi varsayılan embedding fonksiyonu** (`DefaultEmbeddingFunction`) üzerinden, **ONNX** motoruyla çalışıyor — `sentence-transformers` + `torch` kurulumu kaldırıldı (bkz. Faz 7). Kod artık embedding'i elle üretmiyor: `collection.query(query_texts=[...])` ile metni doğrudan ChromaDB'ye veriyor, embedding'i o üretiyor.
-- **LLM:** Google Gemini API, **çoklu model** (Faz 11b — kota model başına olduğu için sırayla denenen liste; **Faz 14'te 5 modele çıkarıldı ve vision sırası düzeltildi**; bkz. `llm.py` `COMMENTARY_MODELS` / `VISION_MODELS`), `google-genai` kütüphanesi (eski `google-generativeai` deprecated olduğu için güncel kütüphaneye geçildi). Model seçimi iki kez değişti: önce `gemini-2.5-flash` → `gemini-flash-latest` (ikinci API key'in projesinde 2.5'e erişim kapalıydı + alias deprecation'a karşı güvenliydi), sonra **geri `gemini-2.5-flash`'a** — çünkü alias'ın işaret ettiği model free tier'da sürekli **503 (overloaded)** veriyordu, SDK retry'ları her aramayı ~20sn'ye çıkarıyordu. Ölçüm: alias 20.1sn, `gemini-2.5-flash` ort. 3.5sn (**~6x**). Ödünleşim kabul edildi: sabit sürüm ileride deprecate olabilir, o zaman güncel sürüme taşınır (hata mesajı net gelir).
+- **LLM:** Google Gemini API, **çoklu model** (Faz 11b — kota model başına olduğu için sırayla denenen liste; **Faz 14'te 5, Faz 22'de 7 modele çıkarıldı**; bkz. `llm.py` `COMMENTARY_MODELS` / `VISION_MODELS`), `google-genai` kütüphanesi (eski `google-generativeai` deprecated olduğu için güncel kütüphaneye geçildi). Model seçimi iki kez değişti: önce `gemini-2.5-flash` → `gemini-flash-latest` (ikinci API key'in projesinde 2.5'e erişim kapalıydı + alias deprecation'a karşı güvenliydi), sonra **geri `gemini-2.5-flash`'a** — çünkü alias'ın işaret ettiği model free tier'da sürekli **503 (overloaded)** veriyordu, SDK retry'ları her aramayı ~20sn'ye çıkarıyordu. Ölçüm: alias 20.1sn, `gemini-2.5-flash` ort. 3.5sn (**~6x**). Ödünleşim kabul edildi: sabit sürüm ileride deprecate olabilir, o zaman güncel sürüme taşınır (hata mesajı net gelir).
 - **Frontend:** Sade HTML/CSS/JS (React/Next.js tercih edilmedi — React öğrenme eğrisi kalan sürede risk yaratıyordu, projenin asıl değeri backend RAG pipeline'ında). Sayfa başına ayrı HTML dosyaları, ortak CSS tek dosyada, her sayfanın kendi JS dosyası. Sayfa yönlendirme klasik `<a href>` ile — SPA değil, MPA. Vercel'e statik site olarak deploy edilebilir yapıda.
 - **Frontend tasarım:** Koyu zeytin yeşili (`#2D3B2D`) + krem (`#F5F0E8`) + sıcak turuncu aksan (`#E8824A`) paleti, Playfair Display (serif başlıklar, yemek dergisi hissi) + Inter (UI). Merkezi CSS tokens ile tutarlı stil.
 - **Kimlik doğrulama:** **Firebase Auth** (email/şifre + Google). Önceki custom JWT + bcrypt + manuel Google doğrulama kurulumundan tamamen geçildi (bkz. Faz 6). Şifre bizim sunucumuza hiç ulaşmıyor: tarayıcı doğrudan Firebase ile konuşuyor, `getIdToken()` ile alınan ID token her istekte `Authorization: Bearer` header'ına konuyor ve süresi dolunca SDK sessizce yeniliyor. Backend (`api/auth.py`) yalnızca Admin SDK ile `verify_id_token()` yapıp e-postayı çıkarıyor — başka hiçbir kimlik mantığı yok. Frontend Firebase JS SDK'nın **compat** build'ini kullanıyor (mevcut global-script/MPA mimarisini korumak için; modüler SDK sayfalar arası global paylaşımı bozardı). Kullanıcılar artık ChromaDB'de değil Firebase'de. Favoriler e-posta anahtarlı olduğu için migrasyondan hiç etkilenmedi.
@@ -346,6 +346,40 @@ Ceza ağırlıkları bilinçli: marka cezası tam-eşleşme bonusundan çok daha
 `docker compose up -d --build api` (backend `COPY` ile image'a giriyor, **rebuild şart**) + `docker restart recipe_frontend` + `Ctrl+Shift+R`. Kamera sekmesi → fotoğraf çek → "Nutrition facts".
 
 **Opsiyonel env var'lar:** `FATSECRET_CONSUMER_KEY` / `FATSECRET_CONSUMER_SECRET`. `docker-compose.yml` zaten `env_file: .env` kullandığı için **compose değişikliği gerekmiyor** — `.env`'e eklemek yeterli. README'ye de yazıldı.
+
+---
+
+## Faz 22 (Model zinciri genişletildi + 503 fallback'i) ✅
+
+**Tetikleyici:** "Daha fazla ekleyebileceğimiz model var mı?" Adaylar tahmin edilmedi, `client.models.list()` ile bulundu (Faz 11b'de tahmin 404 vermişti) — 41 model `generateContent` destekliyor ama çoğu yanlış alet (görsel ÜRETİMİ, TTS, lyria, robotics, deep-research). Alias'lar (`gemini-flash-latest`) bilerek elendi: Faz 6'daki 503+20sn felaketinin kaynağıydı ve hedefiyle **aynı kota havuzunu** paylaşabilir.
+
+### Ölçüm (2026-07-28, hem metin hem görsel)
+| Model | Metin | Görsel | Karar |
+|---|---:|---:|---|
+| `gemini-3.1-flash-lite-preview` | **614 ms** | **889 ms** | ✅ eklendi (sınıflandırıcı **6/6**) |
+| `gemini-3-flash-preview` | 3219 ms | 2251 ms | ✅ eklendi (yavaş, arkaya) |
+| `gemini-2.0-flash` / `-lite` | 429 | 429 | ❌ ayrı kota havuzu DEĞİL |
+| `gemini-2.5-pro` | 429 | 429 | ❌ ücretsiz katmanda hak yok |
+| `gemini-2.5-flash-lite` | 404 | 404 | ❌ hâlâ "yeni kullanıcılara kapalı" (Faz 11b'deki gibi) |
+
+**5 → 7 model: akış başına günlük kapasite 100 → 140.**
+
+**Preview modeller bilerek ÖNDE DEĞİL:** `3.1-flash-lite-preview` listenin en hızlısı (614 ms) ama preview'lar habersiz geri çekilebiliyor (`gemini-2.5-flash-lite`'ın başına tam bu geldi). Kararlı modeller önde, preview'lar taşma kapasitesi olarak arkada. Geri çekilirlerse 404 dönüp zincirde sessizce atlanıyorlar — en kötü ihtimalle bir ağ turu.
+
+### 🔴 Asıl bulgu: 503 zinciri KIRIYORDU
+`_generate` yalnızca 429/404'ü "bu modeli atla" sayıyordu. **503 doğrudan fırlatılıyordu**, yani aşırı yüklü TEK bir model, sıradaki 6 model hazır beklerken bütün isteği çöktürüyordu. 503 = "model şu an aşırı yüklü", bizim açımızdan 429 ile aynı anlama geliyor.
+
+Teorik değil: **Faz 6'da yaşanmıştı** (`gemini-flash-latest` sürekli 503, SDK retry'ları aramayı 20 sn'ye çıkarmıştı) ve aday model testinde 6 çağrının birinde tekrar görüldü. `503`/`UNAVAILABLE` listeye eklendi.
+
+**Ağ hatası ve 400 hâlâ fırlatılıyor** — sıradaki model de aynı hatayı verecektir, denemeye devam etmek yanıltıcı olurdu.
+
+### Test (527 → **533**, +6)
+`test_api_contract.py` → `TestGenerateFallbackChain`: 503 regresyon testi, 429/404/503'ün üçünün de zinciri sürdürdüğü (parametrize), 400'ün fırlatılıp **ikinci modele hiç geçilmediği**, iki zincirin 7'şer model olduğu ve **çapraz başlangıcın korunduğu**.
+
+### Doğrulama ✅
+Yeni zincirle dört yolun hepsi gerçek Gemini'ye karşı çalıştırıldı: yorum, sınıflandırıcı (`borscht`→True, `capital of france`→False), malzeme tanıma, tabak analizi. 533 test geçiyor.
+
+**Gözlem:** ölçüm sırasında `gemini-3.5-flash-lite` 21–33 sn verdi (görsel tarafı 1.2 sn). Ücretsiz katmanın gün içi oynaması — CLAUDE.md'de zaten uyarı var ve eklenen kapasitenin neden gerektiğini gösteriyor.
 
 ---
 

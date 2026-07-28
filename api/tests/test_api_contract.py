@@ -222,3 +222,70 @@ class _Counter:
     def __call__(self, *args, **kwargs):
         self.calls += 1
         return self.return_value
+
+
+class TestGenerateFallbackChain:
+    """`_generate`'in "bu modeli atla" kararı — hangi hatanın zinciri sürdürüp
+    hangisinin yukarı fırlatıldığı."""
+
+    def _llm(self, api):
+        import llm
+        return llm
+
+    def test_a_503_falls_back_instead_of_killing_the_request(self, api, monkeypatch):
+        """REGRESYON: 503 listede YOKTU, dolayısıyla aşırı yüklü TEK bir model
+        sıradaki modeller hazır beklerken bütün isteği çöktürüyordu. Faz 6'da
+        ücretsiz katmanda sürekli 503 veren bir model yaşanmıştı."""
+        llm = self._llm(api)
+        calls = []
+
+        def flaky(model, contents, config=None):
+            calls.append(model)
+            if len(calls) == 1:
+                raise Exception("503 UNAVAILABLE. The model is overloaded.")
+            return type("R", (), {"text": "ok"})()
+
+        monkeypatch.setattr(llm.client.models, "generate_content", flaky)
+
+        assert llm._generate(("model-a", "model-b"), "prompt").text == "ok"
+        assert calls == ["model-a", "model-b"]      # ilkini atlayıp ikinciye geçti
+
+    @pytest.mark.parametrize("message", [
+        "429 RESOURCE_EXHAUSTED", "404 NOT_FOUND", "503 UNAVAILABLE",
+    ])
+    def test_model_level_errors_continue_the_chain(self, api, monkeypatch, message):
+        llm = self._llm(api)
+        calls = []
+
+        def flaky(model, contents, config=None):
+            calls.append(model)
+            if len(calls) == 1:
+                raise Exception(message)
+            return type("R", (), {"text": "ok"})()
+
+        monkeypatch.setattr(llm.client.models, "generate_content", flaky)
+        llm._generate(("a", "b"), "p")
+        assert len(calls) == 2
+
+    def test_a_real_error_is_still_raised(self, api, monkeypatch):
+        """Bozuk istek ya da ağ hatasında denemeye devam etmek yanıltıcı olurdu —
+        sıradaki model de aynı hatayı verir."""
+        llm = self._llm(api)
+        calls = []
+
+        def broken(model, contents, config=None):
+            calls.append(model)
+            raise Exception("400 INVALID_ARGUMENT: malformed request")
+
+        monkeypatch.setattr(llm.client.models, "generate_content", broken)
+
+        with pytest.raises(Exception, match="INVALID_ARGUMENT"):
+            llm._generate(("a", "b"), "p")
+        assert calls == ["a"]        # ikinciye HİÇ geçmedi
+
+    def test_both_chains_grew_to_seven_models(self, api):
+        llm = self._llm(api)
+        assert len(llm.COMMENTARY_MODELS) == 7
+        assert len(llm.VISION_MODELS) == 7
+        # Çapraz başlangıç korunuyor: iki akış taze havuzla giriyor
+        assert llm.COMMENTARY_MODELS[0] != llm.VISION_MODELS[0]

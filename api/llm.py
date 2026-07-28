@@ -44,16 +44,37 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 # Faz 11b'de 5.17sn ölçülmüştü, bugün 12.4sn). Sıralama bugünün ölçümüne göre;
 # mutlak değerlere değil, zaten var olan fallback zincirine güveniyoruz.
 # Elenenler: gemini-2.5-flash-lite ve 2.0-flash-lite (Faz 11b).
+# ÖLÇÜM (2026-07-28) — zincire eklenen iki model. Adaylar `client.models.list()`
+# ile bulundu, tahmin edilmedi; sonra hem metin hem görselde çalıştırıldı:
+#   gemini-3.1-flash-lite-preview   614 ms metin / 889 ms görsel  ✅ eklendi
+#   gemini-3-flash-preview         3219 ms metin / 2251 ms görsel ✅ eklendi
+#   gemini-2.0-flash / -lite       429 — ayrı kota havuzu DEĞİL
+#   gemini-2.5-pro                 429 — ücretsiz katmanda hak yok
+#   gemini-2.5-flash-lite          404 — hâlâ "yeni kullanıcılara kapalı"
+# Sınıflandırıcı prompt'u yeni modellerde de doğrulandı (Faz 15f'nin 6 zor
+# sorgusu): 3.1-flash-lite-preview 6/6.
+#
+# PREVIEW MODELLER BİLEREK ÖNDE DEĞİL: 3.1-flash-lite-preview aslında listenin
+# EN HIZLISI (614 ms), ama preview modeller habersiz geri çekilebiliyor
+# (gemini-2.5-flash-lite'ın başına tam bu geldi). Kararlı modeller önde, preview
+# olanlar taşma kapasitesi olarak arkada. Geri çekilirlerse 404 dönerler ve
+# zincir onları zaten sessizce atlar — yani en kötü ihtimalde bir ağ turu.
+#
+# 5 model → 7: akış başına günlük kapasite 100 → 140 istek.
 COMMENTARY_MODELS = (
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
+    "gemini-3.1-flash-lite-preview",
     "gemini-2.5-flash",
+    "gemini-3-flash-preview",
     "gemini-3.6-flash",
     "gemini-3.5-flash",
 )
 VISION_MODELS = (
     "gemini-3.1-flash-lite",
     "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-3-flash-preview",
     "gemini-2.5-flash",
     "gemini-3.6-flash",
     "gemini-3.5-flash",
@@ -85,8 +106,16 @@ def _generate(models: tuple[str, ...], contents, config=None):
             return response
         except Exception as e:
             text = str(e)
+            # 503/UNAVAILABLE de "bu modeli atla" demek: model kotası dolmamış,
+            # o an aşırı yüklü. Eskiden bu listede YOKTU, dolayısıyla tek bir
+            # 503 sıradaki 4 model hazır beklerken bütün isteği çöktürüyordu.
+            # Faz 6'da ölçülmüştü: ücretsiz katmanda bir modelin sürekli 503
+            # vermesi gerçek bir durum (o zaman SDK retry'ları aramayı 20 sn'ye
+            # çıkarmıştı). Aday model testinde de 6 çağrının birinde görüldü.
             unavailable = any(
-                s in text for s in ("429", "RESOURCE_EXHAUSTED", "404", "NOT_FOUND")
+                s in text
+                for s in ("429", "RESOURCE_EXHAUSTED", "404", "NOT_FOUND",
+                          "503", "UNAVAILABLE")
             )
             if not unavailable:
                 raise
