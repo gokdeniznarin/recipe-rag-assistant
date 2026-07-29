@@ -68,6 +68,49 @@ if (signInIsPending()) {
   authLog.info('Returning from an in-progress sign-in; showing the waiting screen');
 }
 
+// ── Teşhis kutusu — YALNIZCA ?debug=1 ────────────────────
+// Telefondaki konsolu okumak bilgisayar + USB kablosu istiyor. Bu blok aynı
+// bilgiyi doğrudan EKRANDA gösteriyor. URL'de debug=1 yoksa hiçbir şey yapmıyor,
+// yani normal kullanıcı için görünmez ve davranışı değiştirmiyor.
+//
+// BUILD değeri her dağıtımda elle artırılıyor: "telefondaki kod güncel mi?"
+// sorusunun tek kesin cevabı bu — kurulu PWA sayfayı bellekte tuttuğu için
+// güncellemenin gerçekten indiğini başka türlü doğrulayamıyoruz.
+const BUILD = '26b-3';
+
+if (window.location.search.indexOf('debug=1') !== -1) {
+  const box = document.createElement('pre');
+  box.style.cssText =
+    'position:fixed;left:0;right:0;bottom:0;z-index:200;margin:0;padding:.6rem;' +
+    'background:#2D3B2D;color:#F5F0E8;font:12px/1.5 monospace;white-space:pre-wrap;';
+  const standalone =
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+    window.navigator.standalone === true;
+
+  let marker = 'n/a';
+  try {
+    const raw = localStorage.getItem(SIGNIN_PENDING_KEY);
+    marker = raw ? Math.round((Date.now() - Number(raw)) / 1000) + 's ago' : 'none';
+  } catch (e) {
+    marker = 'localStorage blocked';
+  }
+
+  const lines = [
+    'BUILD      ' + BUILD,
+    'standalone ' + standalone,
+    'marker     ' + marker,
+    'overlay    ' + document.body.classList.contains('signing-in'),
+    'auth       resolving...',
+  ];
+  box.textContent = lines.join('\n');
+  document.body.appendChild(box);
+
+  authReady
+    .then((u) => { lines[4] = 'auth       ' + (u ? 'signed in: ' + u.email : 'signed out'); })
+    .catch((e) => { lines[4] = 'auth       ERROR ' + e.message; })
+    .then(() => { box.textContent = lines.join('\n'); });
+}
+
 // Savunmacı zaman aşımı: `authStateReady()` ağa çıkmadığı için normalde hızlı
 // çözülür, ama beklenmedik bir sebeple çözülmezse kart sonsuza dek gizli kalır
 // ve kullanıcı GİRİŞ YAPAMAZ. Yardımcı bir iyileştirme uygulamayı kilitlememeli
@@ -282,9 +325,21 @@ document.getElementById('google-btn').addEventListener('click', async () => {
     clearSignInPending();
     window.location.href = 'search.html';
   } catch (err) {
-    // Giriş tamamlanmadı: işaret kalırsa kullanıcı bir daha bu sayfaya
-    // geldiğinde hiçbir sebep yokken bekleme ekranıyla karşılaşır.
-    clearSignInPending();
+    // İşaret BURADA HER ZAMAN SİLİNMEZ. `popup-closed-by-user` /
+    // `cancelled-popup-request` BELİRSİZ hatalar: PWA'da pencere bağlantısı
+    // koptuğu için popup "iptal edildi" sayılabiliyor, oysa giriş sunucu
+    // tarafında BAŞARILI olmuş olabiliyor. Bu durumda işareti silmek, sayfa
+    // hemen ardından yeniden yüklendiğinde bekleme ekranını gösterecek tek
+    // kanıtı yok etmek demek — düzeltmeyi kendi kendine iptal ediyordu.
+    //
+    // İşareti bırakmak zararsız: bu sayfada kaldığımız sürece kimse okumuyor,
+    // ve `authReady` kullanıcısız çözülürse `revealAuthForm()` zaten siliyor.
+    // Ayrıca 2 dakikada kendiliğinden bayatlıyor.
+    const ambiguous =
+      err.code === 'auth/popup-closed-by-user' ||
+      err.code === 'auth/cancelled-popup-request';
+
+    if (!ambiguous) clearSignInPending();
     document.body.classList.remove('signing-in');
     // Bu email şifreyle kayıtlı: Firebase güvenlik gereği otomatik bağlamaz,
     // önce kullanıcının mevcut şifresiyle kimliğini kanıtlaması gerekir.

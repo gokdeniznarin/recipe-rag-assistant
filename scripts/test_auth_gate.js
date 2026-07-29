@@ -29,7 +29,7 @@ const check = (name, cond, extra) => {
  * auth.js'i taze bir sahte ortamda çalıştırır.
  * `authReady`'nin nasıl sonuçlanacağını çağıran belirliyor.
  */
-function run(authReady, storageOpt) {
+function run(authReady, storageOpt, search) {
   const classes = new Set(['auth-page', 'auth-checking']);
   const timers = [];
   let cleared = 0;
@@ -75,12 +75,24 @@ function run(authReady, storageOpt) {
     auth: { signInWithPopup() {}, signInWithEmailAndPassword() {} },
     authReady,
     document: {
-      body: { classList: { remove: (c) => classes.delete(c), add: (c) => classes.add(c) } },
+      body: {
+        classList: {
+          remove: (c) => classes.delete(c),
+          add: (c) => classes.add(c),
+          contains: (c) => classes.has(c),
+        },
+        appendChild() {},
+      },
       getElementById: el,
       querySelectorAll: () => [],
+      createElement: () => ({ style: {}, textContent: '' }),
     },
     localStorage,
-    window: { location: { href: 'index.html' } },
+    window: {
+      location: { href: 'index.html', search: search || '' },
+      matchMedia: () => ({ matches: false }),
+      navigator: {},
+    },
   };
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx, { filename: 'auth.js' });
@@ -176,6 +188,24 @@ function run(authReady, storageOpt) {
   check('localStorage unavailable -> auth.js still loads', !crashed);
   check('localStorage unavailable -> no waiting screen', !crashed && !r.overlayShown());
   check('localStorage unavailable -> form still works', !crashed && !r.formHidden());
+
+  // ── 7. ?debug=1 teshis kutusu ──
+  // Normal kullanici icin GORUNMEZ olmali; yalnizca URL'de debug=1 varsa cikmali.
+  // Ayrica hicbir kosulda auth.js'i cokertmemeli (giris sayfasinin tamamini yonetiyor).
+  crashed = false;
+  try {
+    r = run(Promise.resolve(null), undefined, '?debug=1');
+    await new Promise((res) => setImmediate(res));
+  } catch (e) { crashed = true; }
+  check('debug=1 -> does not break the page', !crashed);
+  check('debug=1 -> form is still revealed', !crashed && !r.formHidden());
+
+  crashed = false;
+  try {
+    r = run(Promise.resolve(null), undefined, '');
+    await new Promise((res) => setImmediate(res));
+  } catch (e) { crashed = true; }
+  check('no debug param -> page behaves normally', !crashed && !r.formHidden());
 
   console.log(failures === 0
     ? `\nauth gate checks passed (${pass})`
