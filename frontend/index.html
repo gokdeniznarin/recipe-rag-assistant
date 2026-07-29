@@ -18,7 +18,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Recipes" />
 </head>
-<body class="auth-page">
+<!-- `auth-checking`: oturum durumu kesinleşene kadar giriş formu gizli (bkz. style.css).
+     Sınıf HTML'de duruyor ki form ilk boyamada bile görünmesin; auth.js kaldırıyor. -->
+<body class="auth-page auth-checking">
 
   <div class="auth-container">
     <div class="auth-hero">

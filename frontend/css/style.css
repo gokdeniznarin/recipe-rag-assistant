@@ -92,6 +92,26 @@ body {
   padding: 2rem;
 }
 
+/* Oturum durumu KESİNLEŞENE kadar giriş formunu gösterme.
+ *
+ * Sebep: index.html formu anında çiziyor, ama `authReady` Firebase oturumu
+ * kalıcı depodan geri yükledikten SONRA çözülüyor (canlıda ölçülen ~975 ms,
+ * Faz 13b). Yani giriş yapmış bir kullanıcı bile yönlendirilmeden önce formu
+ * bir an görüyordu. PWA'da Google popup'ından dönerken pencere yeniden
+ * kurulduğu için bu bekleme baştan ödeniyor ve göze batıyor.
+ *
+ * `visibility` kullanılıyor, `display` DEĞİL: kart yer kaplamaya devam etsin
+ * ki görünür olduğunda sayfa zıplamasın. Hero ve alttaki tanıtım içeriği
+ * etkilenmiyor — boş ekran değil, yalnızca form bekliyor.
+ *
+ * İşareti `auth.js` kaldırıyor; oradaki savunmacı zaman aşımı, `authReady`
+ * beklenmedik bir sebeple çözülmezse kartın sonsuza dek gizli kalmasını
+ * engelliyor (Faz 13b dersi: yardımcı kod uygulamayı asla kilitlememeli).
+ */
+body.auth-checking .auth-card {
+  visibility: hidden;
+}
+
 /* ── Tabs ──────────────────────────────────────────────── */
 .tab-row {
   display: flex;

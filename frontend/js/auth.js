@@ -5,10 +5,43 @@
 
 const authLog = Logger.get('auth');
 
-// Zaten giriş yapılmışsa direkt search.html'e yönlendir
-authReady.then((user) => {
-  if (user) window.location.href = 'search.html';
-});
+// ── Oturum durumu kesinleşene kadar formu gizle ──────────
+// Giriş yapmışsa search.html'e yönlendir; yapmamışsa formu göster.
+//
+// Kart `auth-checking` sınıfıyla GİZLİ başlıyor (index.html + style.css).
+// Öncesinde form anında çiziliyor, `authReady` ise oturum kalıcı depodan geri
+// yüklendikten sonra çözülüyordu (canlıda ~975 ms) — yani giriş yapmış kullanıcı
+// yönlendirilmeden önce formu bir an görüyordu. PWA'da Google popup'ından
+// dönerken bu bekleme baştan ödendiği için belirgin bir "giriş ekranına attı
+// sonra girdi" etkisi yaratıyordu.
+function revealAuthForm() {
+  document.body.classList.remove('auth-checking');
+}
+
+// Savunmacı zaman aşımı: `authStateReady()` ağa çıkmadığı için normalde hızlı
+// çözülür, ama beklenmedik bir sebeple çözülmezse kart sonsuza dek gizli kalır
+// ve kullanıcı GİRİŞ YAPAMAZ. Yardımcı bir iyileştirme uygulamayı kilitlememeli
+// (Faz 13b'de logger.js'in localStorage yüzünden uygulamayı düşürmesinin dersi).
+const authRevealTimer = setTimeout(() => {
+  authLog.warn('Auth state did not settle in 3s; showing the form anyway');
+  revealAuthForm();
+}, 3000);
+
+authReady
+  .then((user) => {
+    clearTimeout(authRevealTimer);
+    if (user) {
+      window.location.href = 'search.html';
+      return;               // yönlendiriliyoruz: formu göstermeye gerek yok
+    }
+    revealAuthForm();
+  })
+  .catch((err) => {
+    // Oturum durumu okunamadıysa kullanıcıyı kilitlemek yerine formu göster.
+    clearTimeout(authRevealTimer);
+    authLog.error('Could not resolve auth state: ' + err.message);
+    revealAuthForm();
+  });
 
 // Google ile girilmeye çalışılıp "bu email şifreyle kayıtlı" hatası alınırsa,
 // Google kimliği burada bekletilir; kullanıcı şifresiyle giriş yapınca hesaba bağlanır.

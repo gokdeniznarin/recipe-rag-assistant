@@ -265,10 +265,29 @@ Monitor kurulur kurulmaz **"Down | 405"** oldu: izleme araçlarının çoğu (Up
 
 ### Bilinen sınırlar / sıradaki adımlar
 - **Vercel preview'ları PWA testi için KULLANILAMIYOR:** projede Deployment Protection açık, her istek `vercel.com/sso-api`'ye 302 veriyor → Chrome geçerli manifest göremiyor. Test production'da yapıldı. (Preview'da ayrıca Firebase Authorized domains kısıtı da var, Google girişi `auth/unauthorized-domain` verir.)
-- **Uygulama `/`'dan açılıyor**, giriş yapmış kullanıcı bir an login sayfasını görüp `search.html`'e yönleniyor (Faz 13b'deki `authReady` beklemesi). Standalone modda daha göze çarpıyor. `start_url`'i `search.html` yapmak çözüm DEĞİL — girişsiz kullanıcı ters yöne sekerdi.
+- ~~Giriş yapmış kullanıcı bir an login sayfasını görüyor~~ → ✅ **ÇÖZÜLDÜ (aşağıda, Faz 26b).** *(`start_url`'i `search.html` yapmak çözüm DEĞİLDİ — girişsiz kullanıcı ters yöne sekerdi.)*
 - **Google Fonts çevrimdışı önbelleğe alınmıyor** (cross-origin; `cache.addAll` atomik olduğu için precache'i komple düşürme riski). Çevrimdışı açılışta yazı tipi sistem fontuna düşer.
 - **Kaçış kapısı:** SW bir gün sorun çıkarırsa, kendini `unregister` eden bir `sw.js` deploy etmek onu tüm tarayıcılardan siler.
 - **Sırada:** hesap silme akışı (store zorunluluğu **değil**, `privacy.html`'de zaten verilmiş söz + KVKK/GDPR), sonra Capacitor.
+
+### Faz 26b — giriş ekranı "flaş"ı (gerçek cihaz geri bildirimi) ✅
+**Kullanıcı bildirimi:** *"PWA'da Google ile giriş yapıyorum, hesabı seçiyorum, önce giriş ekranına atıyor sonra hesaba giriyor."*
+
+**İlk teşhis YANLIŞTI.** ④'ün (in-app tarayıcılarda `signInWithPopup`'ın bozulması) PWA'da da geçerli olduğu, `window.opener` köprüsünün koptuğu ve giriş sonucunun hiç ulaşmadığı sanıldı. İki soruluk teşhis bunu çürüttü: **e-posta/şifre çalışıyor** ve **Google girişi de çalışıyor** — sadece arada form görünüyor.
+
+**Kapsam bu sayede DARALDI:** `signInWithRedirect`'e geçmek ya da `authDomain`'i Vercel üzerinden proxy'lemek **gerekmedi**. İkisi de riskliydi (hesap bağlama akışını bozuyor, Faz 6'daki sonsuz döngüyü geri getirebiliyordu). **④ hâlâ açık ama PWA'yı kapsamıyor.**
+
+**Gerçek sebep** (`auth.js:9`): sayfa giriş formunu **anında** çiziyordu, `authReady` ise oturum kalıcı depodan geri yüklendikten sonra çözülüyor — canlıda ölçülen **~975 ms** (Faz 13b). Yani giriş yapmış kullanıcı için bile form o süre boyunca ekranda kalıyordu. Web'de fark edilmiyordu çünkü oturum zaten açıktı; PWA'da Google popup'ından dönerken pencere yeniden kurulduğu için bekleme baştan ödeniyor.
+
+**Çözüm:** form `auth-checking` sınıfıyla **gizli başlıyor**, `authReady` çözülünce ya yönlendiriliyor (form hiç görünmüyor) ya da açılıyor.
+- **`visibility`, `display` DEĞİL** — kart yer kaplamaya devam etsin, belirince sayfa zıplamasın.
+- **Yalnızca kart gizli**; hero ve tanıtım içeriği görünür, yani boş ekran yok.
+- **Savunmacı 3 sn zaman aşımı:** `authReady` beklenmedik bir sebeple çözülmezse form yine açılır. Yoksa sayfa hatasız görünürken **kimse giriş yapamaz** — sessiz ve tam kilitleyici bir arıza (Faz 13b'de `logger.js`'in `localStorage` yüzünden uygulamayı düşürmesinin dersi).
+
+**`scripts/test_auth_gate.js` (yeni, CI'da, 12 test):** giriş var → yönlendirme + form **hiç açılmıyor**; giriş yok → form açılıyor, yönlendirme yok; `authReady` **reddedilirse** → kullanıcı kilitlenmiyor; **hiç çözülmezse** → 3 sn'lik yedek formu açıyor ve yönlendirme yapmıyor. Bu yol Faz 6'daki sonsuz yönlendirme döngüsünün yaşandığı yer olduğu için dördü de sabitlendi.
+
+### Çevrimdışı davranış — gerçek cihazda doğrulandı
+Uçak modunda test edildi: **uygulama açılıyor, gezinilebiliyor** (kabuk önbellekten), arama "Could not reach the server." veriyor. Bu **doğru davranış**, service worker'ın hatası değil: tarifler ve embedding modeli sunucuda ve **API yanıtları bilerek önbelleğe alınmıyor**. "You're offline" yedek sayfası yalnızca hiç ziyaret edilmemiş bir sayfaya çevrimdışı gidilirse çıkıyor.
 
 ---
 

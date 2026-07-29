@@ -65,3 +65,10 @@ jobs:
       # kullanıcının verisi önbellekte" diye sessizce ortaya çıkıyor.
       - name: Service worker behaviour
         run: node scripts/test_sw.js
+
+      # Giriş formu artık GİZLİ başlıyor ve auth.js onu açıyor. Açma yolu
+      # bozulursa form hiç görünmez ve kimse giriş yapamaz — üstelik sayfa
+      # hatasız göründüğü için sessizce. Ayrıca burası Faz 6'daki giriş↔search
+      # sonsuz yönlendirme döngüsünün yaşandığı yer.
+      - name: Login gate behaviour
+        run: node scripts/test_auth_gate.js

@@ -1,0 +1,117 @@
+/**
+ * Giriş sayfası kapısının davranış testi — sahte DOM.
+ *
+ *   node scripts/test_auth_gate.js
+ *
+ * NEDEN VAR: `index.html` giriş formunu artık GİZLİ başlatıyor ve `auth.js`
+ * oturum durumu kesinleşince açıyor. Kazancı, giriş yapmış kullanıcının
+ * yönlendirilmeden önce formu bir an görmemesi (PWA'da belirgindi).
+ *
+ * Riski ise net: açma yolu bozulursa form HİÇ görünmez ve kimse giriş
+ * YAPAMAZ — üstelik sayfa hatasız görünür, yani sessiz. Ayrıca burası Faz 6'daki
+ * giriş↔search sonsuz yönlendirme döngüsünün yaşandığı yer. Bu yüzden dört
+ * yolun dördü de sabitleniyor: giriş var, giriş yok, hata, ve hiç çözülmeme.
+ */
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const SRC = fs.readFileSync(path.join(__dirname, '..', 'frontend', 'js', 'auth.js'), 'utf8');
+
+let pass = 0;
+let failures = 0;
+const check = (name, cond, extra) => {
+  if (cond) { console.log('  ok    ' + name); pass++; }
+  else { console.error('  FAIL  ' + name + (extra ? ' :: ' + extra : '')); failures++; }
+};
+
+/**
+ * auth.js'i taze bir sahte ortamda çalıştırır.
+ * `authReady`'nin nasıl sonuçlanacağını çağıran belirliyor.
+ */
+function run(authReady) {
+  const classes = new Set(['auth-page', 'auth-checking']);
+  const timers = [];
+  let cleared = 0;
+
+  const el = () => ({
+    addEventListener() {},
+    classList: { toggle() {}, add() {}, remove() {} },
+    focus() {},
+    textContent: '',
+    value: '',
+    disabled: false,
+    dataset: {},
+    style: {},
+  });
+
+  const ctx = {
+    console,
+    performance: { now: () => 0 },
+    setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
+    clearTimeout: () => { cleared++; },
+    Logger: {
+      get: () => ({ debug() {}, info() {}, warn() {}, error() {} }),
+      duration() {},
+      timed: (fn) => fn,
+    },
+    firebase: { auth: { GoogleAuthProvider: function () { this.setCustomParameters = () => {}; } } },
+    auth: { signInWithPopup() {}, signInWithEmailAndPassword() {} },
+    authReady,
+    document: {
+      body: { classList: { remove: (c) => classes.delete(c), add: (c) => classes.add(c) } },
+      getElementById: el,
+      querySelectorAll: () => [],
+    },
+    window: { location: { href: 'index.html' } },
+  };
+  vm.createContext(ctx);
+  vm.runInContext(SRC, ctx, { filename: 'auth.js' });
+
+  return {
+    formHidden: () => classes.has('auth-checking'),
+    redirectedTo: () => ctx.window.location.href,
+    timers,
+    clearedCount: () => cleared,
+  };
+}
+
+(async () => {
+  // ── 1. Giriş yapmış kullanıcı: yönlendirilir, form HİÇ görünmez ──
+  let r = run(Promise.resolve({ email: 'a@b.com' }));
+  await new Promise((res) => setImmediate(res));
+  check('signed in -> redirected to search.html', r.redirectedTo() === 'search.html', r.redirectedTo());
+  check('signed in -> form is never revealed (no flash)', r.formHidden());
+  check('signed in -> defensive timer is cancelled', r.clearedCount() === 1);
+
+  // ── 2. Giriş yapmamış kullanıcı: form açılır, yönlendirme YOK ──
+  r = run(Promise.resolve(null));
+  await new Promise((res) => setImmediate(res));
+  check('signed out -> form is revealed', !r.formHidden());
+  check('signed out -> stays on the login page', r.redirectedTo() === 'index.html');
+  check('signed out -> defensive timer is cancelled', r.clearedCount() === 1);
+
+  // ── 3. authReady REDDEDİLİRSE kullanıcı kilitlenmemeli ──
+  r = run(Promise.reject(new Error('storage unavailable')));
+  await new Promise((res) => setImmediate(res));
+  check('auth state error -> form is still revealed (user not locked out)', !r.formHidden());
+  check('auth state error -> no redirect', r.redirectedTo() === 'index.html');
+
+  // ── 4. authReady HİÇ çözülmezse zaman aşımı formu açmalı ──
+  // En sinsi senaryo: hata yok, sayfa normal görünür, ama form sonsuza dek
+  // gizli kalır ve giriş imkansız hale gelir.
+  r = run(new Promise(() => {}));            // asla çözülmez
+  await new Promise((res) => setImmediate(res));
+  check('never settles -> form is still hidden before the timeout', r.formHidden());
+  check('never settles -> a 3s fallback timer was scheduled',
+        r.timers.length === 1 && r.timers[0].ms === 3000,
+        JSON.stringify(r.timers.map((t) => t.ms)));
+  r.timers[0].fn();                          // zaman aşımını tetikle
+  check('never settles -> timeout reveals the form', !r.formHidden());
+  check('never settles -> timeout does NOT redirect', r.redirectedTo() === 'index.html');
+
+  console.log(failures === 0
+    ? `\nauth gate checks passed (${pass})`
+    : `\n${failures} problem(s)`);
+  process.exit(failures === 0 ? 0 : 1);
+})();
