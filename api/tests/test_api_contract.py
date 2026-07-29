@@ -183,6 +183,28 @@ class TestDecoratorOrderPreservesSchema:
         assert auth_params and auth_params[0]["required"] is True
 
 
+# ── Uptime izleme ucu ─────────────────────────────────────
+# Render ücretsiz katmanda 15 dk sessizlikten sonra uyuyor ve uyanması ÖLÇÜLDÜ:
+# 42.6 sn (uyanıkken 0.42 sn). Bunu engellemek için `/` düzenli aralıklarla
+# çağrılıyor. Bu sınıf o çağrının çalışmaya devam ettiğini sabitliyor.
+
+class TestUptimeProbe:
+    def test_root_answers_get(self, client):
+        assert client.get("/").status_code == 200
+
+    def test_root_answers_head(self, client):
+        # FastAPI, düz Starlette'in AKSİNE bir GET rotasına HEAD'i otomatik
+        # eklemiyor; bu uç bir süre HEAD'e 405 döndü ve izleme aracı monitörü
+        # kurulur kurulmaz "Down | 405" gösterdi. İzleme araçlarının çoğu
+        # varsayılan olarak HEAD attığı için bu davranış geri gelirse uptime
+        # takibi sessizce yanlış alarma döner.
+        assert client.head("/").status_code == 200
+
+    def test_root_needs_no_auth(self, client):
+        # `client` (auth_client DEĞİL) kullanılıyor: izleme aracının token'ı yok.
+        assert "error" not in client.get("/").json()
+
+
 # ── Sınır yolları ─────────────────────────────────────────
 
 class TestBoundaryPaths:

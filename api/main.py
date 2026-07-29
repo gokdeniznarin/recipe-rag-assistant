@@ -131,7 +131,18 @@ def _cards_from_query(results: dict) -> list[dict]:
     ]
 
 
+# HEAD bilerek listede: FastAPI, düz Starlette'in aksine bir GET rotasına HEAD'i
+# OTOMATİK EKLEMİYOR, dolayısıyla bu uç HEAD'e 405 dönüyordu. Bu endpoint aynı
+# zamanda uptime izlemesinin hedefi (kimlik doğrulaması yok, veritabanına
+# dokunmuyor) ve izleme araçlarının çoğu — UptimeRobot dahil — varsayılan olarak
+# HEAD atıyor: monitor kurulur kurulmaz "Down | 405" gösterip sürekli yanlış
+# alarm üretiyordu. Render ücretsiz katmanda 15 dk sessizlikten sonra uyuduğu ve
+# uyanması ÖLÇÜLEN 42.6 saniye sürdüğü için bu uç düzenli olarak çağrılıyor.
+#
+# İki AYRI dekoratör, tek `api_route(methods=[...])` değil: ikincisi OpenAPI'de
+# aynı operation ID'yi iki kez üretip uyarı basıyor.
 @app.get("/")
+@app.head("/", include_in_schema=False)   # sağlık kontrolü, API yüzeyi değil
 def root():
     return {"message": "Recipe RAG Assistant API is running"}
 
