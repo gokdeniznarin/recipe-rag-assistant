@@ -59,3 +59,9 @@ jobs:
       # içinde iki gerçek hata çıktı. Sözdizimi kontrolü onları göremezdi.
       - name: Camera module behaviour
         run: node scripts/test_camera.js
+
+      # sw.js sayfanın DIŞINDA, kendi thread'inde çalışıyor: hatası konsolda
+      # görünmüyor, "çevrimdışı açılmıyor" ya da (çok daha kötüsü) "başka
+      # kullanıcının verisi önbellekte" diye sessizce ortaya çıkıyor.
+      - name: Service worker behaviour
+        run: node scripts/test_sw.js

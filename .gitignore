@@ -27,6 +27,12 @@ Thumbs.db
 *.jpeg
 *.png
 
+# ...ama PWA ikonları UYGULAMANIN PARÇASI, test görseli değil. Bu istisna
+# olmadan ikonlar Vercel'e hiç gitmez ve Chrome uygulamayı "yüklenebilir"
+# saymaz (en az bir 192px ikon şart) — yani PWA sessizce kurulamaz hâle gelir.
+# Kaynakları kod: scripts/make_icons.py
+!frontend/icons/*.png
+
 # Firebase service-account anahtarı — ASLA commit etme!
 firebase-key.json
 *-firebase-adminsdk-*.json
