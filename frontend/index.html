@@ -22,6 +22,16 @@
      Sınıf HTML'de duruyor ki form ilk boyamada bile görünmesin; auth.js kaldırıyor. -->
 <body class="auth-page auth-checking">
 
+  <!-- Google girişinden dönerken gösteriliyor. PWA'da pencere popup sırasında
+       yeniden kurulup bu sayfa BAŞTAN yüklenebiliyor; işaret varsa kullanıcı
+       giriş sayfasını hiç görmüyor. Varsayılan olarak gizli (style.css). -->
+  <div class="signin-overlay" role="status" aria-live="polite">
+    <span class="brand-mark">✦</span>
+    <p>Signing you in…</p>
+    <span class="signin-hint">Just a moment</span>
+  </div>
+
+
   <div class="auth-container">
     <div class="auth-hero">
       <p class="auth-eyebrow">AI-powered recipe discovery</p>

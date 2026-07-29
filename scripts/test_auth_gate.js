@@ -29,10 +29,26 @@ const check = (name, cond, extra) => {
  * auth.js'i taze bir sahte ortamda çalıştırır.
  * `authReady`'nin nasıl sonuçlanacağını çağıran belirliyor.
  */
-function run(authReady) {
+function run(authReady, storageOpt) {
   const classes = new Set(['auth-page', 'auth-checking']);
   const timers = [];
   let cleared = 0;
+
+  // storageOpt: undefined => bos localStorage
+  //             { signin_pending: '<ms>' } => o degerle dolu
+  //             'throws' => her erisimde SecurityError (Safari gizli mod)
+  const store = new Map(Object.entries(storageOpt && storageOpt !== 'throws' ? storageOpt : {}));
+  const localStorage = storageOpt === 'throws'
+    ? {
+        getItem() { throw new Error('SecurityError'); },
+        setItem() { throw new Error('SecurityError'); },
+        removeItem() { throw new Error('SecurityError'); },
+      }
+    : {
+        getItem: (k) => (store.has(k) ? store.get(k) : null),
+        setItem: (k, v) => store.set(k, v),
+        removeItem: (k) => store.delete(k),
+      };
 
   const el = () => ({
     addEventListener() {},
@@ -63,6 +79,7 @@ function run(authReady) {
       getElementById: el,
       querySelectorAll: () => [],
     },
+    localStorage,
     window: { location: { href: 'index.html' } },
   };
   vm.createContext(ctx);
@@ -70,6 +87,8 @@ function run(authReady) {
 
   return {
     formHidden: () => classes.has('auth-checking'),
+    overlayShown: () => classes.has('signing-in'),
+    markerLeft: () => storageOpt !== 'throws' && store.has('signin_pending'),
     redirectedTo: () => ctx.window.location.href,
     timers,
     clearedCount: () => cleared,
@@ -109,6 +128,54 @@ function run(authReady) {
   r.timers[0].fn();                          // zaman aşımını tetikle
   check('never settles -> timeout reveals the form', !r.formHidden());
   check('never settles -> timeout does NOT redirect', r.redirectedTo() === 'index.html');
+
+  // ── 5. "Signing you in..." ekrani ──
+  // PWA'da Google popup'indan donerken sayfa BASTAN yukleniyor. Isaret duruyorsa
+  // giris sayfasi HIC gorunmemeli, tam ekran bekleme durumu cikmali.
+  const fresh = { signin_pending: String(Date.now()) };
+  r = run(new Promise(() => {}), fresh);      // auth henuz cozulmedi
+  await new Promise((res) => setImmediate(res));
+  check('pending sign-in -> waiting screen is shown', r.overlayShown());
+
+  r = run(new Promise(() => {}));             // isaret yok
+  await new Promise((res) => setImmediate(res));
+  check('no pending sign-in -> waiting screen is NOT shown', !r.overlayShown());
+
+  // Yarida birakilmis bir giris sonsuza dek bekleme ekrani gostermemeli.
+  const stale = { signin_pending: String(Date.now() - 5 * 60 * 1000) };
+  r = run(new Promise(() => {}), stale);
+  await new Promise((res) => setImmediate(res));
+  check('stale marker (>2min) -> waiting screen is NOT shown', !r.overlayShown());
+  check('stale marker is cleaned up', !r.markerLeft());
+
+  // Giris basarili: yonlendirme olurken bekleme ekrani KALMALI, yoksa son anda
+  // giris sayfasi gorunur — duzeltmeye calistigimiz seyin ta kendisi.
+  r = run(Promise.resolve({ email: 'a@b.com' }), fresh);
+  await new Promise((res) => setImmediate(res));
+  check('pending + signed in -> redirects', r.redirectedTo() === 'search.html');
+  check('pending + signed in -> waiting screen stays until navigation', r.overlayShown());
+
+  // Giris basarisiz (popup iptal): bekleme ekrani kalkmali, form gelmeli,
+  // isaret temizlenmeli. Aksi halde kullanici kilitli bir ekranda kalir.
+  r = run(Promise.resolve(null), fresh);
+  await new Promise((res) => setImmediate(res));
+  check('pending + signed out -> waiting screen is dismissed', !r.overlayShown());
+  check('pending + signed out -> form is revealed', !r.formHidden());
+  check('pending + signed out -> marker is cleared', !r.markerLeft());
+
+  // ── 6. localStorage erisilemezse (Safari gizli mod) cokmemeli ──
+  // Bu dosya giris sayfasinin TAMAMINI yonetiyor; burada bir istisna
+  // hic kimsenin giris yapamamasi demek (Faz 13b dersi).
+  let crashed = false;
+  try {
+    r = run(Promise.resolve(null), 'throws');
+    await new Promise((res) => setImmediate(res));
+  } catch (e) {
+    crashed = true;
+  }
+  check('localStorage unavailable -> auth.js still loads', !crashed);
+  check('localStorage unavailable -> no waiting screen', !crashed && !r.overlayShown());
+  check('localStorage unavailable -> form still works', !crashed && !r.formHidden());
 
   console.log(failures === 0
     ? `\nauth gate checks passed (${pass})`

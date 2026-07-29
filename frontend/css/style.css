@@ -112,6 +112,64 @@ body.auth-checking .auth-card {
   visibility: hidden;
 }
 
+/* ── "Signing you in…" ekranı ──────────────────────────────
+ * Kartı gizlemek YETMEDİ: hero ve tanıtım içeriği görünür kaldığı için ekran
+ * hâlâ "giriş sayfası" gibi duruyordu ve PWA'da Google'dan dönen kullanıcı
+ * geri atıldığını sanıyordu (gerçek cihazda iki kez doğrulandı).
+ *
+ * `position: fixed` ile TÜM sayfanın üstünü örtüyor — kardeş elemanları
+ * `display:none` ile gizlemek yerine, çünkü öyle yapmak sayfa yapısı hakkında
+ * varsayım gerektirirdi ve ileride bir eleman eklenince sessizce bozulurdu.
+ */
+.signin-overlay {
+  display: none;
+}
+
+body.signing-in {
+  overflow: hidden;             /* arkadaki sayfa kaymasın */
+}
+
+body.signing-in .signin-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  background: var(--bg);        /* opak: altındaki giriş sayfası görünmesin */
+  text-align: center;
+  padding: 2rem;
+}
+
+.signin-overlay .brand-mark {
+  font-size: 2.5rem;
+  color: var(--accent);
+  animation: signin-pulse 1.4s ease-in-out infinite;
+}
+
+.signin-overlay p {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.35rem;
+  color: var(--olive);
+}
+
+.signin-overlay .signin-hint {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+@keyframes signin-pulse {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%      { opacity: 0.5; transform: scale(0.9); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signin-overlay .brand-mark { animation: none; }
+}
+
 /* ── Tabs ──────────────────────────────────────────────── */
 .tab-row {
   display: flex;

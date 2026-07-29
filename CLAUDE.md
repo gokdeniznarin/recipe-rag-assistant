@@ -279,12 +279,22 @@ Monitor kurulur kurulmaz **"Down | 405"** oldu: izleme araçlarının çoğu (Up
 
 **Gerçek sebep** (`auth.js:9`): sayfa giriş formunu **anında** çiziyordu, `authReady` ise oturum kalıcı depodan geri yüklendikten sonra çözülüyor — canlıda ölçülen **~975 ms** (Faz 13b). Yani giriş yapmış kullanıcı için bile form o süre boyunca ekranda kalıyordu. Web'de fark edilmiyordu çünkü oturum zaten açıktı; PWA'da Google popup'ından dönerken pencere yeniden kurulduğu için bekleme baştan ödeniyor.
 
-**Çözüm:** form `auth-checking` sınıfıyla **gizli başlıyor**, `authReady` çözülünce ya yönlendiriliyor (form hiç görünmüyor) ya da açılıyor.
+**İLK ÇÖZÜM YETERSİZ KALDI (gerçek cihazda doğrulandı).** Form kartı gizlendi, ama kullanıcı hâlâ "giriş sayfasına dönüyor" dedi — haklıydı: hero ve tanıtım içeriği görünür kaldığı için ekran **hâlâ giriş sayfası**, sadece ortası boş. Kartı gizlemek *algıyı* değiştirmiyor. Ders: "formu gizle" ile "giriş sayfasını gösterme" aynı şey değil.
+
+**İKİNCİ ÇÖZÜM — tam ekran "Signing you in…":** `signInWithPopup` çağrılmadan **önce** `localStorage`'a bir işaret bırakılıyor. Sayfa baştan yüklendiğinde işaret duruyorsa giriş sayfası yerine tam ekran bekleme durumu gösteriliyor; kullanıcı giriş sayfasını **hiç görmüyor**.
+- **Web ETKİLENMİYOR** ve bunun sebebi `display-mode` kontrolü değil, tetikleyicinin doğası: web'de popup aynı sayfa bağlamında çözülüyor, sayfa yeniden yüklenmiyor, işaret konup siliniyor ve okuyan olmuyor. Ekran yalnızca "giriş başlatıldı **VE** sayfa yeniden yüklendi" durumunda değişiyor. Yapay kısıtlama eklenmedi — aynı durum web'de oluşursa doğru davranış zaten bu.
+- **Bayat işaret koruması:** 2 dakikadan eski işaret yok sayılıp siliniyor, yoksa yarıda bırakılmış bir giriş kullanıcıyı kalıcı bir bekleme ekranında bırakırdı.
+- **`position: fixed` ile örtüyor**, kardeşleri `display:none` ile gizlemek yerine — o yöntem sayfa yapısı hakkında varsayım gerektirirdi ve ileride bir eleman eklenince sessizce bozulurdu.
+- **`localStorage` erişimi try/catch'li:** Safari gizli modda okumak bile `SecurityError` fırlatıyor ve bu dosya giriş sayfasının tamamını yönetiyor — burada bir istisna hiç kimsenin giriş yapamaması demek (Faz 13b dersi).
+
+**Ayrıca (ilk adımdan kalan):** form `auth-checking` sınıfıyla **gizli başlıyor**, `authReady` çözülünce ya yönlendiriliyor (form hiç görünmüyor) ya da açılıyor.
 - **`visibility`, `display` DEĞİL** — kart yer kaplamaya devam etsin, belirince sayfa zıplamasın.
 - **Yalnızca kart gizli**; hero ve tanıtım içeriği görünür, yani boş ekran yok.
 - **Savunmacı 3 sn zaman aşımı:** `authReady` beklenmedik bir sebeple çözülmezse form yine açılır. Yoksa sayfa hatasız görünürken **kimse giriş yapamaz** — sessiz ve tam kilitleyici bir arıza (Faz 13b'de `logger.js`'in `localStorage` yüzünden uygulamayı düşürmesinin dersi).
 
-**`scripts/test_auth_gate.js` (yeni, CI'da, 12 test):** giriş var → yönlendirme + form **hiç açılmıyor**; giriş yok → form açılıyor, yönlendirme yok; `authReady` **reddedilirse** → kullanıcı kilitlenmiyor; **hiç çözülmezse** → 3 sn'lik yedek formu açıyor ve yönlendirme yapmıyor. Bu yol Faz 6'daki sonsuz yönlendirme döngüsünün yaşandığı yer olduğu için dördü de sabitlendi.
+**`scripts/test_auth_gate.js` (yeni, CI'da, 24 test):** giriş var → yönlendirme + form **hiç açılmıyor**; giriş yok → form açılıyor; `authReady` **reddedilirse** → kullanıcı kilitlenmiyor; **hiç çözülmezse** → 3 sn'lik yedek formu açıyor. Bekleme ekranı için: işaret varken gösteriliyor, yokken gösterilmiyor, **bayat işaret** (>2 dk) temizleniyor, giriş başarılıysa **yönlendirme sırasında ekran kalıyor** (yoksa son anda giriş sayfası görünürdü — düzeltilmeye çalışılan şeyin ta kendisi), giriş iptal edilirse ekran kalkıp form geliyor, ve **`localStorage` erişilemezse** dosya yine yükleniyor. Bu yol Faz 6'daki sonsuz yönlendirme döngüsünün yaşandığı yer olduğu için hepsi sabitlendi.
+
+**⚠️ Kurulu PWA yeni kodu HEMEN almıyor:** Android uygulamayı bellekte tutuyor, görev listesinden kapatmak her zaman yeni bir sayfa yüklemesi başlatmıyor. Vercel'in önbellek başlıkları doğru (`max-age=0, must-revalidate`, doğrulandı) ve service worker network-first, yani sorun önbellekte değil — sayfa hiç yeniden istenmiyor. En güvenilir yol: siteyi **normal Chrome'da** açıp yenilemek (service worker origin başına paylaşıldığı için PWA da güncellenir), sonra PWA'yı açmak.
 
 ### Çevrimdışı davranış — gerçek cihazda doğrulandı
 Uçak modunda test edildi: **uygulama açılıyor, gezinilebiliyor** (kabuk önbellekten), arama "Could not reach the server." veriyor. Bu **doğru davranış**, service worker'ın hatası değil: tarifler ve embedding modeli sunucuda ve **API yanıtları bilerek önbelleğe alınmıyor**. "You're offline" yedek sayfası yalnızca hiç ziyaret edilmemiş bir sayfaya çevrimdışı gidilirse çıkıyor.

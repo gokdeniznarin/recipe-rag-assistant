@@ -16,6 +16,56 @@ const authLog = Logger.get('auth');
 // sonra girdi" etkisi yaratıyordu.
 function revealAuthForm() {
   document.body.classList.remove('auth-checking');
+  document.body.classList.remove('signing-in');
+  clearSignInPending();
+}
+
+// ── "Signing you in…" ekranı ─────────────────────────────
+// PWA'da Google popup'ından dönerken pencere yeniden kuruluyor ve `index.html`
+// BAŞTAN yükleniyor. Kartı gizlemek yetmiyordu: hero ve tanıtım içeriği görünür
+// kaldığı için ekran hâlâ "giriş sayfası" gibi duruyordu ve kullanıcı geri
+// atıldığını sanıyordu (gerçek cihazda iki kez doğrulandı).
+//
+// Çözüm: giriş BAŞLATILDIĞINDA bir işaret bırakmak. Sayfa yeniden yüklendiğinde
+// işaret duruyorsa giriş sayfası yerine tam ekran bir bekleme durumu gösteriliyor.
+//
+// NEDEN WEB'İ ETKİLEMİYOR: web'de popup aynı sayfa bağlamında çözülüyor, sayfa
+// hiç yeniden yüklenmiyor — işaret konup siliniyor ama okuyan olmuyor. Ekran
+// yalnızca "giriş başlatıldı VE sayfa yeniden yüklendi" durumunda değişiyor.
+// `display-mode` ile yapay olarak PWA'ya kısıtlanmadı: tetikleyici zaten kesin.
+const SIGNIN_PENDING_KEY = 'signin_pending';
+const SIGNIN_PENDING_MAX_AGE = 2 * 60 * 1000;   // bayat işaret ekranı kilitlemesin
+
+// Depolama erişimi try/catch'li: Safari gizli modda localStorage'a DOKUNMAK bile
+// SecurityError fırlatıyor ve bu dosya giriş sayfasının tamamını yönetiyor —
+// burada bir istisna kimsenin giriş yapamaması demek (Faz 13b dersi).
+function markSignInPending() {
+  try { localStorage.setItem(SIGNIN_PENDING_KEY, String(Date.now())); } catch (e) { /* yoksay */ }
+}
+
+function clearSignInPending() {
+  try { localStorage.removeItem(SIGNIN_PENDING_KEY); } catch (e) { /* yoksay */ }
+}
+
+function signInIsPending() {
+  try {
+    const started = Number(localStorage.getItem(SIGNIN_PENDING_KEY));
+    if (!started) return false;
+    // Yarıda bırakılmış bir giriş sonsuza dek bekleme ekranı göstermemeli.
+    if (Date.now() - started > SIGNIN_PENDING_MAX_AGE) {
+      clearSignInPending();
+      return false;
+    }
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Sayfa açılır açılmaz karar veriliyor ki giriş sayfası bir kare bile görünmesin.
+if (signInIsPending()) {
+  document.body.classList.add('signing-in');
+  authLog.info('Returning from an in-progress sign-in; showing the waiting screen');
 }
 
 // Savunmacı zaman aşımı: `authStateReady()` ağa çıkmadığı için normalde hızlı
@@ -219,11 +269,23 @@ document.getElementById('google-btn').addEventListener('click', async () => {
   // Eşik bu yüzden yüksek (10 sn) — yoksa her normal giriş sarı yanardı.
   const start = performance.now();
 
+  // Popup AÇILMADAN önce işaretle. PWA'da pencere popup sırasında yeniden
+  // kurulabiliyor ve bu fonksiyon hiç devam etmiyor — o durumda işaret, sayfa
+  // baştan yüklendiğinde giriş sayfası yerine bekleme ekranını gösteriyor.
+  markSignInPending();
+
   try {
     await auth.signInWithPopup(googleProvider);
     Logger.duration('auth', 'sign in (Google popup)', performance.now() - start, 10000);
+    // Buraya ulaştıysak pencere hayatta kaldı (tipik olarak web): işaretin
+    // görevi bitti, yoksa index.html'e sonraki dönüşte bekleme ekranı çıkardı.
+    clearSignInPending();
     window.location.href = 'search.html';
   } catch (err) {
+    // Giriş tamamlanmadı: işaret kalırsa kullanıcı bir daha bu sayfaya
+    // geldiğinde hiçbir sebep yokken bekleme ekranıyla karşılaşır.
+    clearSignInPending();
+    document.body.classList.remove('signing-in');
     // Bu email şifreyle kayıtlı: Firebase güvenlik gereği otomatik bağlamaz,
     // önce kullanıcının mevcut şifresiyle kimliğini kanıtlaması gerekir.
     if (err.code === 'auth/account-exists-with-different-credential') {
