@@ -76,9 +76,25 @@ if (signInIsPending()) {
 // BUILD değeri her dağıtımda elle artırılıyor: "telefondaki kod güncel mi?"
 // sorusunun tek kesin cevabı bu — kurulu PWA sayfayı bellekte tuttuğu için
 // güncellemenin gerçekten indiğini başka türlü doğrulayamıyoruz.
-const BUILD = '26b-3';
+const BUILD = '26b-4';
 
-if (window.location.search.indexOf('debug=1') !== -1) {
+// `?debug=1` KALICI bir işaret bırakıyor. Sebep pratik: kurulu PWA'nın adres
+// çubuğu yok, yani uygulamanın içinde bir sorgu parametresi yazmak MÜMKÜN DEĞİL.
+// Chrome ile kurulu PWA aynı origin'in deposunu paylaştığı için, tarayıcıda bir
+// kez açmak teşhisi PWA'da da açıyor. `?debug=0` kapatıyor.
+function debugEnabled() {
+  try {
+    const q = window.location.search;
+    if (q.indexOf('debug=1') !== -1) { localStorage.setItem('debug_auth', '1'); return true; }
+    if (q.indexOf('debug=0') !== -1) { localStorage.removeItem('debug_auth'); return false; }
+    return localStorage.getItem('debug_auth') === '1';
+  } catch (e) {
+    // Depolama kapalıysa yalnızca URL'ye bak; teşhis aracı sayfayı düşürmemeli.
+    return window.location.search.indexOf('debug=1') !== -1;
+  }
+}
+
+if (debugEnabled()) {
   const box = document.createElement('pre');
   box.style.cssText =
     'position:fixed;left:0;right:0;bottom:0;z-index:200;margin:0;padding:.6rem;' +

@@ -101,6 +101,7 @@ function run(authReady, storageOpt, search) {
     formHidden: () => classes.has('auth-checking'),
     overlayShown: () => classes.has('signing-in'),
     markerLeft: () => storageOpt !== 'throws' && store.has('signin_pending'),
+    debugFlag: () => (storageOpt === 'throws' ? null : store.get('debug_auth')),
     redirectedTo: () => ctx.window.location.href,
     timers,
     clearedCount: () => cleared,
@@ -199,6 +200,22 @@ function run(authReady, storageOpt, search) {
   } catch (e) { crashed = true; }
   check('debug=1 -> does not break the page', !crashed);
   check('debug=1 -> form is still revealed', !crashed && !r.formHidden());
+  // Kalici olmali: kurulu PWA'nin adres cubugu yok, yani icine ?debug=1 yazilamiyor.
+  // Chrome'da bir kez acmak PWA'da da etkinlestirmeli (ayni origin, ayni depo).
+  check('debug=1 -> persists a flag for the installed PWA', r.debugFlag() === '1');
+
+  // Bayrak varken parametre OLMADAN da acilmali (PWA'nin gordugu durum).
+  crashed = false;
+  try {
+    r = run(Promise.resolve(null), { debug_auth: '1' }, '');
+    await new Promise((res) => setImmediate(res));
+  } catch (e) { crashed = true; }
+  check('stored debug flag -> diagnostics work without the URL param', !crashed && !r.formHidden());
+
+  // ?debug=0 kapatabilmeli, yoksa kutu kalici olarak ekranda kalir.
+  r = run(Promise.resolve(null), { debug_auth: '1' }, '?debug=0');
+  await new Promise((res) => setImmediate(res));
+  check('debug=0 -> clears the stored flag', !r.debugFlag());
 
   crashed = false;
   try {
