@@ -51,7 +51,8 @@
 - **Hafta 8 — CANLI:** Backend → Render, frontend → Vercel ✅ (Faz 10). 4 blocker'ın 3'ü çözüldü, in-app tarayıcı Google girişi (④) bilinçli ertelendi.
 - **Hafta 9 — performans:** Faz 11 ✅ — arama LLM'i beklemiyor (8.87sn → 0.32sn), favoriler N+1 kalktı, favori sırası düzeldi.
 - **Hafta 10 — kalite:** Faz 13 logging ✅, Faz 14 model güncellemesi ✅, **Faz 15 test altyapısı + girdi doğrulama + LLM sınıflandırıcı ✅** (Katman 1 + Katman 2: 148 test).
-- **Hafta 11 (şu an buradayız) — zenginleştirme + gelir modeli:** rakip özelliklerini (Samsung Food / ReciMe) ekleyip gelir hikayesi kurma. **Faz 16 Koleksiyonlar ✅** (175 test), **Faz 17 Pantry + yapılandırılmış malzeme verisi ✅** (235 test), **Faz 18 Meal Planner ✅** (316 test), **Faz 19 Alışveriş Listesi ✅** (366 test) — gelir zinciri (Pantry+Plan → eksikler → affiliate CTA) tamamlandı. **Faz 20 tarif görselleri + veri seti 2× ✅** (372 test), **Faz 21 fotoğraftan besin değeri ✅** (527 test). Yol haritasında kalan opsiyonel adımlar: Cook Mode / porsiyon ölçekleme, **günlük besin kaydı** (Faz 21 sadece gösteriyor, kaydetmiyor — premium hikayesi). Kalan (Faz 15'ten devir): `main`'e merge, README/sunum hazırlığı.
+- **Hafta 11 (şu an buradayız) — zenginleştirme + gelir modeli:** rakip özelliklerini (Samsung Food / ReciMe) ekleyip gelir hikayesi kurma. **Faz 16 Koleksiyonlar ✅** (175 test), **Faz 17 Pantry + yapılandırılmış malzeme verisi ✅** (235 test), **Faz 18 Meal Planner ✅** (316 test), **Faz 19 Alışveriş Listesi ✅** (366 test) — gelir zinciri (Pantry+Plan → eksikler → affiliate CTA) tamamlandı. **Faz 20 tarif görselleri + veri seti 2× ✅** (372 test), **Faz 21 fotoğraftan besin değeri ✅** (527 test). Yol haritasında kalan opsiyonel adımlar: Cook Mode / porsiyon ölçekleme, **günlük besin kaydı** (Faz 21 sadece gösteriyor, kaydetmiyor — premium hikayesi).
+- **Hafta 12 — mobil:** **Faz 26 PWA ✅** (546 Python testi + 19 service worker testi) — uygulama artık Android/iOS'ta ana ekrana kurulabiliyor, mağaza gerekmeden. Sırada: **hesap silme akışı** (store zorunluluğu değil, `privacy.html`'deki söz + KVKK/GDPR), sonra **Capacitor** (App Store / Google Play). Kalan: varsayılan dalı `main` yapmak, sunum hazırlığı.
 
 ## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
 ### Backend
@@ -104,7 +105,11 @@
 - `frontend/js/plan.js` — plan sayfası (Faz 18): hafta ızgarası, slot ekleme/çıkarma/**değiştirme (⇄)**, hafta gezinme, favorilerden lazy seçici. **Tarihler yerel üretiliyor** (`toISOString()` YOK — UTC'ye çevirip günü kaydırırdı). `SLOTS` sabiti backend'in kopyası; ayrışmaya karşı Katman 1'de test var.
 - `frontend/js/shopping.js` — alışveriş listesi sayfası (Faz 19): türev+overlay listesi render, işaretleme, elle ekleme/çıkarma, "Shop this list" CTA, hafta gezinme (plan.js ile aynı tarih yardımcıları). Öznitelik-güvenli `escapeAttr`.
 - `frontend/js/favorites.js` — koleksiyonları ve favorileri **paralel** çekiyor (Faz 16); favoriler tarif bilgileriyle **tek istekte** (`?include_details=true`; Faz 11 öncesi her ID için ayrı istek atıyordu)
-- `frontend/Dockerfile` — `nginx:alpine`, statik dosyaları doğrudan sunuyor
+- `frontend/manifest.webmanifest` — **PWA manifesti** (Faz 26): standalone, `id`/`start_url` `/`, 3 ikon (biri maskable). 10 HTML'in hepsinden `<link rel="manifest">` ile bağlı.
+- `frontend/sw.js` — **service worker** (Faz 26). Yalnızca uygulama kabuğunu (HTML/CSS/JS/ikon) tutuyor; **API yanıtları hiçbir koşulda önbelleğe girmiyor** (iki bağımsız koruma, gerekçe Faz 26). Network-first. `js/` altında DEĞİL kökte — service worker'ın scope'u bulunduğu klasör.
+- `frontend/js/pwa.js` — service worker kaydı. `Logger`'a bağımlı değil (`privacy.html` hiç script yüklemiyor), kayıt başarısız olursa uygulama normal web sayfası gibi devam ediyor.
+- `frontend/icons/` — 4 PNG (192, 512, maskable 512, apple-touch 180). **Elle değil `scripts/make_icons.py` ile üretiliyor.** `.gitignore`'daki `*.png` bunları eliyordu — `!frontend/icons/*.png` istisnası şart, yoksa canlıda uygulama kurulamaz olur.
+- `frontend/Dockerfile` — `nginx:alpine`, statik dosyaları doğrudan sunuyor. Faz 26'da tek satırlık `sed`: nginx `.webmanifest` uzantısını tanımıyor ve `octet-stream` gönderiyor, Vercel ise doğru tipi gönderiyor — yerel/canlı ayrışmasın diye. `grep`'e zincirli (temel image değişirse build kasten çöksün).
 
 ### Testler (Faz 15)
 - `pytest.ini` (**repo kökünde**) — `pythonpath = api ingestion` (importlar çıplak: `from filters import ...`) ve `testpaths = api/tests ingestion/tests`. **`testpaths` opsiyonel değil**, gerekçesi Faz 15a'da.
@@ -126,7 +131,9 @@
   - `api/tests/test_shopping.py` — 50 test: Katman 1 paylaşılan `ingredient_in_pantry` + **rozet↔liste tutarlılık testi**, `aggregate_ingredients` / `missing_ingredients` / `build_list` (bayat işaretin zararsızlığı, custom dedup) + Katman 1.5 overlay Firestore yazma (sahte doküman) + Katman 2 endpoint sözleşmesi (boş plan → ChromaDB atlanıyor, dolap çıkarması, overlay, silinmiş tarif, normalize, custom `/`).
 - **Besin değeri (Faz 21):**
   - `api/tests/test_nutrition.py` — 155 test: Katman 1 ölçekleme/toplama/ayrıştırma + `merge_duplicate_items` (gerçek fotoğrafta gözlenen kirazdomatesi vakası) + **OAuth imzası BAĞIMSIZ vektöre karşı** (Twitter'ın yayınlanmış OAuth 1.0a örneği — kendi HMAC'ini kendi HMAC'iyle doğrulamak totolojik olurdu, ayrıca yanlış imza *sessizce* fail-open'a düşeceği için başka türlü fark edilmezdi) + Katman 1.5 sahte HTTP ile `lookup_macros`'un tam zinciri + Katman 2 endpoint sözleşmesi (kota → 200+CORS, **ChromaDB'ye dokunulmaması**).
-- **Toplam: 527 test + 1 xfail**, ~2 sn, container/ağ gerekmiyor.
+- **Uptime ucu (Faz 26):** `test_api_contract.py` → `TestUptimeProbe` — `/` hem GET hem **HEAD**'e 200 dönüyor ve auth istemiyor. HEAD kritik: izleme araçları varsayılan olarak onu atıyor ve FastAPI GET rotasına HEAD'i **otomatik eklemiyor**.
+- **Toplam: 546 test + 1 xfail**, ~3 sn, container/ağ gerekmiyor.
+- **Ayrıca JS tarafında (CI'da, pytest'ten bağımsız):** `node scripts/check_frontend.js` (sözdizimi + HTML↔JS ID eşleşmesi + sidebar iskeleti + **sw.js precache senkronu**), `node scripts/test_camera.js` (17), `node scripts/test_sw.js` (**19**, Faz 26).
 - Çalıştırma: `python -m pytest` · `-v` test adlarını gösterir · `--lf` sadece son kırılanları çalıştırır.
 - Windows notu: konsol cp1254 olduğu için Türkçe karakterli mesajlar bozuk görünür (çökme değil). `$env:PYTHONIOENCODING = "utf-8"` düzeltiyor.
 
@@ -139,7 +146,7 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 3. **④ In-app tarayıcılarda Google girişi** (`signInWithRedirect`) — bilinçli ertelendi, gerekçe "Deploy blocker'ları" bölümünde. **Not: normal mobil tarayıcıda (Chrome/Safari) giriş çalışıyor — kullanıcı gerçek telefonda doğruladı (2026-07-19).** Kalan risk yalnızca uygulama içi tarayıcılar.
 4. **`nut_free` etiket açığı** — aşağıdaki "Ertelenen küçük iyileştirmeler"e bakınız; sunumda sorulabilecek türden gerçek bir veri hatası.
 5. **Diğer küçük iyileştirmeler** — ~~LLM cevabındaki `**bold**` render'ı~~ (✅ Faz 15h), instructions'daki `\` kalıntıları, `filters.py` geliştirmeleri.
-6. **Render uykusu** — ücretsiz katmanda 15dk sessizlikten sonra ilk istek 30-60sn. Faz 11 bunu ÇÖZMEZ (uygulama kodu değil, platform). Sunum öncesi bir kez uyandır.
+6. ~~**Render uykusu**~~ → ✅ **ÇÖZÜLDÜ (Faz 26).** UptimeRobot 5 dakikada bir `/`'a istek atıyor, konteyner uyumuyor. Ölçüm: uyanma **42.6 sn** → uyanık **0.42 sn**. Sunum öncesi elle uyandırmaya gerek kalmadı. ⚠️ **Aramayı hızlandırmaz** — o 6.4 sn 0.1 vCPU'daki embedding'den geliyor (Faz 17), konteyner uyanıkken de aynı.
 
 ### ✅ Artık YAPILDI (eski "yapılmadı" maddeleri)
 - ~~GitHub'a bağlama~~ → `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private), `firebase-auth` dalı push'lu.
@@ -170,10 +177,102 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 - **`nut_free` etiketinde açık var** (Faz 7'de tesadüfen fark edildi): "nut free cookies for kids" araması `Pine Nut and Almond Cookies` ve `wheat free peanut butter cookies` döndürüyor — ikisi de `nut_free: True` etiketli, yani yanlış. **KÖK SEBEP FAZ 15'TE BULUNDU** (eski tahmin "bileşik adlar kural listesine takılmıyor" YANLIŞTI) — ayrıntı için Faz 15b. Hata henüz **düzeltilmedi**; `xfail(strict=True)` testi olarak kayıtlı (`ingestion/tests/test_clean_data.py`), düzeltilince test XPASS verip suite'i kırar ve işaretin kaldırılmasını zorlar.
 
 ## Şu An Üzerinde Çalışılıyor
-- **`firebase-auth` branch'i** (`main`'e henüz merge edilmedi). Faz 6–21'in tamamı bu branch'te. `main` el değmemiş durumda. **Canlı deploy `firebase-auth` dalından yapılıyor** (hem Render hem Vercel bu dalı izliyor), dolayısıyla merge sonrası deploy dalını `main`'e çevirmek gerekecek.
+- **`firebase-auth` branch'i.** Faz 6–26'nın tamamı burada; **varsayılan ve canlı dal bu** (hem Render hem Vercel onu izliyor). `origin/main` **hiç push edilmemiş** — yani "main'e merge" diye bir iş YOK, yapılacak şey GitHub arayüzünden dalı yeniden adlandırmak, sonra Render ve Vercel'in izlediği dalı güncellemek (bkz. Faz 24).
+- **Faz 26 canlıda:** PWA (Vercel) + `HEAD /` düzeltmesi (Render) deploy edildi ve doğrulandı. Kalan tek adım gerçek telefonda kurulum testi.
 - Repo **GitHub'da**: `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private). Sırlar (`firebase-key.json`, `.env`) gitignored, repoda yok — Render'da env var olarak duruyor.
 
-## Güncel Durum: Faz 25 (Benzer tarifler — öneri sistemi) ✅
+## Güncel Durum: Faz 26 (PWA — ana ekrana kurulabilir uygulama) ✅
+
+**Tetikleyici:** "Bu projeyi App Store'dan ya da Google Play'den indirilebilir bir mobil uygulamaya nasıl çeviririz?"
+
+### Yol seçimi: hedef Capacitor, ama ÖNCE PWA
+| Seçenek | Karar |
+|---|---|
+| **PWA** | ✅ **önce bu yapıldı** — mağaza yok, ücret yok, 1 günlük iş |
+| **Capacitor** | hedef: MPA'yı destekliyor, build adımı istemiyor, native kamera/auth plugin'leri var |
+| TWA (PWABuilder) | ❌ sadece Android + içi Chrome, native plugin yok — kamera/auth sorunları aynen kalır |
+| React Native / Flutter | ❌ Faz 4–25 çöpe; "projenin değeri backend RAG pipeline'ında" ilkesine aykırı |
+
+**PWA'nın önce gelmesinin sebebi:** store bürokrasisinin **hiçbiri** onu bağlamıyor (Sign in with Apple, privacy manifest, developer hesapları, Play'in 12 tester/14 gün kuralı — hepsi başvuru anında devreye giriyor).
+
+### Capacitor'a geçilirse kodda kırılacak 4 şey (tespit edildi, henüz yapılmadı)
+1. **`config.js` yanlış backend'i gösterir** — Capacitor'da `window.location.hostname` = `localhost`, yani uygulama telefonun kendisine istek atar.
+2. **CORS reddeder** — Capacitor origin'leri `capacitor://localhost` (iOS) ve `https://localhost` (Android); `main.py`'deki regex localhost'u yalnızca `http://` şemasıyla kabul ediyor.
+3. **`signInWithPopup` çalışmaz** (`auth.js:190`) — webview'de `window.opener` köprüsü kurulamıyor. Çözüm `signInWithRedirect` DEĞİL, `@capacitor-firebase/authentication` (native SDK + `signInWithCredential`), çünkü redirect Faz 6'daki hesap bağlama akışını bozar.
+4. **Sesli arama kaybolur** — Web Speech API ne WKWebView'de ne Android WebView'de var. Feature-detection sayesinde çökmez, sessizce yok olur. **PWA'da ise çalışmaya devam ediyor** (aynı tarayıcı motoru).
+
+**Faz 21'in kazancı:** kamera `camera.js` ortak modülüne çıkarılmıştı; `Camera.attach()` arayüzünün arkasını native plugin'e çevirmek `search.js`/`nutrition.js`'e **dokunmadan** mümkün. O refactor farkında olmadan mobil geçişin seam'ini döşemiş.
+
+### Yapılanlar
+| Dosya | İş |
+|---|---|
+| `frontend/manifest.webmanifest` | standalone, `id`+`start_url` `/`, 3 ikon (biri maskable) |
+| `frontend/sw.js` | uygulama kabuğu önbelleği + çevrimdışı sayfa |
+| `frontend/js/pwa.js` | kayıt; `Logger` yoksa console'a düşüyor (`privacy.html` hiç script yüklemiyor) |
+| `frontend/icons/` | 4 PNG — **elle değil `scripts/make_icons.py` ile** üretiliyor |
+| 10 HTML | manifest/ikon/iOS meta etiketleri + `pwa.js` (hepsi **+10 −0**, tamamen eklemeli) |
+
+**İkon marka işaretinden türetildi** (sidebar'daki ✦, astroid: `sqrt|x| + sqrt|y| <= 1`), palet birebir aynı. Üretici script **Pillow kullanmıyor** — PNG encoder stdlib `zlib`+`struct` ile ~20 satır, yeni bağımlılık yok.
+
+### 🔒 Karar 1: API yanıtları HİÇBİR koşulda önbelleğe girmiyor
+Faz 20'deki sessionStorage hatasının aynısı, ama **daha ağırı**: Cache Storage origin başına, kalıcı ve çıkışta temizlenmiyor. Favoriler/dolap/plan orada dursaydı ortak bilgisayarda doğrudan veri sızıntısı olurdu. **İki bağımsız koruma** var (farklı origin hiç ele alınmıyor + `/api/` açıkça dışarıda) ve **ikisi de teste bağlı**.
+
+### ⚡ Karar 2: network-first, cache-first DEĞİL
+Sıradan bir PWA statik dosyaları önce önbellekten verir. Burada **yapılmadı**: dosya adlarında hash yok ve tüm JS global `<script>` ile yükleniyor, yani cache-first "yeni HTML + eski JS" karışımı üretip sessiz `ReferenceError` verebilirdi. Kaybedilen hız önemsiz — darboğaz statik dosyalar değil, ölçülmüş **6.4 sn**'lik embedding (Faz 17).
+
+**Yan fayda:** sürüm numarasını elle artırmak gerekmiyor; çevrimiçi kullanıcı zaten hep tazesini alıyor.
+
+### 🔴 Harness'ın CANLIYA ÇIKMADAN yakaladığı hata: yönlendirilmiş yanıtlar
+`sw.js` sayfanın dışında, kendi thread'inde çalışıyor — hatası konsolda görünmüyor. Gözle okumak yerine **sahte Cache API ile çalıştıran** bir harness yazıldı (`scripts/test_sw.js`, camera harness'ının kardeşi) ve **ilk koşuda** şunu buldu: `redirected` yanıtlar önbelleğe alınıyordu.
+
+Neden ölümcül: önbellekteki yönlendirilmiş bir yanıt bir **navigasyona** servis edilirse tarayıcı *"a redirected response was used for a request whose redirect mode is not follow"* diye atar ve **sayfa hiç açılmaz**. Üstelik `cache.match` başarılı olduğu için offline yedek sayfası da devreye girmez — yani çevrimdışı mod **sessizce tamamen** bozulurdu. Vercel yol normalizasyonunda yönlendirme üretebiliyor, yani teorik değil.
+
+Ayrıca `ignoreVary: true` eklendi: sunucu `Vary: Accept-Encoding` gönderdiğinde precache'teki istek ile sayfanın isteği başlık farkı yüzünden eşleşmeyebilir ve çevrimdışı mod *sebepsiz* çalışmaz.
+
+### 🔴 `.gitignore`'daki `*.png` ikonları eliyordu (deploy engeli)
+İkonlar diskte üretiliyor ama git'e **hiç girmiyordu** → Vercel'e gitmezdi → Chrome en az bir 192px ikon olmadan uygulamayı **"yüklenebilir" saymaz**. Yerelde her şey çalışırken canlıda kurulamaz olurdu. `!frontend/icons/*.png` istisnası eklendi (negasyon çalışıyor, ampirik doğrulandı).
+
+### 🔴 `HEAD /` → 405: uptime izlemesini kurulur kurulmaz bozuyordu
+Render ücretsiz katmanda 15 dk sessizlikten sonra uyuyor. **Ölçüldü: uyanma 42.6 sn, uyanıkken 0.42 sn (100×).** Çözüm UptimeRobot ile 5 dakikada bir `/`'a istek (yeni endpoint gerekmedi — `main.py:134`'teki `/` zaten auth'suz ve veritabanına dokunmuyor).
+
+Monitor kurulur kurulmaz **"Down | 405"** oldu: izleme araçlarının çoğu (UptimeRobot dahil) **HEAD** atıyor ve **FastAPI, düz Starlette'in AKSİNE, bir GET rotasına HEAD'i otomatik eklemiyor.**
+
+- **Aracın ayarından değil koddan çözüldü:** monitor'ün metodunu değiştirmek yalnızca o aracı düzeltirdi, ve GET'i olan bir kaynağın HEAD'e 405 dönmesi zaten HTTP açısından bir kusur.
+- **İki ayrı dekoratör**, tek `api_route(methods=[...])` değil — ikincisi OpenAPI'de çakışan operation ID üretip uyarı basıyor (suite uyarısızdı, öyle kaldı). HEAD şemaya dahil değil: sağlık kontrolü, API yüzeyi değil.
+- **Gerçek uvicorn'da doğrulandı**, yalnızca TestClient'ta değil: GET 200, HEAD 200, POST hâlâ 405.
+
+**Önemli nüans:** keep-alive monitor kırmızıyken de çalışıyordu — `405` da olsa istek uygulamaya *ulaşıyor* ve Render'ın uyku sayacı durum koduna bakmıyor. Düzeltme keep-alive'ı başlatmadı, monitor'ü **gerçek arıza alarmı** olarak kullanılabilir yaptı.
+
+**Dürüst sınır:** bu, **aramayı hızlandırmaz.** 6.4 sn 0.1 vCPU'daki embedding'den geliyor, konteyner uyanıkken de aynı. Ayrıca 750 instance-saat/ay veriliyor, 7/24 açık tek servis ≈ 730 saat — sığıyor ama **kıl payı**, ikinci bir ücretsiz servis bütçeyi taşırır.
+
+### nginx `.webmanifest`'i tanımıyordu
+`application/octet-stream` gönderiyordu, Vercel ise doğru tipi gönderiyor → yerel ile canlı **ayrışıyordu**. `frontend/Dockerfile`'a tek satırlık `sed`. Ayrı bir conf **dosyası kullanılmadı**: build context `./frontend` ve aynı klasör nginx'in html kökü, yani oraya konan her dosya herkese açık servis edilirdi. `sed` bir `grep`'e zincirlendi — temel image mime.types'ı değiştirirse build kasten çöksün (ONNX indirmesindeki felsefenin aynısı).
+
+### Test (543 → **546** Python, + **19** service worker)
+- **`scripts/test_sw.js` (yeni, CI'da):** install/activate yaşam döngüsü, **4 gizlilik testi** (POST / `/api/` / Render origin'i / Firebase SDK'sı hiç ele alınmıyor), navigasyon anahtarından `?query` düşmesi (yoksa görüntülenen her tarif önbelleğe kopya ekler), 404'ün iyi kopyayı ezmemesi, çevrimdışı yolları, **yönlendirilmiş yanıt**, activate'in yalnızca kendi eski sürümlerini silmesi.
+- **`api/tests/test_api_contract.py` → `TestUptimeProbe`** (+3): `/` GET ve **HEAD** 200, auth gerektirmiyor.
+- **`scripts/check_frontend.js` genişletildi:** `sw.js` artık derleniyor (kökte olduğu için CI'ın dışındaydı) ve **precache listesi diskle karşılaştırılıyor** — yeni sayfa/JS ekleyip listeyi güncellemeyi unutmak tam da bu script'in var olma sebebi olan sessiz bozulma.
+
+### Doğrulama (canlı) ✅
+| Kontrol | Sonuç |
+|---|---|
+| Vercel PWA dosyaları | **6/6 → 200** |
+| Manifest MIME (Vercel) | `application/manifest+json` |
+| Manifest içeriği | standalone, 3 ikon, maskable var |
+| Render `GET /` · `HEAD /` | 200 · **405 → 200** (deploy cutover'ı izlendi) |
+| CI | pytest 3.12 + 3.13, frontend checks — hepsi yeşil |
+| `api/chroma_data` | temiz |
+
+### Bilinen sınırlar / sıradaki adımlar
+- **Vercel preview'ları PWA testi için KULLANILAMIYOR:** projede Deployment Protection açık, her istek `vercel.com/sso-api`'ye 302 veriyor → Chrome geçerli manifest göremiyor. Test production'da yapıldı. (Preview'da ayrıca Firebase Authorized domains kısıtı da var, Google girişi `auth/unauthorized-domain` verir.)
+- **Uygulama `/`'dan açılıyor**, giriş yapmış kullanıcı bir an login sayfasını görüp `search.html`'e yönleniyor (Faz 13b'deki `authReady` beklemesi). Standalone modda daha göze çarpıyor. `start_url`'i `search.html` yapmak çözüm DEĞİL — girişsiz kullanıcı ters yöne sekerdi.
+- **Google Fonts çevrimdışı önbelleğe alınmıyor** (cross-origin; `cache.addAll` atomik olduğu için precache'i komple düşürme riski). Çevrimdışı açılışta yazı tipi sistem fontuna düşer.
+- **Kaçış kapısı:** SW bir gün sorun çıkarırsa, kendini `unregister` eden bir `sw.js` deploy etmek onu tüm tarayıcılardan siler.
+- **Sırada:** hesap silme akışı (store zorunluluğu **değil**, `privacy.html`'de zaten verilmiş söz + KVKK/GDPR), sonra Capacitor.
+
+---
+
+## Faz 25 (Benzer tarifler — öneri sistemi) ✅
 
 **Tetikleyici:** "Projeye ne eklenebilir?" Tarif detay sayfası **çıkmaz sokaktı** — okuyup geri dönmekten başka yol yoktu.
 
@@ -235,7 +334,9 @@ Düzeltme: gerçek paket varsa ona dokunulmuyor (`try: import google`), yalnızc
 ### `scripts/check_frontend.js`
 JS için test çatısı yok (sade tarayıcı JS'i). Bu script bu oturumda ELLE yaptığım ve **gerçek hata yakalayan** iki kontrolü kalıcı hale getiriyor: (1) her JS dosyası derleniyor mu, (2) sayfaya özel script'in `getElementById` ile aradığı her ID o HTML'de var mı, (3) sidebar'lı sayfalarda `api.js`'in aradığı iskelet tam mı.
 
-**Paylaşılan dosyalar (api.js, logger.js, camera.js…) 2. kontrolün DIŞINDA** — her sayfada yükleniyorlar ve olmayan elemanlara `if (!el) return` ile korunuyorlar, yani orada eksik ID hata değil normal durum.
+**Paylaşılan dosyalar (api.js, logger.js, camera.js…) 2. kontrolün DIŞINDA** — her sayfada yükleniyorlar ve olmayan elemanlara `if (!el) return` ile korunuyorlar, yani orada eksik ID hata değil normal durum. (`pwa.js` de Faz 26'da bu listeye eklendi.)
+
+**Faz 26'da 4. kontrol eklendi:** `sw.js` derleniyor mu (kökte olduğu için ilk kontrolün dışındaydı) ve **precache listesi diskle uyumlu mu** — yeni bir sayfa/JS/ikon ekleyip `sw.js`'i güncellemeyi unutmak sessiz bir bozulma: uygulama çevrimiçi sorunsuz çalışır, yalnızca çevrimdışı açılmaz.
 
 ### README yeniden yazıldı (İngilizce)
 Eskisi yalnızca API'yi anlatıyordu ve *"bu repo API'yi barındırıyor"* diyordu — oysa frontend de burada. Yenisi: canlı link + CI rozeti, özellik tablosu, **mermaid mimari diyagramı**, ölçüme dayanan kararlar (LLM'i beklememe 8.87→0.32sn, torch kaldırma 2.83→1.14GB, mesafe eşiğinin ELENMESİ, model zinciri, OAuth 1.0), veri hikayesi (miktarların %27 hizalı olduğu için elenmesi dahil), test katmanları, kurulum, deploy ve **dürüst bilinen sınırlar** bölümü.
