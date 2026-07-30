@@ -163,7 +163,6 @@ function run(authReady, storageOpt, search, popupResult) {
       }
     },
     tickerRunning: () => intervals.length > 0,
-    elapsedText: () => (elements['signin-elapsed'] || {}).textContent,
     cancelVisible: () => !!elements['signin-cancel'] && !elements['signin-cancel'].classes.has('hidden'),
     clickCancel: () => elements['signin-cancel'].handlers.click(),
     redirectedTo: () => ctx.window.location.href,
@@ -338,7 +337,6 @@ function run(authReady, storageOpt, search, popupResult) {
   check('popup error: a ticker is running', r.tickerRunning());
   r.advance(3);
   check('waiting 3s: still waiting, form not shown', r.overlayShown());
-  check('waiting 3s: elapsed seconds are displayed', r.elapsedText() === '3s');
   check('waiting 3s: escape link is still hidden', !r.cancelVisible());
 
   r.advance(3);                                   // toplam 6 sn

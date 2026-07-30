@@ -68,8 +68,11 @@ function signInIsPending() {
 // SÜREYİ TAHMİN ETMEK YERİNE iki şey yapıyoruz:
 //   1. sabırlı olmak (aşağıdaki üst sınır cömert),
 //   2. kullanıcıyı HAPSETMEMEK — birkaç saniye sonra çıkış bağlantısı beliriyor.
-// Ayrıca geçen süre ekranda YAZIYOR: "uzun sürdü" ifadesini sayıya çeviren tek
-// şey bu, ve bir sonraki kararı (popup mu, redirect mi) o sayı belirleyecek.
+//
+// Sayaç bir zamanlar ekranda yazıyordu ve gerçek bir işi vardı: "uzun sürdü"
+// ifadesini sayıya çevirmek. Sorun bulunduktan sonra kaldırıldı — kullanıcıya
+// saniye göstermek geliştirici gürültüsü. Zamanlayıcının kendisi duruyor,
+// çünkü çıkış bağlantısını ve üst sınırı o çalıştırıyor.
 const WAIT_ESCAPE_SEC = 5;      // bu saniyeden sonra "vazgeç" bağlantısı görünür
 const WAIT_MAX_SEC = 45;        // bu saniyeden sonra kendiliğinden forma döner
 
@@ -78,7 +81,6 @@ let waitTicker = null;
 function showWaitingScreen(onGiveUp) {
   document.body.classList.add('signing-in');
 
-  const elapsedEl = document.getElementById('signin-elapsed');
   const cancelEl = document.getElementById('signin-cancel');
   const started = Date.now();
 
@@ -86,7 +88,6 @@ function showWaitingScreen(onGiveUp) {
   waitTicker = setInterval(() => {
     if (leavingForApp) { hideWaitingScreen(); return; }
     const secs = Math.round((Date.now() - started) / 1000);
-    if (elapsedEl) elapsedEl.textContent = secs + 's';
     if (cancelEl && secs >= WAIT_ESCAPE_SEC) cancelEl.classList.remove('hidden');
     if (secs >= WAIT_MAX_SEC) {
       hideWaitingScreen();
@@ -124,7 +125,7 @@ if (signInIsPending()) {
 // BUILD değeri her dağıtımda elle artırılıyor: "telefondaki kod güncel mi?"
 // sorusunun tek kesin cevabı bu — kurulu PWA sayfayı bellekte tuttuğu için
 // güncellemenin gerçekten indiğini başka türlü doğrulayamıyoruz.
-const BUILD = '26c-2';
+const BUILD = '26c-3';
 
 // `?debug=1` KALICI bir işaret bırakıyor. Sebep pratik: kurulu PWA'nın adres
 // çubuğu yok, yani uygulamanın içinde bir sorgu parametresi yazmak MÜMKÜN DEĞİL.
