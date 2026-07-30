@@ -124,7 +124,7 @@ if (signInIsPending()) {
 // BUILD değeri her dağıtımda elle artırılıyor: "telefondaki kod güncel mi?"
 // sorusunun tek kesin cevabı bu — kurulu PWA sayfayı bellekte tuttuğu için
 // güncellemenin gerçekten indiğini başka türlü doğrulayamıyoruz.
-const BUILD = '26c-1';
+const BUILD = '26c-2';
 
 // `?debug=1` KALICI bir işaret bırakıyor. Sebep pratik: kurulu PWA'nın adres
 // çubuğu yok, yani uygulamanın içinde bir sorgu parametresi yazmak MÜMKÜN DEĞİL.
@@ -424,6 +424,22 @@ document.getElementById('google-btn').addEventListener('click', async () => {
   // kurulabiliyor ve bu fonksiyon hiç devam etmiyor — o durumda işaret, sayfa
   // baştan yüklendiğinde giriş sayfası yerine bekleme ekranını gösteriyor.
   markSignInPending();
+
+  // Bekleme ekranını HEMEN göster — popup açılmadan önce.
+  //
+  // Ekran kaydı bunun neden şart olduğunu gösterdi: PWA'da popup, uygulamanın
+  // ÜSTÜNE açılan bir Custom Tab. Sayfa yeniden yüklenmiyor, `signInWithPopup`
+  // da hata fırlatmıyor — BAŞARIYLA çözülüyor. Yani daha önce ekranı gösterdiğim
+  // iki yol (yeniden yükleme ve hata) burada hiç çalışmıyordu.
+  //
+  // Custom Tab kapandıktan sonra promise çözülene kadar ~1.5 sn geçiyor ve o
+  // boşlukta ARKADAKİ giriş formu görünüyor. Kullanıcının "önce giriş ekranına
+  // atıyor sonra giriyor" dediği şey tam olarak bu boşluk.
+  showWaitingScreen(() => {
+    if (leavingForApp) return;
+    clearSignInPending();
+    errorEl.textContent = friendlyError('auth/popup-closed-by-user');
+  });
 
   try {
     await auth.signInWithPopup(googleProvider);

@@ -299,6 +299,23 @@ function run(authReady, storageOpt, search, popupResult) {
   // PWA'da hesap secildikten sonra signInWithPopup REDDEDIYOR, ama giris sunucu
   // tarafinda tamamlaniyor ve saniyeler icinde onAuthStateChanged ile geliyor.
   // Hemen forma donmek "once giris ekrani, sonra iceri" davranisini uretiyordu.
+  // ── 6d. POPUP BASARIYLA COZULUYOR ama arada bosluk var ──
+  // EKRAN KAYDIYLA bulundu: PWA'da popup uygulamanin USTUNE acilan bir Custom
+  // Tab. Sayfa yeniden yuklenmiyor, signInWithPopup hata da firlatmiyor;
+  // basariyla cozuluyor. Custom Tab kapandiktan sonra promise cozulene kadar
+  // ~1.5 sn geciyor ve o boslukta ARKADAKI form goruluyor. Bekleme ekranini
+  // TIKLAMA ANINDA gostermek bunun tek carasi.
+  r = run(new Promise(() => {}));            // auth snapshot hic cozulmesin
+  await new Promise((res) => setImmediate(res));
+  const clickDone = r.clickGoogle();
+  check('click: waiting screen appears immediately, before the popup',
+        r.overlayShown());
+  check('click: the marker is written', r.markerLeft());
+  await clickDone;
+  await new Promise((res) => setImmediate(res));
+  check('popup resolves: navigates into the app', r.redirectedTo() === 'search.html');
+  check('popup resolves: form is never shown in the gap', !r.googleError());
+
   const popupErr = Object.assign(new Error('popup closed'), { code: 'auth/popup-closed-by-user' });
 
   r = run(Promise.resolve(null), undefined, '', popupErr);
