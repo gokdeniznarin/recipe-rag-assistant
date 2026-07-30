@@ -178,6 +178,11 @@ function run(authReady, storageOpt, search, popupResult) {
   check('signed in -> redirected to search.html', r.redirectedTo() === 'search.html', r.redirectedTo());
   check('signed in -> form is never revealed (no flash)', r.formHidden());
   check('signed in -> defensive timer is cancelled', r.clearedCount() === 1);
+  // Yonlendirme ANINDA olmuyor: tarayici search.html'i agdan cekiyor. O sure
+  // boyunca bu sayfa hala ekranda, yani ortu sart. Isaret OLMADAN da gecerli:
+  // oturumu acik kullanici index.html'i actiginda hero+tanitim iceriginin
+  // gorunmesinin sebebi buydu (canlida ~975 ms).
+  check('signed in -> the cover is raised while search.html loads', r.overlayShown());
 
   // ── 2. Giriş yapmamış kullanıcı: form açılır, yönlendirme YOK ──
   r = run(Promise.resolve(null));
@@ -272,6 +277,13 @@ function run(authReady, storageOpt, search, popupResult) {
   check('late sign-in: redirects when the user finally arrives',
         r.redirectedTo() === 'search.html');
   check('late sign-in: marker is cleared on the way out', !r.markerLeft());
+  // ⚠️ EKRAN KAYDIYLA OLCULEN SON KUSUR. Sayac, `leavingForApp` gorunce
+  // `hideWaitingScreen()` cagiriyordu; ortu kalkiyor ama sayfa henuz
+  // degismedigi icin altindaki GIRIS FORMU goruluyordu (24 fps'te 6 kare,
+  // ~0.25 sn). Sayac artik yalnizca duruyor, ortuye dokunmuyor.
+  r.advance(3);
+  check('late sign-in: the cover stays up while search.html loads', r.overlayShown());
+  check('late sign-in: the ticker stops instead of uncovering', !r.tickerRunning());
 
   // Gec giris GELMEZSE kullanici sonsuza dek beklememeli. Vazgecme karari artik
   // TEK bir yerde: bekleme ekraninin kendi sayaci. Onceki turda buna paralel bir
@@ -314,6 +326,8 @@ function run(authReady, storageOpt, search, popupResult) {
   await new Promise((res) => setImmediate(res));
   check('popup resolves: navigates into the app', r.redirectedTo() === 'search.html');
   check('popup resolves: form is never shown in the gap', !r.googleError());
+  r.advance(3);
+  check('popup resolves: the cover stays up while search.html loads', r.overlayShown());
 
   const popupErr = Object.assign(new Error('popup closed'), { code: 'auth/popup-closed-by-user' });
 

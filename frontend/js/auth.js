@@ -15,6 +15,9 @@ const authLog = Logger.get('auth');
 // dönerken bu bekleme baştan ödendiği için belirgin bir "giriş ekranına attı
 // sonra girdi" etkisi yaratıyordu.
 function revealAuthForm() {
+  // Uygulamaya gidiyorsak formu AÇMA: yönlendirme sürerken bu sayfa hâlâ
+  // ekranda ve açılan form doğrudan kullanıcının gördüğü hata olurdu.
+  if (leavingForApp) return;
   document.body.classList.remove('auth-checking');
   hideWaitingScreen();
   clearSignInPending();
@@ -78,15 +81,25 @@ const WAIT_MAX_SEC = 45;        // bu saniyeden sonra kendiliğinden forma döne
 
 let waitTicker = null;
 
+function stopWaitTicker() {
+  if (waitTicker) { clearInterval(waitTicker); waitTicker = null; }
+}
+
 function showWaitingScreen(onGiveUp) {
   document.body.classList.add('signing-in');
 
   const cancelEl = document.getElementById('signin-cancel');
   const started = Date.now();
 
-  if (waitTicker) clearInterval(waitTicker);
+  stopWaitTicker();
   waitTicker = setInterval(() => {
-    if (leavingForApp) { hideWaitingScreen(); return; }
+    // Yönlendirme başladıysa yalnızca SAYACI durdur — ekranı kaldırma.
+    //
+    // Burada bir zamanlar `hideWaitingScreen()` vardı ve hatanın son hâli oydu:
+    // `window.location.href` anında geçiş yapmıyor, tarayıcı search.html'i ağdan
+    // çekiyor. Örtü o boşlukta kalkınca altındaki giriş formu görünüyordu.
+    // Ekran kaydında 24 fps'te ölçüldü: 6 kare, ~0.25 sn.
+    if (leavingForApp) { stopWaitTicker(); return; }
     const secs = Math.round((Date.now() - started) / 1000);
     if (cancelEl && secs >= WAIT_ESCAPE_SEC) cancelEl.classList.remove('hidden');
     if (secs >= WAIT_MAX_SEC) {
@@ -105,8 +118,19 @@ function showWaitingScreen(onGiveUp) {
 }
 
 function hideWaitingScreen() {
-  if (waitTicker) { clearInterval(waitTicker); waitTicker = null; }
+  stopWaitTicker();
   document.body.classList.remove('signing-in');
+  const cancelEl = document.getElementById('signin-cancel');
+  if (cancelEl) cancelEl.classList.add('hidden');
+}
+
+// Yönlendirme SÜRERKEN ekranı kaplı tutuyor. `hideWaitingScreen`'in zıddı değil
+// KARDEŞİ: ikisi de sayacı durduruyor ve çıkış bağlantısını gizliyor, ama bu
+// örtüyü kaldırmıyor — belge değişene kadar altındaki sayfa görünmemeli.
+// Vazgeçilecek bir şey kalmadığı için çıkış bağlantısı da geri gizleniyor.
+function showLeavingScreen() {
+  stopWaitTicker();
+  document.body.classList.add('signing-in');
   const cancelEl = document.getElementById('signin-cancel');
   if (cancelEl) cancelEl.classList.add('hidden');
 }
@@ -125,7 +149,7 @@ if (signInIsPending()) {
 // BUILD değeri her dağıtımda elle artırılıyor: "telefondaki kod güncel mi?"
 // sorusunun tek kesin cevabı bu — kurulu PWA sayfayı bellekte tuttuğu için
 // güncellemenin gerçekten indiğini başka türlü doğrulayamıyoruz.
-const BUILD = '26c-3';
+const BUILD = '26c-4';
 
 // `?debug=1` KALICI bir işaret bırakıyor. Sebep pratik: kurulu PWA'nın adres
 // çubuğu yok, yani uygulamanın içinde bir sorgu parametresi yazmak MÜMKÜN DEĞİL.
@@ -183,6 +207,12 @@ function goToApp() {
   if (leavingForApp) return;
   leavingForApp = true;
   clearSignInPending();
+  // Örtüyü yönlendirmeden ÖNCE kur ve bir daha indirme. Yönlendirme anında
+  // olmuyor (ölçüldü: ~0.25 sn) ve o boşlukta bu sayfa hâlâ ekranda.
+  // Girişten gelmeyen yolu da kapsıyor: oturumu açık kullanıcı index.html'i
+  // açtığında hero+tanıtım içeriği yönlendirme boyunca görünüyordu (canlıda
+  // ~975 ms, Faz 13b'de ölçülen `authReady` beklemesi).
+  showLeavingScreen();
   window.location.href = 'search.html';
 }
 
@@ -321,7 +351,10 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     }
 
     Logger.duration('auth', 'sign in (password)', performance.now() - start, 3000);
-    window.location.href = 'search.html';
+    // Doğrudan `window.location` yerine `goToApp()`: aynı boşluk burada da var
+    // (yönlendirme sürerken form ekranda kalıyordu) ve dinleyici zaten
+    // `goToApp`'i çağıracağı için çift yönlendirme de böyle engelleniyor.
+    goToApp();
   } catch (err) {
     authLog.error(
       `sign in (password) failed after ${Logger.fmt(performance.now() - start)}: ${err.code}`
@@ -361,7 +394,7 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
       authLog.warn(`Verification email could not be sent: ${e.code || e.message}`);
     }
 
-    window.location.href = 'search.html';
+    goToApp();
   } catch (err) {
     errorEl.textContent = friendlyError(err.code);
     btn.disabled = false;
@@ -445,10 +478,10 @@ document.getElementById('google-btn').addEventListener('click', async () => {
   try {
     await auth.signInWithPopup(googleProvider);
     Logger.duration('auth', 'sign in (Google popup)', performance.now() - start, 10000);
-    // Buraya ulaştıysak pencere hayatta kaldı (tipik olarak web): işaretin
-    // görevi bitti, yoksa index.html'e sonraki dönüşte bekleme ekranı çıkardı.
-    clearSignInPending();
-    window.location.href = 'search.html';
+    // Buraya ulaştıysak pencere hayatta kaldı (web ve — ölçüldüğü üzere — PWA).
+    // `goToApp()` işareti siliyor (yoksa index.html'e sonraki dönüşte bekleme
+    // ekranı çıkardı) ve örtüyü yönlendirme boyunca ayakta tutuyor.
+    goToApp();
   } catch (err) {
     // İşaret BURADA HER ZAMAN SİLİNMEZ. `popup-closed-by-user` /
     // `cancelled-popup-request` BELİRSİZ hatalar: PWA'da pencere bağlantısı
