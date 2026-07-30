@@ -133,7 +133,7 @@
   - `api/tests/test_nutrition.py` — 155 test: Katman 1 ölçekleme/toplama/ayrıştırma + `merge_duplicate_items` (gerçek fotoğrafta gözlenen kirazdomatesi vakası) + **OAuth imzası BAĞIMSIZ vektöre karşı** (Twitter'ın yayınlanmış OAuth 1.0a örneği — kendi HMAC'ini kendi HMAC'iyle doğrulamak totolojik olurdu, ayrıca yanlış imza *sessizce* fail-open'a düşeceği için başka türlü fark edilmezdi) + Katman 1.5 sahte HTTP ile `lookup_macros`'un tam zinciri + Katman 2 endpoint sözleşmesi (kota → 200+CORS, **ChromaDB'ye dokunulmaması**).
 - **Uptime ucu (Faz 26):** `test_api_contract.py` → `TestUptimeProbe` — `/` hem GET hem **HEAD**'e 200 dönüyor ve auth istemiyor. HEAD kritik: izleme araçları varsayılan olarak onu atıyor ve FastAPI GET rotasına HEAD'i **otomatik eklemiyor**.
 - **Toplam: 546 test + 1 xfail**, ~3 sn, container/ağ gerekmiyor.
-- **Ayrıca JS tarafında (CI'da, pytest'ten bağımsız):** `node scripts/check_frontend.js` (sözdizimi + HTML↔JS ID eşleşmesi + sidebar iskeleti + **sw.js precache senkronu**), `node scripts/test_camera.js` (17), `node scripts/test_sw.js` (**19**, Faz 26).
+- **Ayrıca JS tarafında (CI'da, pytest'ten bağımsız):** `node scripts/check_frontend.js` (sözdizimi + HTML↔JS ID eşleşmesi + sidebar iskeleti + **sw.js precache senkronu**), `node scripts/test_camera.js` (17), `node scripts/test_sw.js` (**19**, Faz 26), `node scripts/test_auth_gate.js` (**60**, Faz 26b — giriş kapısı + bekleme ekranı; sahte DOM + sahte saat).
 - Çalıştırma: `python -m pytest` · `-v` test adlarını gösterir · `--lf` sadece son kırılanları çalıştırır.
 - Windows notu: konsol cp1254 olduğu için Türkçe karakterli mesajlar bozuk görünür (çökme değil). `$env:PYTHONIOENCODING = "utf-8"` düzeltiyor.
 
@@ -143,7 +143,7 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 
 1. **`firebase-auth` → `main` merge** — Faz 6–10'un tamamı `firebase-auth`'ta, `main` el değmemiş. Deploy şu an **feature branch'inden** yapılıyor (hem Render hem Vercel bu dalı izliyor). Merge edilirse **Render ve Vercel'in izlediği dalı `main`'e çevirmek gerekir**, yoksa canlı eski dalda kalır.
 2. **README + sunum hazırlığı** — kökte bir `README.md` var (deploy odaklı); sunum/anlatım materyali yok.
-3. **④ In-app tarayıcılarda Google girişi** (`signInWithRedirect`) — bilinçli ertelendi, gerekçe "Deploy blocker'ları" bölümünde. **Not: normal mobil tarayıcıda (Chrome/Safari) giriş çalışıyor — kullanıcı gerçek telefonda doğruladı (2026-07-19).** Kalan risk yalnızca uygulama içi tarayıcılar.
+3. **④ In-app tarayıcılarda Google girişi** (`signInWithRedirect`) — bilinçli ertelendi, gerekçe "Deploy blocker'ları" bölümünde. **Not: normal mobil tarayıcıda (Chrome/Safari) giriş çalışıyor — kullanıcı gerçek telefonda doğruladı (2026-07-19).** **Kurulu PWA de ETKİLENMİYOR** — Faz 26b'de ölçüldü: popup orada Custom Tab olarak açılıyor ve başarıyla çözülüyor, `signInWithRedirect`'e geçmek gerekmedi. Kalan risk yalnızca uygulama içi tarayıcılar (Instagram/WhatsApp vb.).
 4. **`nut_free` etiket açığı** — aşağıdaki "Ertelenen küçük iyileştirmeler"e bakınız; sunumda sorulabilecek türden gerçek bir veri hatası.
 5. **Diğer küçük iyileştirmeler** — ~~LLM cevabındaki `**bold**` render'ı~~ (✅ Faz 15h), instructions'daki `\` kalıntıları, `filters.py` geliştirmeleri.
 6. ~~**Render uykusu**~~ → ✅ **ÇÖZÜLDÜ (Faz 26).** UptimeRobot 5 dakikada bir `/`'a istek atıyor, konteyner uyumuyor. Ölçüm: uyanma **42.6 sn** → uyanık **0.42 sn**. Sunum öncesi elle uyandırmaya gerek kalmadı. ⚠️ **Aramayı hızlandırmaz** — o 6.4 sn 0.1 vCPU'daki embedding'den geliyor (Faz 17), konteyner uyanıkken de aynı.
@@ -270,31 +270,71 @@ Monitor kurulur kurulmaz **"Down | 405"** oldu: izleme araçlarının çoğu (Up
 - **Kaçış kapısı:** SW bir gün sorun çıkarırsa, kendini `unregister` eden bir `sw.js` deploy etmek onu tüm tarayıcılardan siler.
 - **Sırada:** hesap silme akışı (store zorunluluğu **değil**, `privacy.html`'de zaten verilmiş söz + KVKK/GDPR), sonra Capacitor.
 
-### Faz 26b — giriş ekranı "flaş"ı (gerçek cihaz geri bildirimi) ✅
+### Faz 26b — PWA'da Google girişi: 6 turluk hata ayıklama ✅
 **Kullanıcı bildirimi:** *"PWA'da Google ile giriş yapıyorum, hesabı seçiyorum, önce giriş ekranına atıyor sonra hesaba giriyor."*
 
-**İlk teşhis YANLIŞTI.** ④'ün (in-app tarayıcılarda `signInWithPopup`'ın bozulması) PWA'da da geçerli olduğu, `window.opener` köprüsünün koptuğu ve giriş sonucunun hiç ulaşmadığı sanıldı. İki soruluk teşhis bunu çürüttü: **e-posta/şifre çalışıyor** ve **Google girişi de çalışıyor** — sadece arada form görünüyor.
+#### 🎯 GERÇEK SEBEP (önce cevap, hikâye aşağıda)
+PWA'da popup **uygulamanın ÜSTÜNE çizilen bir Chrome Custom Tab**. Üç şey aynı anda doğru:
+1. **Sayfa yeniden YÜKLENMİYOR** — aynı belge baştan sona ayakta.
+2. **`signInWithPopup` hata FIRLATMIYOR** — başarıyla çözülüyor.
+3. Custom Tab kapandıktan sonra promise çözülene kadar **~1.5 sn** geçiyor.
 
-**Kapsam bu sayede DARALDI:** `signInWithRedirect`'e geçmek ya da `authDomain`'i Vercel üzerinden proxy'lemek **gerekmedi**. İkisi de riskliydi (hesap bağlama akışını bozuyor, Faz 6'daki sonsuz döngüyü geri getirebiliyordu). **④ hâlâ açık ama PWA'yı kapsamıyor.**
+O 1.5 saniyede **arkada duran giriş formu** görünüyor. Hepsi bu. Şikayet edilen davranış bu boşluktan ibaretti.
 
-**Gerçek sebep** (`auth.js:9`): sayfa giriş formunu **anında** çiziyordu, `authReady` ise oturum kalıcı depodan geri yüklendikten sonra çözülüyor — canlıda ölçülen **~975 ms** (Faz 13b). Yani giriş yapmış kullanıcı için bile form o süre boyunca ekranda kalıyordu. Web'de fark edilmiyordu çünkü oturum zaten açıktı; PWA'da Google popup'ından dönerken pencere yeniden kurulduğu için bekleme baştan ödeniyor.
+**Çözüm tek satırlık fikir:** bekleme ekranını **butona basıldığı anda** göster, popup açılmadan önce, ve yönlendirmeye kadar tut. Promise çözülse de, reddedilse de, sayfa yeniden yüklense de form artık arada görünmüyor.
 
-**İLK ÇÖZÜM YETERSİZ KALDI (gerçek cihazda doğrulandı).** Form kartı gizlendi, ama kullanıcı hâlâ "giriş sayfasına dönüyor" dedi — haklıydı: hero ve tanıtım içeriği görünür kaldığı için ekran **hâlâ giriş sayfası**, sadece ortası boş. Kartı gizlemek *algıyı* değiştirmiyor. Ders: "formu gizle" ile "giriş sayfasını gösterme" aynı şey değil.
+#### Neden 6 tur sürdü — elenen teşhisler
+Her tur makul bir hipotezdi ve her biri **kanıtla** çürütüldü. Kayda değer olan, hiçbirinin kodu okuyarak bulunamayacak olması: kod, yazıldığı durumlar için doğruydu, ama gerçek durum onların hiçbiri değildi.
 
-**İKİNCİ ÇÖZÜM — tam ekran "Signing you in…":** `signInWithPopup` çağrılmadan **önce** `localStorage`'a bir işaret bırakılıyor. Sayfa baştan yüklendiğinde işaret duruyorsa giriş sayfası yerine tam ekran bekleme durumu gösteriliyor; kullanıcı giriş sayfasını **hiç görmüyor**.
-- **Web ETKİLENMİYOR** ve bunun sebebi `display-mode` kontrolü değil, tetikleyicinin doğası: web'de popup aynı sayfa bağlamında çözülüyor, sayfa yeniden yüklenmiyor, işaret konup siliniyor ve okuyan olmuyor. Ekran yalnızca "giriş başlatıldı **VE** sayfa yeniden yüklendi" durumunda değişiyor. Yapay kısıtlama eklenmedi — aynı durum web'de oluşursa doğru davranış zaten bu.
-- **Bayat işaret koruması:** 2 dakikadan eski işaret yok sayılıp siliniyor, yoksa yarıda bırakılmış bir giriş kullanıcıyı kalıcı bir bekleme ekranında bırakırdı.
+| # | Hipotez | Nasıl çürütüldü |
+|---|---|---|
+| 1 | ④ PWA'ya da uzanıyor; `window.opener` kopuyor, sonuç hiç gelmiyor | İki soru: e-posta/şifre **çalışıyor**, Google girişi de **çalışıyor**. `signInWithRedirect` / `authDomain` proxy'si **gerekmedi** — ikisi de riskliydi |
+| 2 | `authReady` beklemesi (~975 ms) formu gösteriyor → kartı gizle | Kullanıcı hâlâ "giriş sayfasına dönüyor" dedi. Haklıydı: hero + tanıtım içeriği kalınca ekran **hâlâ giriş sayfası**, sadece ortası boş |
+| 3 | Sayfa yeniden yükleniyor → `localStorage` işaretiyle tam ekran bekleme | Teşhis kutusu `marker none` gösterdi — işaret okunmadan silinmişti |
+| 4 | `catch` işareti siliyor → belirsiz hatalarda koru | Bekleme ekranı yine çıkmadı |
+| 5 | `authReady` tek seferlik fotoğraf, geç gelen girişi kaçırıyor → `onAuthStateChanged` | **Gerçek bir kusurdu ve düzeltildi**, ama sebep değildi |
+| 6 | Popup hatası "başarısız" sayılıyor → belirsiz say, 4 sn bekle | Ekran çıktı ama 4 sn yetmedi; sonra **ekran kaydı** asıl sebebi gösterdi |
+
+#### 🔬 Çözümü mümkün kılan iki araç
+**1. Ekrandaki teşhis kutusu (`?debug=1`).** Telefonda konsol okumak bilgisayar + kablo istiyor. Kutu aynı bilgiyi ekranda gösteriyor: `BUILD`, `standalone`, `marker`, `overlay`, `auth`.
+- **`BUILD` numarası tek başına iki turu kurtardı:** kurulu PWA sayfayı bellekte tuttuğu için, sunucuda doğrulanmış bir deploy cihazda eski kod çalışırken de "canlı" görünüyor ve ekranda ikisini ayırt eden **hiçbir şey yok**. "Telefondaki kod güncel mi?" sorusunun tek kesin cevabı bu.
+- Kutu `?debug=1` ile KALICI bir işaret bırakıyor (`?debug=0` kapatıyor). Sebep pratik: kurulu PWA'nın **adres çubuğu yok**, yani içine sorgu parametresi yazmak imkânsız. Chrome ile PWA aynı origin deposunu paylaştığı için tarayıcıda bir kez açmak uygulamada da açıyor.
+
+**2. Ekran kaydı → kare kare inceleme.** Asıl kanıt buradan geldi. Video `ffmpeg` ile 2 fps'e ayrıştırılıp kareler görüntü olarak okundu.
+- **Belirleyici bulgu:** Google'a basmadan ÖNCEKİ kare ile hesap seçtikten SONRAKİ kare, debug kutusunda **birebir aynı** değerleri gösteriyordu (`marker none`, `overlay false`). O kutu sayfa yüklenirken **bir kez** çiziliyor → aynı değerler = **sayfa hiç yeniden yüklenmemiş**. Altı turdur varsayılan şey böyle çürüdü.
+- Kareler ayrıca akışı görünür kıldı: `firebaseapp.com` auth handler'ı Custom Tab'de → `accounts.google.com` hesap seçici → Custom Tab kapanıyor → **giriş sayfası ~1.5 sn** → uygulama.
+
+**Ders:** cihazda yaşanan ve tarif edilerek aktarılan bir hatada, tarifi *yorumlamak* yerine **ekranı kaydedip kareye bakmak** çok daha ucuz. Altı turun beşi buna daha erken başvurulsa gereksizdi.
+
+#### Yanlış turlardan KALAN (çöpe gitmedi)
+Elenen hipotezler yanlıştı ama ürettikleri korumaların çoğu gerçek kusurları kapatıyor ve duruyor:
+- **`auth-checking`** — form artık gizli başlıyor, `authReady` çözülünce açılıyor. Giriş yapmış kullanıcının form flaşını görmesini engelliyor (web'de de geçerli, ölçülen ~975 ms).
+- **`onAuthStateChanged` sürekli dinleyicisi** — `authReady` tek seferlik bir fotoğraf; geç gelen giriş onunla görülemiyordu. Yalnızca **kullanıcı varsa** yönlendiriyor, `null`'da hiçbir şey yapmıyor (Faz 6'daki sonsuz döngü tam da geçici `null`'dan doğmuştu).
+- **`localStorage` işareti** — sayfa gerçekten yeniden yüklenirse (başka cihaz/sürüm) bekleme ekranı yine çıkıyor. 2 dakikada bayatlıyor, yoksa yarıda kalmış bir giriş kullanıcıyı kalıcı bekleme ekranında bırakırdı.
+- **Popup hatası "belirsiz" sayılıyor** — hesap bağlama dışında. PWA'da popup reddedilirken girişin başarılı olduğu görüldü; hemen forma dönmek hatanın kendisini üretiyordu.
+- **Bekleme ekranı sabırlı ve KAÇILABİLİR** — 45 sn üst sınır, 5 sn sonra "Back to sign in" bağlantısı. Sabırlı bir zaman aşımı ancak kullanıcı çıkabiliyorsa savunulabilir; yoksa 45 sn tuzak olur.
 - **`position: fixed` ile örtüyor**, kardeşleri `display:none` ile gizlemek yerine — o yöntem sayfa yapısı hakkında varsayım gerektirirdi ve ileride bir eleman eklenince sessizce bozulurdu.
-- **`localStorage` erişimi try/catch'li:** Safari gizli modda okumak bile `SecurityError` fırlatıyor ve bu dosya giriş sayfasının tamamını yönetiyor — burada bir istisna hiç kimsenin giriş yapamaması demek (Faz 13b dersi).
+- **Her `localStorage` erişimi try/catch'li** — Safari gizli modda okumak bile `SecurityError` fırlatıyor ve bu dosya giriş sayfasının **tamamını** yönetiyor; burada bir istisna hiç kimsenin giriş yapamaması demek (Faz 13b dersi).
 
-**Ayrıca (ilk adımdan kalan):** form `auth-checking` sınıfıyla **gizli başlıyor**, `authReady` çözülünce ya yönlendiriliyor (form hiç görünmüyor) ya da açılıyor.
-- **`visibility`, `display` DEĞİL** — kart yer kaplamaya devam etsin, belirince sayfa zıplamasın.
-- **Yalnızca kart gizli**; hero ve tanıtım içeriği görünür, yani boş ekran yok.
-- **Savunmacı 3 sn zaman aşımı:** `authReady` beklenmedik bir sebeple çözülmezse form yine açılır. Yoksa sayfa hatasız görünürken **kimse giriş yapamaz** — sessiz ve tam kilitleyici bir arıza (Faz 13b'de `logger.js`'in `localStorage` yüzünden uygulamayı düşürmesinin dersi).
+**Sayaç kaldırıldı:** bekleme ekranı bir süre geçen saniyeyi yazıyordu. Bu bir **ölçüm aracıydı** ("uzun sürdü"yü sayıya çevirmek için), özellik değil. Sorun bulununca kaldırıldı; **zamanlayıcının kendisi duruyor**, çünkü çıkış bağlantısını ve üst sınırı o besliyor.
 
-**`scripts/test_auth_gate.js` (yeni, CI'da, 24 test):** giriş var → yönlendirme + form **hiç açılmıyor**; giriş yok → form açılıyor; `authReady` **reddedilirse** → kullanıcı kilitlenmiyor; **hiç çözülmezse** → 3 sn'lik yedek formu açıyor. Bekleme ekranı için: işaret varken gösteriliyor, yokken gösterilmiyor, **bayat işaret** (>2 dk) temizleniyor, giriş başarılıysa **yönlendirme sırasında ekran kalıyor** (yoksa son anda giriş sayfası görünürdü — düzeltilmeye çalışılan şeyin ta kendisi), giriş iptal edilirse ekran kalkıp form geliyor, ve **`localStorage` erişilemezse** dosya yine yükleniyor. Bu yol Faz 6'daki sonsuz yönlendirme döngüsünün yaşandığı yer olduğu için hepsi sabitlendi.
+**④ hâlâ açık ama PWA'yı KAPSAMIYOR** — in-app tarayıcılar ayrı bir konu olarak duruyor.
 
-**⚠️ Kurulu PWA yeni kodu HEMEN almıyor:** Android uygulamayı bellekte tutuyor, görev listesinden kapatmak her zaman yeni bir sayfa yüklemesi başlatmıyor. Vercel'in önbellek başlıkları doğru (`max-age=0, must-revalidate`, doğrulandı) ve service worker network-first, yani sorun önbellekte değil — sayfa hiç yeniden istenmiyor. En güvenilir yol: siteyi **normal Chrome'da** açıp yenilemek (service worker origin başına paylaşıldığı için PWA da güncellenir), sonra PWA'yı açmak.
+#### Test — `scripts/test_auth_gate.js` (CI'da, **60 test**)
+Sahte DOM + **sahte saat** + element handler yakalama (Google butonuna gerçekten basılabiliyor; bu yol ancak öyle test edilebiliyordu).
+- **Kapı:** giriş var → yönlendirme, form **hiç açılmıyor**; giriş yok → form açılıyor; `authReady` **reddedilirse** kullanıcı kilitlenmiyor; **hiç çözülmezse** 3 sn'lik yedek açıyor.
+- **Bekleme ekranı:** tıklama anında açılıyor, popup çözülünce arada form görünmüyor, sabır (45 sn), çıkış bağlantısı (5 sn), iptal edilince form dönüyor.
+- **Geç gelen giriş:** dinleyici kayıtlı, `null` yayını **asla** yönlendirmiyor (Faz 6 döngü koruması).
+- **İşaret:** var/yok/bayat, erken silinmiyor, `localStorage` erişilemezse dosya yine yükleniyor.
+- ⚠️ **Üç test bir turda TERSİNE çevrildi:** "snapshot signed out ise hemen formu göster" varsayımını kodluyorlardı ve cihaz bunu çürüttü. Yamamak yerine yeniden yazıldı.
+- ⚠️ **Sahte saat şart:** işaret zaman damgaları gerçek `Date.now()` ile karıştırıldığında bayatlık hesabı negatif çıkıyor ve testler sessizce yanlış şeyi doğruluyordu.
+
+#### ⚠️ Kurulu PWA yeni kodu HEMEN almıyor (tekrarlayan engel)
+Android uygulamayı bellekte tutuyor; görev listesinden kapatmak her zaman yeni bir sayfa yüklemesi başlatmıyor. **Sorun önbellekte DEĞİL** — Vercel başlıkları doğru (`max-age=0, must-revalidate`, ölçüldü) ve service worker network-first; sayfa hiç yeniden **istenmiyor**.
+- En kolay yol: uygulamanın içinde **üstten aşağı çekmek** (pull-to-refresh, standalone PWA'da çalışıyor).
+- Güvenilir yol: siteyi **normal Chrome'da** açıp yenilemek (service worker origin başına paylaşıldığı için PWA da güncellenir), sonra PWA'yı açmak.
+- ⚠️ Kurulu PWA varken **linke tıklamak Chrome'u AÇMIYOR**, uygulamayı açıyor (Android link yakalama). Chrome'da açmak için adresi **elle yazmak** gerekiyor.
+- Kesin yol: Chrome → Site ayarları → ilgili site → **Verileri sil** + PWA'yı kaldır + yeniden kur.
 
 ### Çevrimdışı davranış — gerçek cihazda doğrulandı
 Uçak modunda test edildi: **uygulama açılıyor, gezinilebiliyor** (kabuk önbellekten), arama "Could not reach the server." veriyor. Bu **doğru davranış**, service worker'ın hatası değil: tarifler ve embedding modeli sunucuda ve **API yanıtları bilerek önbelleğe alınmıyor**. "You're offline" yedek sayfası yalnızca hiç ziyaret edilmemiş bir sayfaya çevrimdışı gidilirse çıkıyor.
