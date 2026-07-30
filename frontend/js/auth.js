@@ -76,7 +76,7 @@ if (signInIsPending()) {
 // BUILD değeri her dağıtımda elle artırılıyor: "telefondaki kod güncel mi?"
 // sorusunun tek kesin cevabı bu — kurulu PWA sayfayı bellekte tuttuğu için
 // güncellemenin gerçekten indiğini başka türlü doğrulayamıyoruz.
-const BUILD = '26b-5';
+const BUILD = '26b-6';
 
 // `?debug=1` KALICI bir işaret bırakıyor. Sebep pratik: kurulu PWA'nın adres
 // çubuğu yok, yani uygulamanın içinde bir sorgu parametresi yazmak MÜMKÜN DEĞİL.
@@ -162,6 +162,10 @@ auth.onAuthStateChanged((user) => {
 // Giriş sürüyorsa daha uzun bekliyoruz: erken vazgeçmek, düzeltmeye çalıştığımız
 // "giriş ekranına attı" durumunu aynen geri getirirdi.
 const SIGNIN_GRACE_MS = 10000;
+// Popup hata verdikten SONRA dinleyiciye tanınan süre. Kısa: giriş gerçekten
+// olduysa durum yerel depodan neredeyse anında geliyor. Kullanıcı popup'ı
+// gerçekten iptal ettiyse bu kadar bekliyor, o yüzden uzatılmamalı.
+const POPUP_GRACE_MS = 4000;
 const revealAfter = signInIsPending() ? SIGNIN_GRACE_MS : 3000;
 
 const authRevealTimer = setTimeout(() => {
@@ -393,15 +397,13 @@ document.getElementById('google-btn').addEventListener('click', async () => {
     // İşareti bırakmak zararsız: bu sayfada kaldığımız sürece kimse okumuyor,
     // ve `authReady` kullanıcısız çözülürse `revealAuthForm()` zaten siliyor.
     // Ayrıca 2 dakikada kendiliğinden bayatlıyor.
-    const ambiguous =
-      err.code === 'auth/popup-closed-by-user' ||
-      err.code === 'auth/cancelled-popup-request';
-
-    if (!ambiguous) clearSignInPending();
-    document.body.classList.remove('signing-in');
     // Bu email şifreyle kayıtlı: Firebase güvenlik gereği otomatik bağlamaz,
     // önce kullanıcının mevcut şifresiyle kimliğini kanıtlaması gerekir.
+    // BEKLEMEDEN forma dönülen TEK durum bu: kullanıcının bir şey yazması
+    // gerekiyor, bekletmenin hiçbir faydası yok.
     if (err.code === 'auth/account-exists-with-different-credential') {
+      clearSignInPending();
+      document.body.classList.remove('signing-in');
       pendingGoogleCredential =
         err.credential ||
         (firebase.auth.GoogleAuthProvider.credentialFromError &&
@@ -417,6 +419,26 @@ document.getElementById('google-btn').addEventListener('click', async () => {
       return;
     }
 
-    errorEl.textContent = friendlyError(err.code);
+    // ⚠️ DİĞER TÜM HATALAR "BELİRSİZ" SAYILIYOR — gerçek cihazda ölçüldü.
+    //
+    // PWA'da popup, hesap seçildikten sonra HATA olarak dönüyor (pencere
+    // bağlantısı koptuğu için), ama giriş sunucu tarafında BAŞARILI oluyor ve
+    // saniyeler içinde `onAuthStateChanged` ile geliyor. Burada hemen formu
+    // göstermek, düzeltilmeye çalışılan davranışın ta kendisini üretiyordu:
+    // "önce giriş ekranı, sonra içeri".
+    //
+    // Bu yüzden bekleme ekranı KORUNUYOR ve dinleyiciye şans tanınıyor. Gerçek
+    // bir başarısızlıksa (kullanıcı iptal etti, ağ koptu) süre dolunca form ve
+    // hata mesajı geliyor. Süre kısa tutuldu: giriş gerçekten olduysa durum
+    // yerel depodan neredeyse anında geliyor, uzun beklemeye gerek yok.
+    document.body.classList.add('signing-in');
+
+    setTimeout(() => {
+      if (leavingForApp) return;        // dinleyici bizi çoktan içeri aldı
+      authLog.warn('Google sign-in did not complete: ' + err.code);
+      clearSignInPending();
+      document.body.classList.remove('signing-in');
+      errorEl.textContent = friendlyError(err.code);
+    }, POPUP_GRACE_MS);
   }
 });

@@ -29,7 +29,7 @@ const check = (name, cond, extra) => {
  * auth.js'i taze bir sahte ortamda çalıştırır.
  * `authReady`'nin nasıl sonuçlanacağını çağıran belirliyor.
  */
-function run(authReady, storageOpt, search) {
+function run(authReady, storageOpt, search, popupResult) {
   const classes = new Set(['auth-page', 'auth-checking']);
   const timers = [];
   const authListeners = [];
@@ -51,16 +51,27 @@ function run(authReady, storageOpt, search) {
         removeItem: (k) => store.delete(k),
       };
 
-  const el = () => ({
-    addEventListener() {},
-    classList: { toggle() {}, add() {}, remove() {} },
-    focus() {},
-    textContent: '',
-    value: '',
-    disabled: false,
-    dataset: {},
-    style: {},
-  });
+  // Elemanlar id basina SAKLANIYOR ve handler'lari yakalaniyor: Google butonuna
+  // basma yolunu gercekten calistirabilmek icin sart (popup hatasi + gec gelen
+  // giris senaryosu ancak boyle test edilebiliyor).
+  const elements = {};
+  const el = (id) => {
+    if (!elements[id]) {
+      elements[id] = {
+        id,
+        handlers: {},
+        addEventListener(type, fn) { this.handlers[type] = fn; },
+        classList: { toggle() {}, add() {}, remove() {} },
+        focus() {},
+        textContent: '',
+        value: '',
+        disabled: false,
+        dataset: {},
+        style: {},
+      };
+    }
+    return elements[id];
+  };
 
   const ctx = {
     console,
@@ -74,7 +85,12 @@ function run(authReady, storageOpt, search) {
     },
     firebase: { auth: { GoogleAuthProvider: function () { this.setCustomParameters = () => {}; } } },
     auth: {
-      signInWithPopup() {},
+      // popupResult: undefined => cozulur | Error => reddeder
+      signInWithPopup() {
+        return popupResult instanceof Error
+          ? Promise.reject(popupResult)
+          : Promise.resolve({ user: { email: 'a@b.com' } });
+      },
       signInWithEmailAndPassword() {},
       // Surekli dinleyici: gec gelen girisi yakalayan mekanizma. Testler
       // `emitAuth(user)` ile bunu tetikliyor.
@@ -112,6 +128,15 @@ function run(authReady, storageOpt, search) {
     /** Firebase'in GEC gelen auth durumunu taklit eder. */
     emitAuth: (user) => authListeners.forEach((fn) => fn(user)),
     listenerCount: () => authListeners.length,
+    /** Google butonuna basar (handler async, cagiran await etmeli). */
+    clickGoogle: () => elements['google-btn'].handlers.click(),
+    googleError: () => elements['google-error'].textContent,
+    /** Popup hatasindan sonra kurulan bekleme zamanlayicisini calistirir. */
+    firePopupGrace: () => {
+      const t = timers.find((x) => x.ms === 4000);
+      if (t) t.fn();
+      return !!t;
+    },
     redirectedTo: () => ctx.window.location.href,
     timers,
     clearedCount: () => cleared,
@@ -237,6 +262,55 @@ function run(authReady, storageOpt, search) {
   r.emitAuth(null);
   check('a null auth event never redirects (phase 6 loop guard)',
         r.redirectedTo() === 'index.html');
+
+  // ── 6c. POPUP HATA VERIYOR AMA GIRIS BASARILI (gercek cihazda olculen hata) ──
+  // PWA'da hesap secildikten sonra signInWithPopup REDDEDIYOR, ama giris sunucu
+  // tarafinda tamamlaniyor ve saniyeler icinde onAuthStateChanged ile geliyor.
+  // Hemen forma donmek "once giris ekrani, sonra iceri" davranisini uretiyordu.
+  const popupErr = Object.assign(new Error('popup closed'), { code: 'auth/popup-closed-by-user' });
+
+  r = run(Promise.resolve(null), undefined, '', popupErr);
+  await new Promise((res) => setImmediate(res));
+  await r.clickGoogle();
+  check('popup error: waiting screen is kept instead of the form', r.overlayShown());
+  check('popup error: no error message is shown yet', r.googleError() === '');
+
+  r.emitAuth({ email: 'a@b.com' });                 // giris gec geliyor
+  await new Promise((res) => setImmediate(res));
+  check('popup error + late sign-in: redirects into the app',
+        r.redirectedTo() === 'search.html');
+  check('popup error + late sign-in: never shows an error', r.googleError() === '');
+
+  // Gercek basarisizlik: kimse gelmezse form ve hata mesaji donmeli.
+  r = run(Promise.resolve(null), undefined, '', popupErr);
+  await new Promise((res) => setImmediate(res));
+  await r.clickGoogle();
+  check('popup error: a 4s grace timer is scheduled', r.firePopupGrace());
+  check('genuine failure: waiting screen is dismissed', !r.overlayShown());
+  check('genuine failure: marker is cleared', !r.markerLeft());
+  // Kullanici popup'i KENDI kapattiysa mesaj gostermek yanlis olur; friendlyError
+  // bu kod icin bilerek bos donuyor. Bekleme sonunda sessizce forma donmeli.
+  check('cancelled popup: no error message (deliberate)', r.googleError() === '');
+
+  // Gercek bir arizada ise mesaj GORUNMELI, yoksa kullanici ne oldugunu bilemez.
+  const netErr = Object.assign(new Error('offline'), { code: 'auth/network-request-failed' });
+  r = run(Promise.resolve(null), undefined, '', netErr);
+  await new Promise((res) => setImmediate(res));
+  await r.clickGoogle();
+  r.firePopupGrace();
+  check('real failure: the error message is shown', r.googleError() !== '');
+
+  // Hesap baglama: kullanicinin SIFRE YAZMASI gerekiyor, bekletmek anlamsiz.
+  const linkErr = Object.assign(new Error('exists'), {
+    code: 'auth/account-exists-with-different-credential',
+    email: 'a@b.com',
+  });
+  r = run(Promise.resolve(null), undefined, '', linkErr);
+  await new Promise((res) => setImmediate(res));
+  await r.clickGoogle();
+  check('account-linking error: form is shown immediately, no waiting',
+        !r.overlayShown());
+  check('account-linking error: marker is cleared', !r.markerLeft());
 
   // ── 7. ?debug=1 teshis kutusu ──
   // Normal kullanici icin GORUNMEZ olmali; yalnizca URL'de debug=1 varsa cikmali.
