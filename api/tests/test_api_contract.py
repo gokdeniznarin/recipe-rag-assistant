@@ -274,8 +274,73 @@ class TestGenerateFallbackChain:
         assert llm._generate(("model-a", "model-b"), "prompt").text == "ok"
         assert calls == ["model-a", "model-b"]      # ilkini atlayıp ikinciye geçti
 
+    def test_a_504_deadline_falls_back_instead_of_killing_the_request(self, api, monkeypatch):
+        """REGRESYON (canlı logdan, 2026-07-30): AI yorumu hiç gelmiyordu.
+
+            ERROR | llm | generate_answer failed after 9.62 s: 504 DEADLINE_EXCEEDED
+
+        `generate_answer FAILED` — yani zincir sıradaki 5 modele HİÇ geçmedi.
+        Sebep: `MODEL_TIMEOUT_MS` istemci zaman aşımı değil, SUNUCUYA gönderilen
+        bir deadline; dolduğunda hata istemcide değil sunucuda oluşuyor ve
+        504 olarak dönüyor. Sınıf adında "timeout" geçmediği için `timed_out`
+        kontrolü kaçırıyordu, 504 de listede yoktu → `raise`.
+
+        Mesaj canlı logdan birebir alındı; uydurulmuş bir dizgiyle test etmek
+        gerçek biçimi kaçırma riski taşırdı."""
+        llm = self._llm(api)
+        calls = []
+        live_error = (
+            "504 DEADLINE_EXCEEDED. {'error': {'code': 504, 'message': "
+            "'Deadline expired before operation could complete.', "
+            "'status': 'DEADLINE_EXCEEDED'}}"
+        )
+
+        def slow_then_fine(model, contents, config=None):
+            calls.append(model)
+            if len(calls) == 1:
+                raise Exception(live_error)
+            return type("R", (), {"text": "ok"})()
+
+        monkeypatch.setattr(llm.client.models, "generate_content", slow_then_fine)
+
+        assert llm._generate(("model-a", "model-b"), "prompt").text == "ok"
+        assert calls == ["model-a", "model-b"]
+
+    def test_the_deadline_is_handed_to_the_sdk_as_an_http_option(self, api, monkeypatch):
+        """Yukarıdaki hatanın NEDEN 504 biçiminde geldiğini sabitliyor: süre
+        `http_options` içinde SDK'ya veriliyor ve SDK onu sunucuya deadline
+        olarak gönderiyor (kanıt: kısa değerde Google "Manually set deadline
+        2s is too short" diyor). Yani süre dolunca hata İSTEMCİDE değil
+        SUNUCUDA oluşuyor — 504'ün atlama listesinde olmasının tek sebebi bu.
+
+        Birisi bunu yerel bir zaman aşımına çevirirse 504 artık hiç gelmez ve
+        üstteki regresyon testinin gerekçesi sessizce anlamsızlaşır."""
+        llm = self._llm(api)
+        llm.types.HttpOptions.reset_mock()
+        monkeypatch.setattr(
+            llm.client.models, "generate_content",
+            lambda model, contents, config=None: type("R", (), {"text": "ok"})(),
+        )
+
+        llm._generate(("a",), "p")
+
+        assert llm.types.HttpOptions.call_args.kwargs == {"timeout": llm.MODEL_TIMEOUT_MS}
+
+    def test_the_deadline_is_never_lowered_below_googles_floor(self, api):
+        """10 sn bir tercih DEĞİL, Google'ın izin verdiği en küçük deadline.
+        Ölçüldü (2026-07-30): "Manually set deadline 6s is too short. Minimum
+        allowed deadline is 10s." — 7/8/9 sn de reddediliyor.
+
+        Daha küçük bir değer her çağrıda 400 INVALID_ARGUMENT üretir; 400
+        bilerek atlanmayan bir hata olduğu için zincir İLK modelde ölür ve
+        LLM'e bağlı her şey (yorum, sınıflandırıcı, malzeme tanıma, tabak
+        analizi) anında çalışmaz hâle gelir. Bu test "biraz kısalım, kullanıcı
+        daha az beklesin" fikrini durdurmak için var."""
+        assert self._llm(api).MODEL_TIMEOUT_MS >= 10_000
+
     @pytest.mark.parametrize("message", [
         "429 RESOURCE_EXHAUSTED", "404 NOT_FOUND", "503 UNAVAILABLE",
+        "504 DEADLINE_EXCEEDED",
     ])
     def test_model_level_errors_continue_the_chain(self, api, monkeypatch, message):
         llm = self._llm(api)

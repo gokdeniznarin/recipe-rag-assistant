@@ -83,8 +83,25 @@ VISION_MODELS = (
     "gemini-3.5-flash",
 )
 
-# Model başına zaman aşımı (SDK'nın kendi `http_options.timeout`'u, MİLİSANİYE —
-# ölçümle doğrulandı: 50 → 93 ms'de koptu, 30000 → geçti).
+# Model başına zaman aşımı (SDK'nın `http_options.timeout`'u, MİLİSANİYE).
+#
+# ⚠️ BU BİR İSTEMCİ ZAMAN AŞIMI DEĞİL — SUNUCUYA GÖNDERİLEN BİR DEADLINE.
+# Faz 22'de "50 → 93 ms'de koptu" ölçümü bunu istemci tarafı sanmıştı; yanlış
+# okunmuş. Kısa değer aslında ANINDA 400 dönüyor. Süre dolduğunda ise istek
+# istemcide kesilmiyor, Google **504 DEADLINE_EXCEEDED** döndürüyor — o yüzden
+# 504 aşağıdaki atlama listesinde olmak ZORUNDA.
+#
+# 🔒 10 SANİYE BİR TERCİH DEĞİL, TABAN: Google'ın izin verdiği en küçük değer.
+# Ölçüldü (2026-07-30): "Manually set deadline 6s is too short. Minimum allowed
+# deadline is 10s." — 7/8/9 sn de reddediliyor, 10 sn kabul.
+# DAHA KÜÇÜK BİR DEĞER YAZILIRSA her çağrı 400 INVALID_ARGUMENT alır; 400 bilerek
+# atlanmayan bir hata olduğu için zincir ilk modelde ölür ve LLM'e bağlı HER
+# ŞEY (yorum, sınıflandırıcı, malzeme tanıma, tabak analizi) anında çalışmaz
+# hâle gelir. "Biraz kısalım" fikrini teste bağladık.
+#
+# Tabanda olduğumuz için yavaş bir günde modelin 10 sn'yi aşması olağan; bu bir
+# arıza değil, zincirin devreye girme sebebi (2026-07-30 canlı: ilk model 504,
+# ikinci model cevapladı).
 #
 # NEDEN GEREKLİ: zincir bugüne kadar yalnızca "bu model KULLANILAMIYOR"
 # (429/404/503) durumunda sonrakine geçiyordu. Yavaş ama sonunda cevap veren
@@ -142,11 +159,18 @@ def _generate(models: tuple[str, ...], contents, config=None):
             # Zaman aşımı da "bu modeli atla": sınıf ADINDAN bakılıyor, mesajdan
             # değil — httpx "The handshake operation timed out" diyor, yani
             # "timeout" kelimesi mesajda hiç geçmiyor ve dizgi araması kaçırırdı.
+            #
+            # ⚠️ AMA BU KONTROL BURADA NEREDEYSE HİÇ TETİKLENMİYOR — ölçüldü:
+            # SDK `http_options.timeout`'u SUNUCUYA deadline olarak GÖNDERİYOR
+            # (kanıt: 2000 ms verince Google "Manually set deadline 2s is too
+            # short" diye 400 dönüyor). Yani süre dolduğunda istemci istemciyi
+            # kesmiyor, sunucu **504 DEADLINE_EXCEEDED** döndürüyor. Bu yüzden
+            # 504/DEADLINE_EXCEEDED de listede olmalı — 503'ün aynısı.
             timed_out = "timeout" in type(e).__name__.lower()
             unavailable = timed_out or any(
                 s in text
                 for s in ("429", "RESOURCE_EXHAUSTED", "404", "NOT_FOUND",
-                          "503", "UNAVAILABLE")
+                          "503", "UNAVAILABLE", "504", "DEADLINE_EXCEEDED")
             )
             if not unavailable:
                 raise
