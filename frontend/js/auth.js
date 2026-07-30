@@ -76,7 +76,7 @@ if (signInIsPending()) {
 // BUILD değeri her dağıtımda elle artırılıyor: "telefondaki kod güncel mi?"
 // sorusunun tek kesin cevabı bu — kurulu PWA sayfayı bellekte tuttuğu için
 // güncellemenin gerçekten indiğini başka türlü doğrulayamıyoruz.
-const BUILD = '26b-4';
+const BUILD = '26b-5';
 
 // `?debug=1` KALICI bir işaret bırakıyor. Sebep pratik: kurulu PWA'nın adres
 // çubuğu yok, yani uygulamanın içinde bir sorgu parametresi yazmak MÜMKÜN DEĞİL.
@@ -127,22 +127,64 @@ if (debugEnabled()) {
     .then(() => { box.textContent = lines.join('\n'); });
 }
 
+// Girişten sonra bir kez yönlendir. İki ayrı yol buraya varabiliyor (aşağıdaki
+// tek seferlik `authReady` ve sürekli dinleyici), ikisi birden tetiklenmesin.
+let leavingForApp = false;
+function goToApp() {
+  if (leavingForApp) return;
+  leavingForApp = true;
+  clearSignInPending();
+  window.location.href = 'search.html';
+}
+
+// ⚠️ SÜREKLİ DİNLEYİCİ — bu sayfanın en kritik parçası.
+//
+// `authReady` TEK SEFERLİK bir fotoğraf: `authStateReady()` bir kez çözülüyor.
+// PWA'da Google popup'ı ayrı bir bağlamda açıldığı için giriş sonucu uygulamaya
+// GEÇ ulaşıyor ve o fotoğraf çoktan "signed out" demiş oluyor. Giriş sonradan
+// gerçekten tamamlanıyor, ama dinleyen olmadığı için yönlendirme hiç olmuyordu:
+// kullanıcı aslında GİRMİŞ hâlde giriş ekranında oturuyordu. Gerçek cihazdaki
+// teşhis kutusu bunu gösterdi (marker 8s, overlay true, auth signed out).
+//
+// Yalnızca KULLANICI VARSA yönlendiriyor, `null`'da hiçbir şey yapmıyor —
+// Faz 6'daki giriş↔search sonsuz döngüsü tam da geçici `null`'dan doğmuştu.
+auth.onAuthStateChanged((user) => {
+  if (user) {
+    authLog.info('Auth state arrived after the initial snapshot; entering the app');
+    goToApp();
+  }
+});
+
 // Savunmacı zaman aşımı: `authStateReady()` ağa çıkmadığı için normalde hızlı
 // çözülür, ama beklenmedik bir sebeple çözülmezse kart sonsuza dek gizli kalır
 // ve kullanıcı GİRİŞ YAPAMAZ. Yardımcı bir iyileştirme uygulamayı kilitlememeli
 // (Faz 13b'de logger.js'in localStorage yüzünden uygulamayı düşürmesinin dersi).
+// Giriş sürüyorsa daha uzun bekliyoruz: erken vazgeçmek, düzeltmeye çalıştığımız
+// "giriş ekranına attı" durumunu aynen geri getirirdi.
+const SIGNIN_GRACE_MS = 10000;
+const revealAfter = signInIsPending() ? SIGNIN_GRACE_MS : 3000;
+
 const authRevealTimer = setTimeout(() => {
-  authLog.warn('Auth state did not settle in 3s; showing the form anyway');
+  if (leavingForApp) return;
+  authLog.warn('Auth state did not settle in time; showing the form anyway');
   revealAuthForm();
-}, 3000);
+}, revealAfter);
 
 authReady
   .then((user) => {
-    clearTimeout(authRevealTimer);
     if (user) {
-      window.location.href = 'search.html';
-      return;               // yönlendiriliyoruz: formu göstermeye gerek yok
+      clearTimeout(authRevealTimer);
+      goToApp();
+      return;
     }
+    // Çıkış yapılmış GÖRÜNÜYOR. Ama az önce bir giriş başlatıldıysa bu fotoğraf
+    // erken çekilmiş olabilir — dinleyiciye şans tanıyıp bekleme ekranını
+    // koruyoruz. Süre dolarsa yukarıdaki zamanlayıcı formu açıyor.
+    if (signInIsPending()) {
+      authLog.info('Signed out at snapshot time, but a sign-in is in flight; waiting');
+      return;
+    }
+    clearTimeout(authRevealTimer);
     revealAuthForm();
   })
   .catch((err) => {

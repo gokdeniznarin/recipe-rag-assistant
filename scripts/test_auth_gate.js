@@ -32,6 +32,7 @@ const check = (name, cond, extra) => {
 function run(authReady, storageOpt, search) {
   const classes = new Set(['auth-page', 'auth-checking']);
   const timers = [];
+  const authListeners = [];
   let cleared = 0;
 
   // storageOpt: undefined => bos localStorage
@@ -72,7 +73,13 @@ function run(authReady, storageOpt, search) {
       timed: (fn) => fn,
     },
     firebase: { auth: { GoogleAuthProvider: function () { this.setCustomParameters = () => {}; } } },
-    auth: { signInWithPopup() {}, signInWithEmailAndPassword() {} },
+    auth: {
+      signInWithPopup() {},
+      signInWithEmailAndPassword() {},
+      // Surekli dinleyici: gec gelen girisi yakalayan mekanizma. Testler
+      // `emitAuth(user)` ile bunu tetikliyor.
+      onAuthStateChanged(fn) { authListeners.push(fn); },
+    },
     authReady,
     document: {
       body: {
@@ -102,6 +109,9 @@ function run(authReady, storageOpt, search) {
     overlayShown: () => classes.has('signing-in'),
     markerLeft: () => storageOpt !== 'throws' && store.has('signin_pending'),
     debugFlag: () => (storageOpt === 'throws' ? null : store.get('debug_auth')),
+    /** Firebase'in GEC gelen auth durumunu taklit eder. */
+    emitAuth: (user) => authListeners.forEach((fn) => fn(user)),
+    listenerCount: () => authListeners.length,
     redirectedTo: () => ctx.window.location.href,
     timers,
     clearedCount: () => cleared,
@@ -168,13 +178,17 @@ function run(authReady, storageOpt, search) {
   check('pending + signed in -> redirects', r.redirectedTo() === 'search.html');
   check('pending + signed in -> waiting screen stays until navigation', r.overlayShown());
 
-  // Giris basarisiz (popup iptal): bekleme ekrani kalkmali, form gelmeli,
-  // isaret temizlenmeli. Aksi halde kullanici kilitli bir ekranda kalir.
+  // ⚠️ BU BEKLENTI GERCEK CIHAZ KANITIYLA TERSINE CEVRILDI.
+  // Eskiden burada "snapshot signed out ise hemen formu goster" bekleniyordu.
+  // Telefondaki teshis kutusu bunu curuttu (marker 8s, overlay true, auth
+  // "signed out"): PWA'da Google sonucu snapshot'tan SONRA geliyor, yani hemen
+  // formu gostermek tam da duzeltilmeye calisilan "giris ekranina atti"
+  // hatasini URETIYORDU. Artik bekleme ekrani grace suresi boyunca korunuyor
+  // (asagidaki "late sign-in" testleri) ve isaret erken SILINMEMELI — silinirse
+  // gec gelen giris yolunun tek kaniti yok olur.
   r = run(Promise.resolve(null), fresh);
   await new Promise((res) => setImmediate(res));
-  check('pending + signed out -> waiting screen is dismissed', !r.overlayShown());
-  check('pending + signed out -> form is revealed', !r.formHidden());
-  check('pending + signed out -> marker is cleared', !r.markerLeft());
+  check('pending + signed out -> marker is NOT cleared prematurely', r.markerLeft());
 
   // ── 6. localStorage erisilemezse (Safari gizli mod) cokmemeli ──
   // Bu dosya giris sayfasinin TAMAMINI yonetiyor; burada bir istisna
@@ -189,6 +203,40 @@ function run(authReady, storageOpt, search) {
   check('localStorage unavailable -> auth.js still loads', !crashed);
   check('localStorage unavailable -> no waiting screen', !crashed && !r.overlayShown());
   check('localStorage unavailable -> form still works', !crashed && !r.formHidden());
+
+  // ── 6b. GEC GELEN GIRIS (gercek cihazda olculen hata) ──
+  // Teshis kutusu sunu gosterdi: marker 8s, overlay true, auth "signed out".
+  // Yani PWA'da Google sonucu `authStateReady()` fotografindan SONRA geliyor.
+  // Tek seferlik snapshot bunu goremez; surekli dinleyici gormeli.
+  r = run(Promise.resolve(null), fresh);
+  await new Promise((res) => setImmediate(res));
+  check('late sign-in: an ongoing auth listener is registered', r.listenerCount() === 1);
+  check('late sign-in: waiting screen is NOT dismissed while sign-in is in flight',
+        r.overlayShown());
+  check('late sign-in: form stays hidden during the grace period', r.formHidden());
+  r.emitAuth({ email: 'a@b.com' });                  // giris sonunda geliyor
+  await new Promise((res) => setImmediate(res));
+  check('late sign-in: redirects when the user finally arrives',
+        r.redirectedTo() === 'search.html');
+  check('late sign-in: marker is cleared on the way out', !r.markerLeft());
+
+  // Gec giris GELMEZSE kullanici sonsuza dek beklememeli.
+  r = run(Promise.resolve(null), fresh);
+  await new Promise((res) => setImmediate(res));
+  const grace = r.timers.find((t) => t.ms === 10000);
+  check('late sign-in: a 10s grace timer is scheduled', !!grace,
+        JSON.stringify(r.timers.map((t) => t.ms)));
+  grace.fn();
+  check('late sign-in: form is revealed when the grace period expires', !r.formHidden());
+  check('late sign-in: waiting screen is dismissed too', !r.overlayShown());
+
+  // `null` YAYINI YONLENDIRMEMELI — Faz 6'daki giris<->search sonsuz dongusu
+  // tam da gecici bir null'dan dogmustu.
+  r = run(Promise.resolve(null));
+  await new Promise((res) => setImmediate(res));
+  r.emitAuth(null);
+  check('a null auth event never redirects (phase 6 loop guard)',
+        r.redirectedTo() === 'index.html');
 
   // ── 7. ?debug=1 teshis kutusu ──
   // Normal kullanici icin GORUNMEZ olmali; yalnizca URL'de debug=1 varsa cikmali.
