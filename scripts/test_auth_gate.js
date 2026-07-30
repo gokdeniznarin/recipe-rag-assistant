@@ -18,6 +18,10 @@ const vm = require('vm');
 
 const SRC = fs.readFileSync(path.join(__dirname, '..', 'frontend', 'js', 'auth.js'), 'utf8');
 
+// Sabit sahte "simdi". Isaret zaman damgalari BUNDAN turetilmeli: gercek
+// Date.now() ile karistirilirsa bayatlik hesabi anlamsiz (hatta negatif) cikar.
+const NOW = 1700000000000;
+
 let pass = 0;
 let failures = 0;
 const check = (name, cond, extra) => {
@@ -32,8 +36,14 @@ const check = (name, cond, extra) => {
 function run(authReady, storageOpt, search, popupResult) {
   const classes = new Set(['auth-page', 'auth-checking']);
   const timers = [];
+  const intervals = [];
   const authListeners = [];
   let cleared = 0;
+
+  // Sahte saat: sayacin gecen sureyi Date.now() ile olcmesi yuzunden sart.
+  let fakeNow = NOW;
+  const fakeDate = function () {};
+  fakeDate.now = () => fakeNow;
 
   // storageOpt: undefined => bos localStorage
   //             { signin_pending: '<ms>' } => o degerle dolu
@@ -57,11 +67,20 @@ function run(authReady, storageOpt, search, popupResult) {
   const elements = {};
   const el = (id) => {
     if (!elements[id]) {
+      // Gercek DOM'da bu buton `hidden` ile basliyor; sahte DOM da oyle
+      // baslamali, yoksa "birkac saniye sonra beliriyor" testi anlamsiz olur.
+      const cls = new Set(id === 'signin-cancel' ? ['hidden'] : []);
       elements[id] = {
         id,
         handlers: {},
+        classes: cls,
         addEventListener(type, fn) { this.handlers[type] = fn; },
-        classList: { toggle() {}, add() {}, remove() {} },
+        classList: {
+          add: (c) => cls.add(c),
+          remove: (c) => cls.delete(c),
+          contains: (c) => cls.has(c),
+          toggle() {},
+        },
         focus() {},
         textContent: '',
         value: '',
@@ -78,6 +97,11 @@ function run(authReady, storageOpt, search, popupResult) {
     performance: { now: () => 0 },
     setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
     clearTimeout: () => { cleared++; },
+    // Bekleme ekraninin sayaci setInterval kullaniyor. Zamani da sahteliyoruz,
+    // yoksa "5 saniye sonra cikis baglantisi belirir" gercek zamanda beklenirdi.
+    setInterval: (fn, ms) => { intervals.push({ fn, ms }); return intervals.length; },
+    clearInterval: () => { intervals.length = 0; },
+    Date: fakeDate,
     Logger: {
       get: () => ({ debug() {}, info() {}, warn() {}, error() {} }),
       duration() {},
@@ -131,12 +155,17 @@ function run(authReady, storageOpt, search, popupResult) {
     /** Google butonuna basar (handler async, cagiran await etmeli). */
     clickGoogle: () => elements['google-btn'].handlers.click(),
     googleError: () => elements['google-error'].textContent,
-    /** Popup hatasindan sonra kurulan bekleme zamanlayicisini calistirir. */
-    firePopupGrace: () => {
-      const t = timers.find((x) => x.ms === 4000);
-      if (t) t.fn();
-      return !!t;
+    /** Saati n saniye ileri sarip sayaci tetikler. */
+    advance: (secs) => {
+      for (let i = 0; i < secs; i++) {
+        fakeNow += 1000;
+        intervals.slice().forEach((iv) => iv.fn());
+      }
     },
+    tickerRunning: () => intervals.length > 0,
+    elapsedText: () => (elements['signin-elapsed'] || {}).textContent,
+    cancelVisible: () => !!elements['signin-cancel'] && !elements['signin-cancel'].classes.has('hidden'),
+    clickCancel: () => elements['signin-cancel'].handlers.click(),
     redirectedTo: () => ctx.window.location.href,
     timers,
     clearedCount: () => cleared,
@@ -180,7 +209,7 @@ function run(authReady, storageOpt, search, popupResult) {
   // ── 5. "Signing you in..." ekrani ──
   // PWA'da Google popup'indan donerken sayfa BASTAN yukleniyor. Isaret duruyorsa
   // giris sayfasi HIC gorunmemeli, tam ekran bekleme durumu cikmali.
-  const fresh = { signin_pending: String(Date.now()) };
+  const fresh = { signin_pending: String(NOW) };
   r = run(new Promise(() => {}), fresh);      // auth henuz cozulmedi
   await new Promise((res) => setImmediate(res));
   check('pending sign-in -> waiting screen is shown', r.overlayShown());
@@ -190,7 +219,7 @@ function run(authReady, storageOpt, search, popupResult) {
   check('no pending sign-in -> waiting screen is NOT shown', !r.overlayShown());
 
   // Yarida birakilmis bir giris sonsuza dek bekleme ekrani gostermemeli.
-  const stale = { signin_pending: String(Date.now() - 5 * 60 * 1000) };
+  const stale = { signin_pending: String(NOW - 5 * 60 * 1000) };
   r = run(new Promise(() => {}), stale);
   await new Promise((res) => setImmediate(res));
   check('stale marker (>2min) -> waiting screen is NOT shown', !r.overlayShown());
@@ -245,15 +274,18 @@ function run(authReady, storageOpt, search, popupResult) {
         r.redirectedTo() === 'search.html');
   check('late sign-in: marker is cleared on the way out', !r.markerLeft());
 
-  // Gec giris GELMEZSE kullanici sonsuza dek beklememeli.
+  // Gec giris GELMEZSE kullanici sonsuza dek beklememeli. Vazgecme karari artik
+  // TEK bir yerde: bekleme ekraninin kendi sayaci. Onceki turda buna paralel bir
+  // 10 sn'lik zamanlayici daha vardi ve hangisi once dolarsa davranisi o
+  // belirliyordu — erken vazgecilmesinin sebebi buydu, o yuzden kaldirildi.
   r = run(Promise.resolve(null), fresh);
   await new Promise((res) => setImmediate(res));
-  const grace = r.timers.find((t) => t.ms === 10000);
-  check('late sign-in: a 10s grace timer is scheduled', !!grace,
+  check('reload path: no competing short reveal timer is scheduled',
+        !r.timers.some((t) => t.ms < 45000),
         JSON.stringify(r.timers.map((t) => t.ms)));
-  grace.fn();
-  check('late sign-in: form is revealed when the grace period expires', !r.formHidden());
-  check('late sign-in: waiting screen is dismissed too', !r.overlayShown());
+  r.advance(46);
+  check('reload path: form is revealed once the waiting screen gives up', !r.formHidden());
+  check('reload path: waiting screen is dismissed too', !r.overlayShown());
 
   // `null` YAYINI YONLENDIRMEMELI — Faz 6'daki giris<->search sonsuz dongusu
   // tam da gecici bir null'dan dogmustu.
@@ -285,19 +317,50 @@ function run(authReady, storageOpt, search, popupResult) {
   r = run(Promise.resolve(null), undefined, '', popupErr);
   await new Promise((res) => setImmediate(res));
   await r.clickGoogle();
-  check('popup error: a 4s grace timer is scheduled', r.firePopupGrace());
-  check('genuine failure: waiting screen is dismissed', !r.overlayShown());
-  check('genuine failure: marker is cleared', !r.markerLeft());
+  // Sabir: onceki tur 4 saniyede vazgeciyordu ve gercek cihazda giris yetismedi.
+  check('popup error: a ticker is running', r.tickerRunning());
+  r.advance(3);
+  check('waiting 3s: still waiting, form not shown', r.overlayShown());
+  check('waiting 3s: elapsed seconds are displayed', r.elapsedText() === '3s');
+  check('waiting 3s: escape link is still hidden', !r.cancelVisible());
+
+  r.advance(3);                                   // toplam 6 sn
+  check('waiting 6s: escape link appears (user is never trapped)', r.cancelVisible());
+  check('waiting 6s: still waiting', r.overlayShown());
+
+  // 8. saniyede giris nihayet geliyor: iceri almali, hata GOSTERMEMELI.
+  r.emitAuth({ email: 'a@b.com' });
+  await new Promise((res) => setImmediate(res));
+  check('slow sign-in: still redirects after several seconds',
+        r.redirectedTo() === 'search.html');
+  check('slow sign-in: no error is ever shown', r.googleError() === '');
+
+  // Ust sinir: kimse gelmezse kendiliginden forma donmeli.
+  r = run(Promise.resolve(null), undefined, '', popupErr);
+  await new Promise((res) => setImmediate(res));
+  await r.clickGoogle();
+  r.advance(46);
+  check('nothing arrives: waiting screen gives up eventually', !r.overlayShown());
+  check('nothing arrives: marker is cleared', !r.markerLeft());
   // Kullanici popup'i KENDI kapattiysa mesaj gostermek yanlis olur; friendlyError
-  // bu kod icin bilerek bos donuyor. Bekleme sonunda sessizce forma donmeli.
+  // bu kod icin bilerek bos donuyor.
   check('cancelled popup: no error message (deliberate)', r.googleError() === '');
 
-  // Gercek bir arizada ise mesaj GORUNMELI, yoksa kullanici ne oldugunu bilemez.
+  // Kullanici bekleme ekranindan CIKABILMELI.
+  r = run(Promise.resolve(null), undefined, '', popupErr);
+  await new Promise((res) => setImmediate(res));
+  await r.clickGoogle();
+  r.advance(6);
+  r.clickCancel();
+  check('escape link: returns to the form on demand', !r.overlayShown());
+  check('escape link: stops the ticker', !r.tickerRunning());
+
+  // Gercek bir arizada mesaj GORUNMELI, yoksa kullanici ne oldugunu bilemez.
   const netErr = Object.assign(new Error('offline'), { code: 'auth/network-request-failed' });
   r = run(Promise.resolve(null), undefined, '', netErr);
   await new Promise((res) => setImmediate(res));
   await r.clickGoogle();
-  r.firePopupGrace();
+  r.advance(46);
   check('real failure: the error message is shown', r.googleError() !== '');
 
   // Hesap baglama: kullanicinin SIFRE YAZMASI gerekiyor, bekletmek anlamsiz.

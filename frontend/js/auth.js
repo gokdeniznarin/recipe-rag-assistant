@@ -16,7 +16,7 @@ const authLog = Logger.get('auth');
 // sonra girdi" etkisi yaratıyordu.
 function revealAuthForm() {
   document.body.classList.remove('auth-checking');
-  document.body.classList.remove('signing-in');
+  hideWaitingScreen();
   clearSignInPending();
 }
 
@@ -62,10 +62,58 @@ function signInIsPending() {
   }
 }
 
+// ── Bekleme ekranının ömrü ───────────────────────────────
+// Önceki tur 4 saniye sonra vazgeçiyordu ve gerçek cihazda giriş o süreye
+// yetişmedi: ekran kalkıp form göründü, giriş ise saniyeler sonra geldi.
+// SÜREYİ TAHMİN ETMEK YERİNE iki şey yapıyoruz:
+//   1. sabırlı olmak (aşağıdaki üst sınır cömert),
+//   2. kullanıcıyı HAPSETMEMEK — birkaç saniye sonra çıkış bağlantısı beliriyor.
+// Ayrıca geçen süre ekranda YAZIYOR: "uzun sürdü" ifadesini sayıya çeviren tek
+// şey bu, ve bir sonraki kararı (popup mu, redirect mi) o sayı belirleyecek.
+const WAIT_ESCAPE_SEC = 5;      // bu saniyeden sonra "vazgeç" bağlantısı görünür
+const WAIT_MAX_SEC = 45;        // bu saniyeden sonra kendiliğinden forma döner
+
+let waitTicker = null;
+
+function showWaitingScreen(onGiveUp) {
+  document.body.classList.add('signing-in');
+
+  const elapsedEl = document.getElementById('signin-elapsed');
+  const cancelEl = document.getElementById('signin-cancel');
+  const started = Date.now();
+
+  if (waitTicker) clearInterval(waitTicker);
+  waitTicker = setInterval(() => {
+    if (leavingForApp) { hideWaitingScreen(); return; }
+    const secs = Math.round((Date.now() - started) / 1000);
+    if (elapsedEl) elapsedEl.textContent = secs + 's';
+    if (cancelEl && secs >= WAIT_ESCAPE_SEC) cancelEl.classList.remove('hidden');
+    if (secs >= WAIT_MAX_SEC) {
+      hideWaitingScreen();
+      if (onGiveUp) onGiveUp();
+    }
+  }, 1000);
+
+  if (cancelEl && !cancelEl.dataset.bound) {
+    cancelEl.dataset.bound = '1';
+    cancelEl.addEventListener('click', () => {
+      hideWaitingScreen();
+      if (onGiveUp) onGiveUp();
+    });
+  }
+}
+
+function hideWaitingScreen() {
+  if (waitTicker) { clearInterval(waitTicker); waitTicker = null; }
+  document.body.classList.remove('signing-in');
+  const cancelEl = document.getElementById('signin-cancel');
+  if (cancelEl) cancelEl.classList.add('hidden');
+}
+
 // Sayfa açılır açılmaz karar veriliyor ki giriş sayfası bir kare bile görünmesin.
 if (signInIsPending()) {
-  document.body.classList.add('signing-in');
   authLog.info('Returning from an in-progress sign-in; showing the waiting screen');
+  showWaitingScreen(() => revealAuthForm());
 }
 
 // ── Teşhis kutusu — YALNIZCA ?debug=1 ────────────────────
@@ -76,7 +124,7 @@ if (signInIsPending()) {
 // BUILD değeri her dağıtımda elle artırılıyor: "telefondaki kod güncel mi?"
 // sorusunun tek kesin cevabı bu — kurulu PWA sayfayı bellekte tuttuğu için
 // güncellemenin gerçekten indiğini başka türlü doğrulayamıyoruz.
-const BUILD = '26b-6';
+const BUILD = '26c-1';
 
 // `?debug=1` KALICI bir işaret bırakıyor. Sebep pratik: kurulu PWA'nın adres
 // çubuğu yok, yani uygulamanın içinde bir sorgu parametresi yazmak MÜMKÜN DEĞİL.
@@ -159,20 +207,18 @@ auth.onAuthStateChanged((user) => {
 // çözülür, ama beklenmedik bir sebeple çözülmezse kart sonsuza dek gizli kalır
 // ve kullanıcı GİRİŞ YAPAMAZ. Yardımcı bir iyileştirme uygulamayı kilitlememeli
 // (Faz 13b'de logger.js'in localStorage yüzünden uygulamayı düşürmesinin dersi).
-// Giriş sürüyorsa daha uzun bekliyoruz: erken vazgeçmek, düzeltmeye çalıştığımız
-// "giriş ekranına attı" durumunu aynen geri getirirdi.
-const SIGNIN_GRACE_MS = 10000;
-// Popup hata verdikten SONRA dinleyiciye tanınan süre. Kısa: giriş gerçekten
-// olduysa durum yerel depodan neredeyse anında geliyor. Kullanıcı popup'ı
-// gerçekten iptal ettiyse bu kadar bekliyor, o yüzden uzatılmamalı.
-const POPUP_GRACE_MS = 4000;
-const revealAfter = signInIsPending() ? SIGNIN_GRACE_MS : 3000;
-
-const authRevealTimer = setTimeout(() => {
-  if (leavingForApp) return;
-  authLog.warn('Auth state did not settle in time; showing the form anyway');
-  revealAuthForm();
-}, revealAfter);
+//
+// Giriş SÜRÜYORSA bu zamanlayıcı hiç kurulmuyor: o durumda bekleme ekranının
+// kendi ömrü geçerli (sayaç + çıkış bağlantısı + üst sınır). İki ayrı zaman
+// aşımı olsaydı hangisinin önce dolduğu davranışı belirlerdi — önceki turda
+// erken vazgeçilmesinin sebebi tam olarak buydu.
+const authRevealTimer = signInIsPending()
+  ? null
+  : setTimeout(() => {
+      if (leavingForApp) return;
+      authLog.warn('Auth state did not settle in 3s; showing the form anyway');
+      revealAuthForm();
+    }, 3000);
 
 authReady
   .then((user) => {
@@ -183,7 +229,7 @@ authReady
     }
     // Çıkış yapılmış GÖRÜNÜYOR. Ama az önce bir giriş başlatıldıysa bu fotoğraf
     // erken çekilmiş olabilir — dinleyiciye şans tanıyıp bekleme ekranını
-    // koruyoruz. Süre dolarsa yukarıdaki zamanlayıcı formu açıyor.
+    // koruyoruz. Vazgeçme kararı bekleme ekranının kendisine ait.
     if (signInIsPending()) {
       authLog.info('Signed out at snapshot time, but a sign-in is in flight; waiting');
       return;
@@ -431,14 +477,14 @@ document.getElementById('google-btn').addEventListener('click', async () => {
     // bir başarısızlıksa (kullanıcı iptal etti, ağ koptu) süre dolunca form ve
     // hata mesajı geliyor. Süre kısa tutuldu: giriş gerçekten olduysa durum
     // yerel depodan neredeyse anında geliyor, uzun beklemeye gerek yok.
-    document.body.classList.add('signing-in');
-
-    setTimeout(() => {
+    // Sabit bir süre sonra vazgeçMİYORUZ (önceki tur 4 sn'de vazgeçiyordu ve
+    // giriş yetişmedi). Bekleme ekranı sabırla duruyor, geçen süreyi gösteriyor
+    // ve birkaç saniye sonra kullanıcıya çıkış bağlantısı sunuyor.
+    showWaitingScreen(() => {
       if (leavingForApp) return;        // dinleyici bizi çoktan içeri aldı
       authLog.warn('Google sign-in did not complete: ' + err.code);
       clearSignInPending();
-      document.body.classList.remove('signing-in');
       errorEl.textContent = friendlyError(err.code);
-    }, POPUP_GRACE_MS);
+    });
   }
 });

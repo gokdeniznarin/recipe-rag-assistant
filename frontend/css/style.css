@@ -159,6 +159,13 @@ body.signing-in .signin-overlay {
   font-family: 'Inter', sans-serif;
   font-size: 0.9rem;
   color: var(--text-muted);
+  font-variant-numeric: tabular-nums;   /* sayaç saniye başına zıplamasın */
+}
+
+/* Bekleme ekranından çıkış. Birkaç saniye sonra JS `hidden` sınıfını kaldırıyor;
+   sabırlı bir zaman aşımı ancak kullanıcı istediğinde çıkabiliyorsa savunulabilir. */
+.signin-overlay #signin-cancel {
+  margin-top: 0.5rem;
 }
 
 @keyframes signin-pulse {
