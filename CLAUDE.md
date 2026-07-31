@@ -52,7 +52,7 @@
 - **Hafta 9 — performans:** Faz 11 ✅ — arama LLM'i beklemiyor (8.87sn → 0.32sn), favoriler N+1 kalktı, favori sırası düzeldi.
 - **Hafta 10 — kalite:** Faz 13 logging ✅, Faz 14 model güncellemesi ✅, **Faz 15 test altyapısı + girdi doğrulama + LLM sınıflandırıcı ✅** (Katman 1 + Katman 2: 148 test).
 - **Hafta 11 (şu an buradayız) — zenginleştirme + gelir modeli:** rakip özelliklerini (Samsung Food / ReciMe) ekleyip gelir hikayesi kurma. **Faz 16 Koleksiyonlar ✅** (175 test), **Faz 17 Pantry + yapılandırılmış malzeme verisi ✅** (235 test), **Faz 18 Meal Planner ✅** (316 test), **Faz 19 Alışveriş Listesi ✅** (366 test) — gelir zinciri (Pantry+Plan → eksikler → affiliate CTA) tamamlandı. **Faz 20 tarif görselleri + veri seti 2× ✅** (372 test), **Faz 21 fotoğraftan besin değeri ✅** (527 test). Yol haritasında kalan opsiyonel adımlar: Cook Mode / porsiyon ölçekleme, **günlük besin kaydı** (Faz 21 sadece gösteriyor, kaydetmiyor — premium hikayesi).
-- **Hafta 12 — mobil:** **Faz 26 PWA ✅** — uygulama artık Android/iOS'ta ana ekrana kurulabiliyor, mağaza gerekmeden. **Faz 26b** PWA'da Google girişi ✅, **Faz 26c** yönlendirme boşluğu + **504 zincir kırılması** ✅ (**550 Python + 64 auth + 19 SW + 17 kamera testi**). Sırada: **hesap silme akışı** (store zorunluluğu değil, `privacy.html`'deki söz + KVKK/GDPR), sonra **Capacitor** (App Store / Google Play). Kalan: varsayılan dalı `main` yapmak, sunum hazırlığı.
+- **Hafta 12 — mobil:** **Faz 26 PWA ✅** — uygulama artık Android/iOS'ta ana ekrana kurulabiliyor, mağaza gerekmeden. **Faz 26b** PWA'da Google girişi ✅, **Faz 26c** yönlendirme boşluğu + **504 zincir kırılması** ✅, **Faz 27 hesap silme ✅** (**569 Python + 67 auth + 19 SW + 17 kamera testi**). Sırada: **Capacitor** (App Store / Google Play) — mağazanın zorunlu kıldığı uygulama içi hesap silme artık hazır. Kalan: varsayılan dalı `main` yapmak, sunum hazırlığı.
 
 ## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
 ### Backend
@@ -64,6 +64,7 @@
 - `api/main.py` — FastAPI backend + CORS middleware (Faz 10'dan beri kendi origin'lerimizle sınırlı): /api/recipes/search, /api/recipes/from-image, **/api/recipes/commentary** (Faz 11), /api/recipes/{recipe_id}, /api/favorites/*, **/api/collections/*** (Faz 16), **/api/pantry/*** + **/api/recipes/from-pantry** (Faz 17), **/api/meal-plan*** (Faz 18), **/api/shopping-list*** (Faz 19), **/api/nutrition/from-image** (Faz 21 — ChromaDB'ye hiç dokunmayan tek arama-dışı endpoint) endpoint'leri. Tarifleri image'a gömülü `chroma_data/` klasöründen `PersistentClient` ile okuyor (Faz 8). Arama endpoint'leri LLM'i beklemiyor (Faz 11).
 - `api/chroma_data/` — **git'e commit edilmiş** gömülü tarif veritabanı (**73MB**, Faz 20'de 9.795 tarife çıktı: `chroma.sqlite3` + HNSW indeks dosyaları). `load_to_chromadb.py` üretiyor, Dockerfile `COPY . .` ile image'a alıyor.
 - `api/logger.py` — **merkezi logging + süre ölçümü** (Faz 13). Renkli seviye formatter'ı (`ColorFormatter`), `@timed` decorator'ı ve `timed_block` context manager'ı. Uygulamada `print` kalmadı. `python api/logger.py` ile seviyeleri/renkleri tek başına gösteren bir demo bloğu var.
+- `api/account.py` — **hesap silme** (Faz 27). Kullanıcının 5 Firestore koleksiyonundaki verisi + Firebase Auth kaydı. **Sıra kritik: önce Firestore, EN SON Auth** — tersi yarıda kalırsa kullanıcı giriş yapamayacağı için tekrar deneyemez. Silinecek koleksiyonların kaydı (`_OWNED_BY_FIELD` / `_OWNED_BY_DOC_ID`) burada; **bir koleksiyonu unutmaya karşı `test_account.py`'de AST tabanlı drift testi var**. Batch'ler 400'lük (Firestore sınırı 500).
 - `api/auth.py` — tek iş: Firebase Admin SDK ile `verify_id_token()` → e-posta. `get_current_user_email` dependency'si korumalı endpoint'lerde kullanılıyor. (Eskiden JWT + bcrypt + kullanıcı kayıt/giriş vardı; Firebase geçişiyle ~140 satırdan ~30 satıra düştü.)
 - `api/llm.py` — Gemini API ile LLM cevap üretimi (`generate_answer`) + fotoğraftan malzeme tanıma (`detect_ingredients_from_image`) + **sorgu sınıflandırma** (`is_food_request`, Faz 15f — non-food sorguları aramadan önce eliyor, fail-open) + **tabak analizi** (`analyze_plate_from_image`, Faz 21 — yemek + porsiyon + kaba besin tahmini TEK çağrıda; JSON modu, `_parse_plate_json` savunmacı). Çoklu model fallback zinciri — `_generate` "bu modeli atla" sayılan hataları tek yerde tutuyor: `429/404/503` **ve `504/DEADLINE_EXCEEDED`** (Faz 26c). ⚠️ `MODEL_TIMEOUT_MS` istemci zaman aşımı DEĞİL, sunucuya gönderilen bir deadline ve **10 sn Google'ın izin verdiği taban** — küçültmek her çağrıyı 400'e düşürüp LLM'e bağlı her şeyi kırar (teste bağlı).
 - `api/nutrition.py` — **besin değeri** (Faz 21). FatSecret Platform API istemcisi (**OAuth 1.0**, stdlib `hmac`/`urllib` — yeni bağımlılık yok) + saf fonksiyonlar (`scale_macros`, `total_macros`, `merge_duplicate_items`, `parse_food_description`, `signature_base_string`/`sign`). **Import anında yan etki YOK** — anahtarlar her çağrıda okunuyor. Tamamen **fail-open**: anahtar yoksa/hata alırsa Gemini tahminine düşüyor, `source` alanı kaynağı dürüstçe söylüyor. Firestore'a **dokunmuyor** (kayıt tutulmuyor).
@@ -81,7 +82,8 @@
 
 ### Frontend
 - `frontend/index.html` — giriş/kayıt sayfası (Sign in / Create account sekmeleri, "Continue with Google" butonu) **+ altında herkese açık landing içeriği** (Faz 19: özellik kartları, "how it works", footer + Associates açıklaması). Firebase compat SDK script'leri + `firebase.js`, diğer JS'lerden önce yükleniyor (sıra önemli).
-- `frontend/privacy.html` — **gizlilik & veri sayfası** (Faz 19). Giriş gerektirmiyor. `CONTACT_EMAIL` yer tutucusu doldurulmalı.
+- `frontend/privacy.html` — **gizlilik & veri sayfası** (Faz 19). Giriş gerektirmiyor. Faz 27'den beri silme için uygulama içi akışı gösteriyor; e-posta yolu **giriş yapamayanlar için** duruyor.
+- `frontend/account.html` / `js/account.js` — **hesap sayfası** (Faz 27): oturum bilgisi + danger zone. Silme modalı **DELETE yazmayı** istiyor; `reauthenticateWithPopup` bilerek KULLANILMIYOR (gerekçe Faz 27). Silme sonrası `index.html?deleted=1`.
 - `frontend/search.html` — ana arama sayfası (Text search / Camera search / From my pantry sekmeleri, mikrofon butonu)
 - `frontend/nutrition.html` — **besin değeri sayfası** (Faz 21): kamera VEYA fotoğraf yükleme → "Analyze photo" → ölçüm tablosu. Arama sayfasından bağımsız.
 - `frontend/recipe.html` — tarif detay sayfası (instructions + kalp butonu ile favori toggle + Faz 16'da "Add to collection" seçicisi)
@@ -132,8 +134,10 @@
 - **Besin değeri (Faz 21):**
   - `api/tests/test_nutrition.py` — 155 test: Katman 1 ölçekleme/toplama/ayrıştırma + `merge_duplicate_items` (gerçek fotoğrafta gözlenen kirazdomatesi vakası) + **OAuth imzası BAĞIMSIZ vektöre karşı** (Twitter'ın yayınlanmış OAuth 1.0a örneği — kendi HMAC'ini kendi HMAC'iyle doğrulamak totolojik olurdu, ayrıca yanlış imza *sessizce* fail-open'a düşeceği için başka türlü fark edilmezdi) + Katman 1.5 sahte HTTP ile `lookup_macros`'un tam zinciri + Katman 2 endpoint sözleşmesi (kota → 200+CORS, **ChromaDB'ye dokunulmaması**).
 - **Uptime ucu (Faz 26):** `test_api_contract.py` → `TestUptimeProbe` — `/` hem GET hem **HEAD**'e 200 dönüyor ve auth istemiyor. HEAD kritik: izleme araçları varsayılan olarak onu atıyor ve FastAPI GET rotasına HEAD'i **otomatik eklemiyor**.
-- **Toplam: 550 test + 1 xfail**, ~5 sn, container/ağ gerekmiyor.
-- **Ayrıca JS tarafında (CI'da, pytest'ten bağımsız):** `node scripts/check_frontend.js` (sözdizimi + HTML↔JS ID eşleşmesi + sidebar iskeleti + **sw.js precache senkronu**), `node scripts/test_camera.js` (17), `node scripts/test_sw.js` (**19**, Faz 26), `node scripts/test_auth_gate.js` (**64**, Faz 26b/26c — giriş kapısı + bekleme ekranı + **yönlendirme boyunca örtünün kalması**; sahte DOM + sahte saat).
+- **Hesap silme (Faz 27):**
+  - `api/tests/test_account.py` — 19 test: **AST tabanlı drift testi** (hiçbir Firestore koleksiyonu atlanmasın — bu özelliğin en sinsi bozulma biçimi), silme sırası (Auth en son), komşu kullanıcının verisine dokunulmaması, pantry dokümanının boşaltılmayıp **silinmesi**, batch sınırı (900 doküman), endpoint sözleşmesi (yanlış onayda **hiçbir şey silinmiyor**, e-posta **token'dan** geliyor).
+- **Toplam: 569 test + 1 xfail**, ~5 sn, container/ağ gerekmiyor.
+- **Ayrıca JS tarafında (CI'da, pytest'ten bağımsız):** `node scripts/check_frontend.js` (sözdizimi + HTML↔JS ID eşleşmesi + sidebar iskeleti + **sw.js precache senkronu**), `node scripts/test_camera.js` (17), `node scripts/test_sw.js` (**19**, Faz 26), `node scripts/test_auth_gate.js` (**67**, Faz 26b/26c/27 — giriş kapısı + bekleme ekranı + **yönlendirme boyunca örtünün kalması** + silme sonrası onay mesajı; sahte DOM + sahte saat).
 - Çalıştırma: `python -m pytest` · `-v` test adlarını gösterir · `--lf` sadece son kırılanları çalıştırır.
 - Windows notu: konsol cp1254 olduğu için Türkçe karakterli mesajlar bozuk görünür (çökme değil). `$env:PYTHONIOENCODING = "utf-8"` düzeltiyor.
 
@@ -179,10 +183,82 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 ## Şu An Üzerinde Çalışılıyor
 - **`firebase-auth` branch'i.** Faz 6–26'nın tamamı burada; **varsayılan ve canlı dal bu** (hem Render hem Vercel onu izliyor). `origin/main` **hiç push edilmemiş** — yani "main'e merge" diye bir iş YOK, yapılacak şey GitHub arayüzünden dalı yeniden adlandırmak, sonra Render ve Vercel'in izlediği dalı güncellemek (bkz. Faz 24).
 - **Faz 26/26b/26c canlıda:** PWA + `HEAD /` (Faz 26), PWA'da Google girişi (26b), yönlendirme örtüsü + 504 zincir düzeltmesi (26c) deploy edildi. **Gerçek telefonda kurulum ve çevrimdışı davranış doğrulandı.** Frontend'in canlı sürümü `auth.js`'teki `BUILD` sabitinden okunuyor (bugün `26c-4`) — kurulu PWA sayfayı bellekte tuttuğu için "telefondaki kod güncel mi?" sorusunun tek kesin cevabı bu.
-- **Sırada:** hesap silme akışı. Sonra Capacitor. Küçük temizlikler: merge edilmiş `pwa-google-signin` dalını silmek, teşhis kutusunu `?debug=0` ile kapatmak.
+- **Faz 27 hesap silme ✅** — gerçek Firestore + Auth'a karşı doğrulandı, canlıda. Teşhis kutusu `?debug=0` ile kapatıldı (web ve PWA).
+- **Sırada: Capacitor** (App Store / Google Play). Mağazanın istediği uygulama içi hesap silme artık var. Kırılacağı bilinen 4 nokta Faz 26'da listeli. Küçük temizlik: merge edilmiş `pwa-google-signin` dalını silmek, varsayılan dalı `main` yapmak.
 - Repo **GitHub'da**: `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private). Sırlar (`firebase-key.json`, `.env`) gitignored, repoda yok — Render'da env var olarak duruyor.
 
-## Güncel Durum: Faz 26 (PWA — ana ekrana kurulabilir uygulama) ✅
+## Güncel Durum: Faz 27 (Hesap silme) ✅ — 2026-07-30
+
+**Tetikleyici:** Capacitor'dan önceki son gerçek eksik. Üç ayrı sebep aynı yere işaret ediyordu: `privacy.html` kullanıcıya verisini sildirebileceğini zaten **söz vermişti** (ama yalnızca e-posta ile, elle), KVKK/GDPR bunu istiyor, ve mağazaya çıkıldığında hem App Store hem Play **uygulama içi** silme akışını zorunlu kılıyor. Yani mağaza adımının önkoşulu.
+
+### 🔑 Sıra tasarımın kendisi: önce Firestore, EN SON Auth
+Silinecek altı şey var: 5 Firestore koleksiyonu + Firebase Auth kaydı. Hangi sırayla silindikleri, yarıda kalırsa ne olacağını belirliyor:
+
+| Sıra | Yarıda kalırsa |
+|---|---|
+| Auth önce | 🔴 **Geri dönüşsüz.** Kullanıcı bir daha giriş YAPAMAZ → kalan verisine ulaşamaz, tekrar de deneyemez. Yetim veri kalıcı. |
+| **Firestore önce** ✅ | Zararsız. Kullanıcı hâlâ giriş yapmış durumda; butona tekrar basmak kalanı temizler. |
+
+Silme **idempotent**: olmayan dokümanı silmek Firestore'da no-op, ve Auth kaydı zaten yoksa `UserNotFoundError` "silinmiş" sayılıyor (istenen son durum sağlanmış). Gerçek altyapıda ikinci deneme de doğrulandı.
+
+Auth silme başarısız olursa istisna **yukarı fırlatılıyor** — sessizce "silindi" demek, hesabı duran kullanıcıya silindi demek olurdu.
+
+### Silme mantığı TEK YERDE — ve asıl koruma drift testi
+Dört koleksiyon (`favorites`, `collections`, `meal_plans`, `shopping_lists`) birebir aynı işi yapıyor: bir eşitlik filtresi + toplu silme. Beş modüle kopyalamak Faz 15d/19'daki "aynı kuralı iki yere yazma" ilkesine aykırı olurdu. `pantry` ayrı: doküman ID'si e-postanın kendisi.
+
+**Ama buradaki risk kopya değil UNUTMAK.** Biri altıncı bir koleksiyon ekler ve `account.py`'deki kayda yazmayı atlarsa **hiçbir şey patlamaz**: kullanıcı "hesabım silindi" mesajını görür, verisi Firestore'da durmaya devam eder. Sessiz, geri alınamaz ve verdiğimiz sözün ihlali.
+
+Bu yüzden `test_account.py` **kaynak kodun sözdizimi ağacını geziyor**: `api/*.py` içindeki her `.collection("ad")` çağrısını toplayıp kapsam listesiyle karşılaştırıyor. Sahte bir 6. koleksiyon (`wishlists`) eklenerek doğrulandı — net bir mesajla yakalıyor.
+
+> ⚠️ **İlk sürüm metin araması yapıyordu ve KENDİ BELGESİNE takıldı:** bu testi anlatan yorumun içindeki `.collection("...")` örneği de eşleşiyordu. `ast` yorumları ve docstring'leri hiç görmüyor, ayrıca ChromaDB'nin `get_collection("recipes")` çağrısıyla karışma ihtimalini de tamamen ortadan kaldırıyor (dizgiye değil, çağrılan özniteliğin adına bakıyor).
+
+Ayrıca "aracın kendisi çalışıyor mu" testi var: tarama bozulursa boş küme karşılaştırılır ve test **her zaman geçerdi** — yani koruma varmış gibi görünüp hiçbir şey korumazdı.
+
+### ⚖️ Yeniden kimlik doğrulama (reauthenticate) YOK — bilinçli ödünleşim
+Firebase'in önerdiği yol silmeden önce `reauthenticateWithPopup`. **Yapılmadı:** Faz 26b'de ölçüldü ki PWA'da Google popup'ı uygulamanın üstüne açılan bir Custom Tab ve o akış **altı tur** hata ayıklama gerektirdi. Silme yolunu ona bağlamak, kullanıcının hesabını hiç silememesi riskini geri getirirdi — ve silme, çalışmadığında kullanıcının başka çaresi olmayan bir özellik.
+
+Yerine: **ayrı sayfa + modal + DELETE yazma + sunucuda ikinci onay kontrolü**. Sunucu tarafı onay bir güvenlik kontrolü değil (istemci gönderiyor); amacı yanlış yazılmış bir istemci çağrısının endpoint'i kazara tetikleyememesi — `/api/pantry/all` ve `/api/meal-plan/week` kararlarının aynı ailesi.
+
+**Dürüst kayıp:** oturumu açık bir cihaza fiziksel erişimi olan birine karşı bu, re-auth'tan zayıf.
+
+### Frontend
+- **`account.html` (yeni)** — e-posta, giriş yöntemi (`google.com` / `password`, "şifremi neden soramıyorum?" sorusunun cevabı), doğrulama durumu + kırmızı çerçeveli **danger zone**.
+- **AYRI SAYFA, sidebar'daki "Sign out"un yanı DEĞİL:** gündelik bir butonun bir tık ötesine geri alınamaz bir işlem koymak olurdu. Sidebar'a sönük bir "Account settings" linki eklendi (8 sayfa).
+- **Silme sonrası `index.html?deleted=1`** — onay mesajı olmadan kullanıcı boş bir giriş formuna düşer ve işlemin gerçekleşip gerçekleşmediğini anlayamaz. Geri alınamaz bir işlemde kabul edilemez; teste bağlandı.
+- **`clearSessionScopedData()` atlanamaz:** `sessionStorage`'daki arama sonuçları silinen hesaba ait ve aynı tarayıcıda kalırlardı (Faz 20'deki gizlilik hatasının aynısı).
+- `privacy.html` artık uygulama içi akışı gösteriyor; **giriş yapamayanlar için e-posta yolu duruyor** (hesabı kilitlenmiş kullanıcının başka çaresi yok).
+
+### Test (550 → **569** Python, +19; auth gate 64 → **67**)
+`api/tests/test_account.py` — sahte Firestore (MagicMock anlamlı davranış üretmiyor, Faz 16/17'deki gerekçe):
+- **Drift** (3): tarama aracının kendisi, kapsam, `recipes`'in listede olmaması.
+- **Sıra** (3): Auth **en son**, Auth hatası yukarı fırlıyor, ikinci deneme başarılı.
+- **Veri** (7): her doküman gidiyor, **komşu kullanıcının verisi duruyor**, pantry dokümanı boşaltılmıyor **siliniyor**, sayılar, her koleksiyonun **kendi sahiplik alanıyla** sorgulanması (karışırsa sorgu boş döner ve silme sessizce hiçbir şey yapmaz), boş hesap.
+- **Batch** (2): 900 doküman → Firestore'un 500 sınırı aşılmıyor, hiçbiri düşmüyor, boş batch commit edilmiyor.
+- **Endpoint** (5): auth zorunlu, yanlış onayda **hiçbir şey silinmiyor**, silinen e-posta **token'dan** geliyor (istemciden değil — aksi hâlde başkasının hesabı sildirilebilirdi), ChromaDB'ye dokunulmuyor, eksik alan 422.
+
+### Doğrulama (GERÇEK Firestore + GERÇEK Firebase Auth) ✅
+Tek kullanımlık bir test hesabı açılıp veri ekildi, silindi, sonra temizlendi:
+
+| Kontrol | Sonuç |
+|---|---|
+| Test hesabının 5 koleksiyondaki verisi | hepsi **0** |
+| **Komşu** test hesabı | **dokunulmadı** |
+| Firebase Auth kaydı | gerçekten silindi |
+| **Gerçek kullanıcının verisi** (11 favori, 1 koleksiyon, 3 plan, 1 liste, 1 dolap) | **öncesi = sonrası** |
+| İkinci deneme | idempotent, `auth_user: True` |
+| HTTP: yanlış onay | 200 + error, dolap **hâlâ duruyor** |
+| HTTP: doğru onay | 200, **1.43 sn** |
+
+⚠️ Doğrulama scriptleri `api/`'yi mount ettiği için `main.py` gerçek `chroma_data`'yı açtı ve `chroma.sqlite3` kirlendi (Faz 8'de kayıtlı tuzak) — commit'ten önce `git checkout -- api/chroma_data` ile geri alındı.
+
+### Bilinen sınırlar
+- **Re-auth yok** (yukarıdaki ödünleşim).
+- **Silme geri alınamaz ve bekleme süresi yok** — bazı servisler 30 günlük "fikrini değiştirebilirsin" penceresi koyuyor. Yapılmadı: "silindi" demenin en dürüst hâli gerçekten silmek, ve bekleme penceresi verinin durduğu anlamına gelir.
+- **Auth silme başarısız olursa veri çoktan gitmiştir** — sıranın kaçınılmaz sonucu, ve iki kötü seçenekten iyi olanı (bkz. yukarıdaki tablo).
+
+---
+
+## Faz 26 (PWA — ana ekrana kurulabilir uygulama) ✅
 
 **Tetikleyici:** "Bu projeyi App Store'dan ya da Google Play'den indirilebilir bir mobil uygulamaya nasıl çeviririz?"
 
@@ -1984,7 +2060,7 @@ Yani **model başına günde 20 istek**. Kritik ayrıntı `PerModel`: kota model
 ## Veri Nerede Duruyor (güncel — Faz 9 sonrası)
 
 **Image'a gömülü ChromaDB (`api/chroma_data/`, sunucu yok):**
-- `recipes` — 4886 tarif (bkz. yukarıdaki alanlar). Salt-okunur; `main.py` `PersistentClient` ile okuyor. **Faz 17'den beri `ingredients` metadata alanı da var** (`|` ayraçlı metin — ChromaDB liste tutamıyor). Klasör 38.5 MB.
+- `recipes` — **9.795** tarif (Faz 20; öncesinde 4886). Salt-okunur; `main.py` `PersistentClient` ile okuyor. **Faz 17'den beri `ingredients` metadata alanı da var** (`|` ayraçlı metin — ChromaDB liste tutamıyor), Faz 20'den beri `image_url`. Klasör **73 MB**. Kullanıcı verisi DEĞİL — hesap silme buraya hiç dokunmuyor (teste bağlı).
 
 **Firestore (`favorites` koleksiyonu):**
 - Kullanıcı favorileri (user_email, recipe_id, added_at). Doküman ID'si bileşik: `{email}_{recipe_id}`.
@@ -2002,6 +2078,8 @@ Yani **model başına günde 20 istek**. Kritik ayrıntı `PerModel`: kota model
 - Alışveriş listesi **overlay'i** (liste kendisi türev, saklanmıyor). Doküman ID'si bileşik: `{email}_{hafta_pazartesisi}`, `checked` (işaretlenen isimler) + `custom` (elle eklenenler) dizileri. Türev liste = plan malzemeleri − dolap, her okumada hesaplanıyor.
 
 **Firebase Auth:** kullanıcılar (Faz 6'dan beri).
+
+**⚠️ Hesap silme (Faz 27) yukarıdaki BEŞ Firestore koleksiyonunun tamamını + Auth kaydını siliyor.** Yeni bir koleksiyon eklenirse `api/account.py`'deki kayda da yazılmalı — `test_account.py`'deki AST tabanlı drift testi unutulursa suite'i kırar.
 
 **Ölü veri — `recipe-rag-assistant_chroma_data` volume'ünde (servis kaldırıldı, volume geri dönüş için duruyor):**
 - `favorites` — Faz 9 öncesi favoriler. Taşınmadı (bilinçli karar).
