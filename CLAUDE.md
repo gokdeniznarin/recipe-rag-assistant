@@ -52,7 +52,7 @@
 - **Hafta 9 — performans:** Faz 11 ✅ — arama LLM'i beklemiyor (8.87sn → 0.32sn), favoriler N+1 kalktı, favori sırası düzeldi.
 - **Hafta 10 — kalite:** Faz 13 logging ✅, Faz 14 model güncellemesi ✅, **Faz 15 test altyapısı + girdi doğrulama + LLM sınıflandırıcı ✅** (Katman 1 + Katman 2: 148 test).
 - **Hafta 11 (şu an buradayız) — zenginleştirme + gelir modeli:** rakip özelliklerini (Samsung Food / ReciMe) ekleyip gelir hikayesi kurma. **Faz 16 Koleksiyonlar ✅** (175 test), **Faz 17 Pantry + yapılandırılmış malzeme verisi ✅** (235 test), **Faz 18 Meal Planner ✅** (316 test), **Faz 19 Alışveriş Listesi ✅** (366 test) — gelir zinciri (Pantry+Plan → eksikler → affiliate CTA) tamamlandı. **Faz 20 tarif görselleri + veri seti 2× ✅** (372 test), **Faz 21 fotoğraftan besin değeri ✅** (527 test). Yol haritasında kalan opsiyonel adımlar: Cook Mode / porsiyon ölçekleme, **günlük besin kaydı** (Faz 21 sadece gösteriyor, kaydetmiyor — premium hikayesi).
-- **Hafta 12 — mobil:** **Faz 26 PWA ✅** (546 Python testi + 19 service worker testi) — uygulama artık Android/iOS'ta ana ekrana kurulabiliyor, mağaza gerekmeden. Sırada: **hesap silme akışı** (store zorunluluğu değil, `privacy.html`'deki söz + KVKK/GDPR), sonra **Capacitor** (App Store / Google Play). Kalan: varsayılan dalı `main` yapmak, sunum hazırlığı.
+- **Hafta 12 — mobil:** **Faz 26 PWA ✅** — uygulama artık Android/iOS'ta ana ekrana kurulabiliyor, mağaza gerekmeden. **Faz 26b** PWA'da Google girişi ✅, **Faz 26c** yönlendirme boşluğu + **504 zincir kırılması** ✅ (**550 Python + 64 auth + 19 SW + 17 kamera testi**). Sırada: **hesap silme akışı** (store zorunluluğu değil, `privacy.html`'deki söz + KVKK/GDPR), sonra **Capacitor** (App Store / Google Play). Kalan: varsayılan dalı `main` yapmak, sunum hazırlığı.
 
 ## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
 ### Backend
@@ -65,7 +65,7 @@
 - `api/chroma_data/` — **git'e commit edilmiş** gömülü tarif veritabanı (**73MB**, Faz 20'de 9.795 tarife çıktı: `chroma.sqlite3` + HNSW indeks dosyaları). `load_to_chromadb.py` üretiyor, Dockerfile `COPY . .` ile image'a alıyor.
 - `api/logger.py` — **merkezi logging + süre ölçümü** (Faz 13). Renkli seviye formatter'ı (`ColorFormatter`), `@timed` decorator'ı ve `timed_block` context manager'ı. Uygulamada `print` kalmadı. `python api/logger.py` ile seviyeleri/renkleri tek başına gösteren bir demo bloğu var.
 - `api/auth.py` — tek iş: Firebase Admin SDK ile `verify_id_token()` → e-posta. `get_current_user_email` dependency'si korumalı endpoint'lerde kullanılıyor. (Eskiden JWT + bcrypt + kullanıcı kayıt/giriş vardı; Firebase geçişiyle ~140 satırdan ~30 satıra düştü.)
-- `api/llm.py` — Gemini API ile LLM cevap üretimi (`generate_answer`) + fotoğraftan malzeme tanıma (`detect_ingredients_from_image`) + **sorgu sınıflandırma** (`is_food_request`, Faz 15f — non-food sorguları aramadan önce eliyor, fail-open) + **tabak analizi** (`analyze_plate_from_image`, Faz 21 — yemek + porsiyon + kaba besin tahmini TEK çağrıda; JSON modu, `_parse_plate_json` savunmacı). Çoklu model fallback zinciri.
+- `api/llm.py` — Gemini API ile LLM cevap üretimi (`generate_answer`) + fotoğraftan malzeme tanıma (`detect_ingredients_from_image`) + **sorgu sınıflandırma** (`is_food_request`, Faz 15f — non-food sorguları aramadan önce eliyor, fail-open) + **tabak analizi** (`analyze_plate_from_image`, Faz 21 — yemek + porsiyon + kaba besin tahmini TEK çağrıda; JSON modu, `_parse_plate_json` savunmacı). Çoklu model fallback zinciri — `_generate` "bu modeli atla" sayılan hataları tek yerde tutuyor: `429/404/503` **ve `504/DEADLINE_EXCEEDED`** (Faz 26c). ⚠️ `MODEL_TIMEOUT_MS` istemci zaman aşımı DEĞİL, sunucuya gönderilen bir deadline ve **10 sn Google'ın izin verdiği taban** — küçültmek her çağrıyı 400'e düşürüp LLM'e bağlı her şeyi kırar (teste bağlı).
 - `api/nutrition.py` — **besin değeri** (Faz 21). FatSecret Platform API istemcisi (**OAuth 1.0**, stdlib `hmac`/`urllib` — yeni bağımlılık yok) + saf fonksiyonlar (`scale_macros`, `total_macros`, `merge_duplicate_items`, `parse_food_description`, `signature_base_string`/`sign`). **Import anında yan etki YOK** — anahtarlar her çağrıda okunuyor. Tamamen **fail-open**: anahtar yoksa/hata alırsa Gemini tahminine düşüyor, `source` alanı kaynağı dürüstçe söylüyor. Firestore'a **dokunmuyor** (kayıt tutulmuyor).
 - `api/filters.py` — kullanıcı sorgusundan diyet/süre/kalori filtresi çıkarımı
 - `api/validation.py` — **girdi doğrulama** (Faz 15). Tek saf fonksiyon: `validate_query()` sorgu kullanılabilir değilse kullanıcıya gösterilecek mesajı döner (kurallar dizginin **biçimine** bakıyor — harf var mı, uzunluk, tek harf tekrarı). Aramadan önce çağrılıyor, `1235533443` gibi girdiler hiç iş yapılmadan reddediliyor. (Faz 15f'de buradaki mesafe eşiği `is_weak_match` kaldırıldı — anlamsal karar artık `llm.is_food_request`'te.)
@@ -97,7 +97,7 @@
 - `frontend/js/logger.js` — **frontend logging + süre ölçümü** (Faz 13). `api/logger.py`'nin tarayıcı tarafındaki eşi: aynı satır biçimi, aynı seviyeler, aynı "yavaşsa sarı" kuralı. `Logger.get(scope)`, `Logger.timed(fn, ...)` (decorator'ın JS'teki higher-order function karşılığı), `Logger.duration(...)`. Ayarlar `localStorage` üzerinden (`log_level`, `slow_ms`) — tarayıcıda ortam değişkeni yok. Her sayfada, kendisini kullanan dosyalardan önce yüklenir.
 - `frontend/js/config.js` — `window.API_BASE`'i ortama göre kuruyor (yerel/LAN → `localhost:8080`, canlı → Render). `api.js`'ten önce yüklenir (Faz 10).
 - `frontend/js/api.js` — ortak API katmanı (backend adresini `window.API_BASE`'den alır; Firebase ID token'ı header'a ekleyen fetch wrapper, `authReady` tabanlı auth guard, 401'de otomatik logout, kullanıcı e-postası + baş harfli avatar, **`initSidebar`** — aktif sayfa vurgusu + mobil çekmece (Faz 23), doğrulanmamış e-posta için hatırlatma bandı)
-- `frontend/js/auth.js` — giriş/kayıt formu mantığı + Google girişi (Firebase `signInWithPopup`), hesap bağlama (`linkWithCredential`), kayıtta `sendEmailVerification()`, şifre sıfırlama (`sendPasswordResetEmail`; Faz 12)
+- `frontend/js/auth.js` — giriş/kayıt formu mantığı + Google girişi (Firebase `signInWithPopup`), hesap bağlama (`linkWithCredential`), kayıtta `sendEmailVerification()`, şifre sıfırlama (`sendPasswordResetEmail`; Faz 12). **Giriş kapısı da burada** (Faz 26b/26c): form gizli başlıyor, `onAuthStateChanged` sürekli dinleyicisi, "Signing you in…" örtüsü ve **uygulamaya giren TEK yönlendirme noktası `goToApp()`** — örtüyü kurup bir daha indirmiyor, çünkü `window.location.href` anında geçiş yapmıyor.
 - `frontend/js/search.js` — arama sayfası, mode tabs (Faz 17'de üçüncüsü: **From my pantry**), kamera stream (`getUserMedia`) + "Add to pantry", sesli arama (`SpeechRecognition`), sonuç render (Faz 17'de eşleşme rozeti). AI yorumunu ayrı istekle çekiyor (`loadCommentary`, iskelet animasyonu + `commentarySeq` yarış koruması; Faz 11). Faz 21'de kamera mantığı ortak `js/camera.js`'e taşındı
 - `frontend/js/recipe.js` — detay sayfası, `parseInstructions()` (R vector kalıntılarını filtreliyor) + Faz 16 koleksiyon seçicisi (lazy-load checkbox listesi, kalp↔koleksiyon senkronu)
 - `frontend/js/collection.js` — tek koleksiyon sayfası (Faz 16): rename/delete/remove akışları
@@ -132,8 +132,8 @@
 - **Besin değeri (Faz 21):**
   - `api/tests/test_nutrition.py` — 155 test: Katman 1 ölçekleme/toplama/ayrıştırma + `merge_duplicate_items` (gerçek fotoğrafta gözlenen kirazdomatesi vakası) + **OAuth imzası BAĞIMSIZ vektöre karşı** (Twitter'ın yayınlanmış OAuth 1.0a örneği — kendi HMAC'ini kendi HMAC'iyle doğrulamak totolojik olurdu, ayrıca yanlış imza *sessizce* fail-open'a düşeceği için başka türlü fark edilmezdi) + Katman 1.5 sahte HTTP ile `lookup_macros`'un tam zinciri + Katman 2 endpoint sözleşmesi (kota → 200+CORS, **ChromaDB'ye dokunulmaması**).
 - **Uptime ucu (Faz 26):** `test_api_contract.py` → `TestUptimeProbe` — `/` hem GET hem **HEAD**'e 200 dönüyor ve auth istemiyor. HEAD kritik: izleme araçları varsayılan olarak onu atıyor ve FastAPI GET rotasına HEAD'i **otomatik eklemiyor**.
-- **Toplam: 546 test + 1 xfail**, ~3 sn, container/ağ gerekmiyor.
-- **Ayrıca JS tarafında (CI'da, pytest'ten bağımsız):** `node scripts/check_frontend.js` (sözdizimi + HTML↔JS ID eşleşmesi + sidebar iskeleti + **sw.js precache senkronu**), `node scripts/test_camera.js` (17), `node scripts/test_sw.js` (**19**, Faz 26), `node scripts/test_auth_gate.js` (**60**, Faz 26b — giriş kapısı + bekleme ekranı; sahte DOM + sahte saat).
+- **Toplam: 550 test + 1 xfail**, ~5 sn, container/ağ gerekmiyor.
+- **Ayrıca JS tarafında (CI'da, pytest'ten bağımsız):** `node scripts/check_frontend.js` (sözdizimi + HTML↔JS ID eşleşmesi + sidebar iskeleti + **sw.js precache senkronu**), `node scripts/test_camera.js` (17), `node scripts/test_sw.js` (**19**, Faz 26), `node scripts/test_auth_gate.js` (**64**, Faz 26b/26c — giriş kapısı + bekleme ekranı + **yönlendirme boyunca örtünün kalması**; sahte DOM + sahte saat).
 - Çalıştırma: `python -m pytest` · `-v` test adlarını gösterir · `--lf` sadece son kırılanları çalıştırır.
 - Windows notu: konsol cp1254 olduğu için Türkçe karakterli mesajlar bozuk görünür (çökme değil). `$env:PYTHONIOENCODING = "utf-8"` düzeltiyor.
 
@@ -178,7 +178,8 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 
 ## Şu An Üzerinde Çalışılıyor
 - **`firebase-auth` branch'i.** Faz 6–26'nın tamamı burada; **varsayılan ve canlı dal bu** (hem Render hem Vercel onu izliyor). `origin/main` **hiç push edilmemiş** — yani "main'e merge" diye bir iş YOK, yapılacak şey GitHub arayüzünden dalı yeniden adlandırmak, sonra Render ve Vercel'in izlediği dalı güncellemek (bkz. Faz 24).
-- **Faz 26 canlıda:** PWA (Vercel) + `HEAD /` düzeltmesi (Render) deploy edildi ve doğrulandı. Kalan tek adım gerçek telefonda kurulum testi.
+- **Faz 26/26b/26c canlıda:** PWA + `HEAD /` (Faz 26), PWA'da Google girişi (26b), yönlendirme örtüsü + 504 zincir düzeltmesi (26c) deploy edildi. **Gerçek telefonda kurulum ve çevrimdışı davranış doğrulandı.** Frontend'in canlı sürümü `auth.js`'teki `BUILD` sabitinden okunuyor (bugün `26c-4`) — kurulu PWA sayfayı bellekte tuttuğu için "telefondaki kod güncel mi?" sorusunun tek kesin cevabı bu.
+- **Sırada:** hesap silme akışı. Sonra Capacitor. Küçük temizlikler: merge edilmiş `pwa-google-signin` dalını silmek, teşhis kutusunu `?debug=0` ile kapatmak.
 - Repo **GitHub'da**: `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private). Sırlar (`firebase-key.json`, `.env`) gitignored, repoda yok — Render'da env var olarak duruyor.
 
 ## Güncel Durum: Faz 26 (PWA — ana ekrana kurulabilir uygulama) ✅
@@ -338,6 +339,83 @@ Android uygulamayı bellekte tutuyor; görev listesinden kapatmak her zaman yeni
 
 ### Çevrimdışı davranış — gerçek cihazda doğrulandı
 Uçak modunda test edildi: **uygulama açılıyor, gezinilebiliyor** (kabuk önbellekten), arama "Could not reach the server." veriyor. Bu **doğru davranış**, service worker'ın hatası değil: tarifler ve embedding modeli sunucuda ve **API yanıtları bilerek önbelleğe alınmıyor**. "You're offline" yedek sayfası yalnızca hiç ziyaret edilmemiş bir sayfaya çevrimdışı gidilirse çıkıyor.
+
+---
+
+## Faz 26c (İki sessiz kusur: yönlendirme boşluğu + 504) ✅ — 2026-07-30
+
+İki ayrı hata, **aynı biçim**: ikisi de kararın kendisinde değil, **karardan SONRAKİ boşlukta** yaşıyordu (yönlendirme başladıktan sonra, deadline dolduktan sonra) ve ikisi de yalnızca **dışarıdan bir enstrümanla** görülebildi — biri ekran kaydı, diğeri sunucu logu.
+
+### 1. Bekleme ekranı yönlendirme SIRASINDA kalkıyordu (Faz 26b'nin kalan parçası)
+
+Faz 26b'den sonra kullanıcı hâlâ *"Signing you in çıkıyor, ama hesaba girmeden önce kısa bir an giriş ekranına dönüyor"* dedi. Yeni bir ekran kaydı 24 fps'te ayrıştırıldı:
+
+| t | Ekran |
+|---|---|
+| 7.40 – 8.87 sn | "Signing you in…" ✅ bekleme ekranı çalışıyor |
+| **8.87 – 9.12 sn** | 🔴 **giriş sayfası** — 6 kare, **0.25 sn** |
+| 9.12 sn → | "Find your next meal" |
+
+Teşhis kutusu bu kayıtta da `marker none / overlay false` gösteriyordu, yani **sayfa yine yeniden yüklenmemişti** — Faz 26b'nin bulgusu doğrulandı, kusur başka yerdeydi.
+
+**Sebep tek satır** (`auth.js`, bekleme ekranının sayacı):
+```js
+if (leavingForApp) { hideWaitingScreen(); return; }   // ← örtüyü KALDIRIYORDU
+```
+`window.location.href = 'search.html'` **anında geçiş yapmıyor**: tarayıcı belgeyi ağdan çekiyor (service worker network-first) ve o sürede eski sayfa hâlâ ekranda. Sayaç, yönlendirme başlar başlamaz örtüyü indirince altındaki form ortaya çıkıyordu.
+
+**Düzeltme:** sayaç artık yalnızca **kendini durduruyor** (`stopWaitTicker`), örtüye dokunmuyor. `goToApp()` örtüyü yönlendirmeden önce kuruyor ve bir daha indirmiyor (`showLeavingScreen` — `hideWaitingScreen`'in zıddı değil kardeşi: ikisi de sayacı durduruyor, biri örtüyü kaldırmıyor).
+
+**Yan kazanç — Google'la ilgisi olmayan bir kusur da kapandı:** oturumu açık bir kullanıcı `index.html`'i açtığında, yönlendirme boyunca hero + tanıtım içeriği görünüyordu (canlıda ~975 ms, Faz 13b'de ölçülen `authReady` beklemesi). `auth-checking` yalnızca kartı gizliyordu, sayfanın geri kalanını değil. Artık orada da örtü var — ve bu **web'de de geçerli**, PWA'ya özel değil.
+
+Şifreyle giriş ve kayıt da `goToApp()`'e taşındı: uygulamaya giren **tek** bir yönlendirme noktası kaldı (`window.location.href` dosyada artık bir tane).
+
+**Test 60 → 64.** Kritik olan, yeni testlerin **ikisinin eski kodda düşmesi** — özellikle video'daki yolu birebir kapsayan `late sign-in: the cover stays up while search.html loads`. Mevcut testler "yönlendirmeden **sonra** ne oluyor" sorusunu hiç sormuyordu; `advance()` ile saati ileri sarmak yetiyordu.
+
+### 2. 🔴 504 DEADLINE_EXCEEDED zinciri kırıyordu — Faz 22'deki 503'ün aynısı
+
+**Kullanıcı bildirimi:** `lunch meal` aramasında AI yorumu hiç gelmedi.
+
+Önce **elenenler** (hepsi ölçümle): kota dolu değil (6 modelin 5'i cevaplıyor), sınıflandırıcı reddetmiyor (5/5 YES), arama 5 sonuç dönüyor, yorum üretimi yerelde düzgün çalışıyor, Render'daki rota var (422 = rota var), Vercel bayat dosya sunmuyor (yerelle birebir aynı). Yani **yeniden üretilemedi** — kesin cevap Render logundan geldi:
+
+```
+ERROR | llm | generate_answer failed after 9.62 s: 504 DEADLINE_EXCEEDED
+ERROR | main | LLM error (commentary skipped): 504 DEADLINE_EXCEEDED
+```
+
+**`failed`, `falling back` değil** — zincir ilk modelde öldü, arkadaki 5 sağlam model hiç denenmedi. `_generate`'in atlama listesinde `429/404/503` vardı, **504 yoktu** → `raise`.
+
+#### 🔑 Asıl bulgu: `MODEL_TIMEOUT_MS` bir istemci zaman aşımı DEĞİL
+SDK `http_options.timeout`'u **sunucuya deadline olarak gönderiyor**. Kanıt, kısa bir değer verince gelen cevap:
+
+> `400 INVALID_ARGUMENT: Manually set deadline 6s is too short. **Minimum allowed deadline is 10s.**`
+
+Sonuçları:
+- Süre dolduğunda istek **istemcide kesilmiyor**, Google **504** döndürüyor → sınıf adına bakan `timed_out` kontrolü hiç tetiklenmiyor, dizgi listesi de 504'ü tanımıyordu.
+- **10 sn bir tercih değil, TABAN.** 7/8/9 sn de reddediliyor, 10 sn kabul ediliyor. Yani tam tabanda oturuyoruz ve yavaş bir günde modelin 10 sn'yi aşması **olağan** — arıza değil, zincirin var olma sebebi.
+
+**⚠️ Faz 22'deki not YANLIŞTI ve düzeltildi:** *"Birim milisaniye, ölçümle doğrulandı (50 → 93 ms'de koptu)"*. 50 ms istemcide kopmuyor; Google 400 ile *"deadline too short"* diyor ve o hata 93 ms'de dönüyor. Ölçüm doğru, **yorumu yanlıştı** — ve bugünkü hatanın kökeni tam olarak bu yanılgı: zaman aşımı istemci tarafı sanıldığı için 504 hiç akla gelmemiş.
+
+**Ortaya çıkan mayın:** biri "kullanıcı daha az beklesin" diye bu değeri 8 sn'ye çekseydi, **her çağrı 400 alırdı**; 400 bilerek atlanmayan bir hata olduğu için zincir ilk modelde ölür ve LLM'e bağlı **her şey** (yorum, sınıflandırıcı, malzeme tanıma, tabak analizi) aynı anda çalışmaz hâle gelirdi. `test_the_deadline_is_never_lowered_below_googles_floor` bunu durduruyor.
+
+#### Doğrulama (gerçek Gemini, ilk model canlı logdaki 504'ü fırlatıyor)
+| Yol | Öncesi | Sonrası |
+|---|---|---|
+| Yorum | ilk modelde ölüyordu | 504 → atla → **1.06 sn**'de cevap |
+| Sınıflandırıcı | 9.6 sn sonra **fail-open** | 504 → atla → **482 ms**'de **gerçek** karar |
+
+#### Dürüst sınır
+Bu düzeltme yorumu **geri getiriyor, hızlandırmıyor**. Tabanda olduğumuz için 504'ü ancak ~9.6 sn sonra öğreniyoruz, sonra ikinci model ~1 sn'de cevaplıyor. Yavaş bir günde: arama ~14 sn, yorum ~11 sn. Aramadaki asıl pay hâlâ `chromadb query` (canlı logda 4.6–5.4 sn) — 0.1 vCPU'daki embedding, bu düzeltmeyle ilgisi yok (Faz 17).
+
+#### Neden bu rapor cevaplanamıyordu: yorum hatası SESSİZ
+`search.js`'te üç **tamamen farklı** sebep aynı görüntüyü üretiyor — kutu gizleniyor, hiçbir iz kalmıyor:
+1. Gemini patladı → `{answer: null, error: "commentary_unavailable"}`
+2. Tarif ID'leri boş çözüldü → `{answer: null}`, hata yok
+3. İsteğin kendisi başarısız (ağ/token) → `catch`
+
+Backend 1. durumu `error` alanıyla **zaten söylüyor**, frontend o alanı okumadan atıyor. Faz 11'de bilinçli bir karardı ("kota dolunca sayfa çalışmaya devam etsin") ve hâlâ savunulabilir, ama bedeli şu: *"yorum çıkmadı"* raporu tek başına **hiçbir bilgi taşımıyor**. Değiştirilmedi — kayda geçiriliyor ki bir dahaki sefere doğrudan Render loguna bakılsın.
+
+**Log okurken ayırt edici satırlar:** `ERROR … LLM error (commentary skipped)` = Gemini patladı · `ERROR … All models exhausted` = zincirin tamamı düştü · `INFO … recipe_commentary took …` = **sunucu cevap üretmiş, sorun istemcide** · hiç `recipe_commentary` satırı yok = **istek sunucuya ulaşmamış**.
 
 ---
 
@@ -672,7 +750,8 @@ Kullanıcı canlıda **AI yorumunun 37.8 saniyede** geldiğini bildirdi (ölçü
 
 **İki düzeltme:**
 1. **`gemini-3-flash-preview` ÇIKARILDI** — aynı gün eklenip aynı gün çıkarıldı. Sabah 3.2 sn, öğleden sonra 43.8 sn; **13 kat oynama**. Kapasite kazancı, tek başına 44 saniyelik bekleme yaratabilecek bir modeli taşımaya değmiyor. Kayıtta duruyor çünkü **tek seferlik ölçümün yetmediğinin** kanıtı. (7 → 6 model, kapasite 140 → 120.)
-2. **Model başına zaman aşımı** (`MODEL_TIMEOUT_MS = 10_000`) — SDK'nın kendi `http_options.timeout`'u. Birim **milisaniye**, ölçümle doğrulandı (50 → 93 ms'de koptu, 30000 → geçti). Zaman aşımı da "bu modeli atla" sayılıyor. FatSecret'taki `LOOKUP_BUDGET_SEC` ile aynı fikir: zincir "kullanılamıyor"u biliyordu, "kullanılamayacak kadar yavaş"ı bilmiyordu.
+2. **Model başına zaman aşımı** (`MODEL_TIMEOUT_MS = 10_000`) — SDK'nın kendi `http_options.timeout`'u. Birim **milisaniye**. Zaman aşımı da "bu modeli atla" sayılıyor. FatSecret'taki `LOOKUP_BUDGET_SEC` ile aynı fikir: zincir "kullanılamıyor"u biliyordu, "kullanılamayacak kadar yavaş"ı bilmiyordu.
+   ⚠️ **BURADAKİ ÖLÇÜM YANLIŞ YORUMLANMIŞTI — düzeltmesi Faz 26c'de.** Şöyle yazıyordu: *"ölçümle doğrulandı (50 → 93 ms'de koptu, 30000 → geçti)"*. Ölçüm doğru, yorumu yanlış: 50 ms istemcide **kopmuyor**, Google 400 ile *"Manually set deadline 50ms is too short"* diyor ve o hata 93 ms'de dönüyor. Bu bir istemci zaman aşımı değil, **sunucuya gönderilen bir deadline**; izin verilen **en küçük değer 10 sn** ve biz tam tabanındayız. Süre dolduğunda hata **504 DEADLINE_EXCEEDED** olarak geliyor — sınıf adına bakan `timed_out` kontrolü onu göremiyor. 504 atlama listesine Faz 26c'de eklendi; o güne kadar tek bir yavaş model bütün zinciri çöktürüyordu.
 
 **İki incelik:**
 - **Zaman aşımı çağıranın config'ine ENJEKTE ediliyor**, `model_copy` ile — çağıranlar kendi ayarlarını veriyor (sınıflandırıcı `temperature=0`, tabak analizi JSON modu) ve yerinde değiştirmek modül seviyesindeki nesneyi kalıcı kirletirdi. Gerçek pydantic ile doğrulandı: temperature korunuyor, çağıranın nesnesi temiz kalıyor.
