@@ -149,7 +149,22 @@ if (signInIsPending()) {
 // BUILD değeri her dağıtımda elle artırılıyor: "telefondaki kod güncel mi?"
 // sorusunun tek kesin cevabı bu — kurulu PWA sayfayı bellekte tuttuğu için
 // güncellemenin gerçekten indiğini başka türlü doğrulayamıyoruz.
-const BUILD = '26c-4';
+const BUILD = '27-1';
+
+// Hesap silindikten sonra buraya `?deleted=1` ile dönülüyor. Onay olmadan
+// kullanıcı boş bir giriş formuna düşer ve silmenin gerçekten olup olmadığını
+// anlayamaz — geri alınamaz bir işlemde bu kabul edilemez.
+// Mesaj giriş formunun içindeki `#login-info`'ya yazılıyor; form `authReady`
+// çözülünce açıldığında birlikte görünüyor (silinen kullanıcı her zaman
+// "signed out" durumunda olduğu için o yol garanti çalışıyor).
+if (window.location.search.indexOf('deleted=1') !== -1) {
+  const deletedInfo = document.getElementById('login-info');
+  if (deletedInfo) {
+    deletedInfo.textContent =
+      'Your account and everything saved with it have been deleted.';
+    deletedInfo.classList.remove('hidden');
+  }
+}
 
 // `?debug=1` KALICI bir işaret bırakıyor. Sebep pratik: kurulu PWA'nın adres
 // çubuğu yok, yani uygulamanın içinde bir sorgu parametresi yazmak MÜMKÜN DEĞİL.

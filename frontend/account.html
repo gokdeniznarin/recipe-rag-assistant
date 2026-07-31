@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Meal plan — Recipe Assistant</title>
+  <title>Account — Recipe Assistant</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -31,8 +31,6 @@
   </div>
   <div id="nav-overlay" class="nav-overlay hidden"></div>
 
-  <!-- Sidebar. Gruplar akış zincirini görünür kılıyor:
-       Pantry → Plan → Shopping (elimde ne var → ne pişireceğim → ne almalıyım) -->
   <aside id="sidebar" class="sidebar">
     <a href="search.html" class="brand">
       <span class="brand-mark">✦</span>
@@ -59,6 +57,9 @@
         <span id="user-avatar" class="user-avatar"></span>
         <span id="user-email" class="side-user-email">…</span>
       </div>
+      <!-- Hesap ayarları buradan: "Sign out"un HEMEN yanına "Delete account"
+           koymak, gündelik bir butonun bir tık ötesine geri alınamaz bir işlem
+           yerleştirmek olurdu. Ayrı bir sayfa araya bilinçli bir adım koyuyor. -->
       <a href="account.html" class="side-account-link">Account settings</a>
       <button id="logout-btn" class="side-signout">Sign out</button>
     </div>
@@ -66,70 +67,77 @@
 
   <main class="page">
     <section class="search-hero">
-      <h1 class="page-title">Your meal plan</h1>
-      <p class="page-sub">Plan the week ahead. Tap any slot to pick a recipe.</p>
+      <h1 class="page-title">Account</h1>
+      <p class="page-sub">Your sign-in details and what happens to your data.</p>
     </section>
 
-    <!-- Hafta gezinme -->
-    <div class="week-bar">
-      <button id="prev-week" class="icon-btn" type="button" aria-label="Previous week">←</button>
-      <div class="week-bar-center">
-        <span id="week-label" class="week-label">…</span>
-        <button id="this-week" class="link-btn hidden" type="button">Back to this week</button>
+    <section class="account-card">
+      <div class="account-row">
+        <span class="account-label">Signed in as</span>
+        <span id="account-email" class="account-value">…</span>
       </div>
-      <button id="next-week" class="icon-btn" type="button" aria-label="Next week">→</button>
-    </div>
-
-    <div class="week-tools">
-      <span id="week-count" class="results-count"></span>
-      <div class="week-tools-right">
-        <a id="shopping-link" class="link-btn" href="shopping.html">Shopping list →</a>
-        <button id="clear-week-btn" class="pantry-clear-btn hidden" type="button">Clear week</button>
+      <div class="account-row">
+        <span class="account-label">Sign-in method</span>
+        <span id="account-provider" class="account-value">…</span>
       </div>
-    </div>
+      <div class="account-row">
+        <span class="account-label">Email verified</span>
+        <span id="account-verified" class="account-value">…</span>
+      </div>
+    </section>
 
-    <!-- Yükleniyor -->
-    <div id="loading" class="loading">
-      <div class="loading-dot"></div>
-      <div class="loading-dot"></div>
-      <div class="loading-dot"></div>
-    </div>
+    <p class="account-note">
+      Your recipes, collections, pantry, meal plans and shopping lists are stored
+      against your email address. Photos you take are never stored — they are sent
+      for analysis and discarded. See <a href="privacy.html">Privacy &amp; data</a>.
+    </p>
 
-    <!-- Hafta ızgarası (JS dolduruyor) -->
-    <div id="week-grid" class="week-grid hidden"></div>
+    <!-- Danger zone: geri alınamaz işlem, görsel olarak da ayrı duruyor -->
+    <section class="danger-zone">
+      <h2 class="danger-title">Delete your account</h2>
+      <p class="danger-text">
+        This permanently deletes your account and everything saved with it:
+      </p>
+      <ul class="danger-list">
+        <li>Saved recipes and collections</li>
+        <li>Your pantry</li>
+        <li>Meal plans and shopping lists</li>
+        <li>Your sign-in details</li>
+      </ul>
+      <p class="danger-text">
+        <strong>This cannot be undone.</strong> Recipes themselves are public data
+        and stay in the app — only what you saved is removed.
+      </p>
+      <button id="delete-btn" class="btn-danger" type="button">Delete my account</button>
+    </section>
 
-    <!-- Hata -->
-    <div id="plan-error" class="page-error hidden"></div>
+    <div id="account-error" class="page-error hidden"></div>
   </main>
 
-  <!-- Tarif seçici (boş slota tıklayınca) -->
-  <div id="picker-modal" class="modal-overlay hidden">
-    <div class="modal modal--wide">
-      <h3 id="picker-title" class="modal-title">Pick a recipe</h3>
-      <p class="modal-text">From your saved recipes.</p>
-
-      <div id="picker-recipes" class="plan-picker-list">
-        <p class="picker-empty">Loading…</p>
-      </div>
-
-      <p id="picker-modal-error" class="inline-error hidden"></p>
-      <div class="modal-actions">
-        <button id="picker-cancel" class="btn-outline btn-sm">Cancel</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Haftayı temizleme onayı (yıkıcı işlem — pantry/koleksiyon deseni) -->
-  <div id="clear-modal" class="modal-overlay hidden">
+  <!-- Onay modalı. Yıkıcı işlemlerdeki desenin (koleksiyon silme, dolabı
+       boşaltma) en sıkı hâli: burada ayrıca DELETE yazmak gerekiyor, çünkü
+       yanlışlıkla basmanın bedeli diğerlerinde geri alınabilir, burada değil. -->
+  <div id="delete-modal" class="modal-overlay hidden">
     <div class="modal">
-      <h3 class="modal-title">Clear this week?</h3>
+      <h3 class="modal-title">Delete your account?</h3>
       <p class="modal-text">
-        This removes <span id="clear-count">all</span> from this week.
-        Your saved recipes are not affected.
+        Everything saved under <strong id="delete-email"></strong> will be
+        permanently deleted. This cannot be undone.
       </p>
+      <p class="modal-text">Type <strong>DELETE</strong> below to confirm.</p>
+      <input
+        type="text"
+        id="delete-confirm-input"
+        class="search-input"
+        autocomplete="off"
+        autocapitalize="characters"
+        placeholder="DELETE"
+        aria-label="Type DELETE to confirm"
+      />
+      <p id="delete-error" class="inline-error hidden"></p>
       <div class="modal-actions">
-        <button id="clear-cancel" class="btn-outline btn-sm">Cancel</button>
-        <button id="clear-confirm" class="btn-accent btn-sm">Clear week</button>
+        <button id="delete-cancel" class="btn-outline btn-sm">Cancel</button>
+        <button id="delete-confirm" class="btn-danger btn-sm" disabled>Delete forever</button>
       </div>
     </div>
   </div>
@@ -141,7 +149,7 @@
   <script src="js/logger.js"></script>
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>
-  <script src="js/plan.js"></script>
+  <script src="js/account.js"></script>
   <script src="js/pwa.js"></script>
 </body>
 </html>

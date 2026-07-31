@@ -12,6 +12,7 @@ from llm import (
 )
 from nutrition import build_plate
 from auth import get_current_user_email
+from account import delete_account
 from favorites import add_favorite, get_favorites, remove_favorite
 from collections_store import (
     create_collection,
@@ -1178,3 +1179,34 @@ def remove_custom_shopping_item_endpoint(
     except ValueError as e:
         log.warning("Remove custom shopping item rejected (%r): %s", name, e)
         return {"error": str(e)}
+
+
+# ── Hesap silme ──────────────────────────────────────────
+class DeleteAccountRequest(BaseModel):
+    # Sunucu tarafı onay. Güvenlik kontrolü DEĞİL (istemci gönderiyor); amacı,
+    # yanlış yazılmış ya da tekrarlanan bir istemci çağrısının bu endpoint'i
+    # kazara tetikleyememesi. `/api/pantry/all` ve `/api/meal-plan/week`
+    # kararlarının aynı ailesi: yıkıcı işlem açıkça niyet ister.
+    confirm: str = Field(..., max_length=20)
+
+
+@app.post("/api/account/delete")
+# GET'i olan bir kaynağı silmiyoruz, kullanıcıyı yok ediyoruz — bu yüzden
+# `DELETE /api/account` değil kendi literal yolu var; gövde de gerekiyor.
+@timed(slow_ms=5000)
+def delete_account_endpoint(
+    request: DeleteAccountRequest,
+    user_email: str = Depends(get_current_user_email),
+):
+    """Kullanıcının tüm verisini ve Firebase hesabını siler. GERİ ALINAMAZ.
+
+    Sıra `account.py`'de: önce Firestore, en son Auth — yarıda kalırsa kullanıcı
+    hâlâ giriş yapmış olur ve tekrar deneyebilir.
+    """
+    if request.confirm != "DELETE":
+        log.warning("Account deletion rejected (bad confirmation) for %r", user_email)
+        return {"error": "Type DELETE to confirm."}
+
+    log.info("Deleting account and all data for %r", user_email)
+    removed = delete_account(user_email)
+    return {"message": "Your account and data have been deleted.", "removed": removed}

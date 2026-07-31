@@ -155,6 +155,7 @@ function run(authReady, storageOpt, search, popupResult) {
     /** Google butonuna basar (handler async, cagiran await etmeli). */
     clickGoogle: () => elements['google-btn'].handlers.click(),
     googleError: () => elements['google-error'].textContent,
+    infoText: () => (elements['login-info'] ? elements['login-info'].textContent : ''),
     /** Saati n saniye ileri sarip sayaci tetikler. */
     advance: (secs) => {
       for (let i = 0; i < secs; i++) {
@@ -403,6 +404,19 @@ function run(authReady, storageOpt, search, popupResult) {
   check('account-linking error: form is shown immediately, no waiting',
         !r.overlayShown());
   check('account-linking error: marker is cleared', !r.markerLeft());
+
+  // ── 6e. Hesap silindikten sonraki donus (?deleted=1) ──
+  // Silme GERI ALINAMAZ. Onay gorunmezse kullanici bos bir giris formuna duser
+  // ve islemin gercekten olup olmadigini anlayamaz.
+  r = run(Promise.resolve(null), undefined, '?deleted=1');
+  await new Promise((res) => setImmediate(res));
+  check('deleted=1 -> the deletion is confirmed on screen',
+        /deleted/i.test(r.infoText()), r.infoText());
+  check('deleted=1 -> the form is still revealed (user can sign up again)', !r.formHidden());
+
+  r = run(Promise.resolve(null), undefined, '');
+  await new Promise((res) => setImmediate(res));
+  check('no deleted param -> no stray confirmation message', r.infoText() === '');
 
   // ── 7. ?debug=1 teshis kutusu ──
   // Normal kullanici icin GORUNMEZ olmali; yalnizca URL'de debug=1 varsa cikmali.
