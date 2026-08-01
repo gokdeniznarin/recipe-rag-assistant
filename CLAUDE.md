@@ -52,7 +52,7 @@
 - **Hafta 9 — performans:** Faz 11 ✅ — arama LLM'i beklemiyor (8.87sn → 0.32sn), favoriler N+1 kalktı, favori sırası düzeldi.
 - **Hafta 10 — kalite:** Faz 13 logging ✅, Faz 14 model güncellemesi ✅, **Faz 15 test altyapısı + girdi doğrulama + LLM sınıflandırıcı ✅** (Katman 1 + Katman 2: 148 test).
 - **Hafta 11 (şu an buradayız) — zenginleştirme + gelir modeli:** rakip özelliklerini (Samsung Food / ReciMe) ekleyip gelir hikayesi kurma. **Faz 16 Koleksiyonlar ✅** (175 test), **Faz 17 Pantry + yapılandırılmış malzeme verisi ✅** (235 test), **Faz 18 Meal Planner ✅** (316 test), **Faz 19 Alışveriş Listesi ✅** (366 test) — gelir zinciri (Pantry+Plan → eksikler → affiliate CTA) tamamlandı. **Faz 20 tarif görselleri + veri seti 2× ✅** (372 test), **Faz 21 fotoğraftan besin değeri ✅** (527 test). Yol haritasında kalan opsiyonel adımlar: Cook Mode / porsiyon ölçekleme, **günlük besin kaydı** (Faz 21 sadece gösteriyor, kaydetmiyor — premium hikayesi).
-- **Hafta 12 — mobil:** **Faz 26 PWA ✅** — uygulama artık Android/iOS'ta ana ekrana kurulabiliyor, mağaza gerekmeden. **Faz 26b** PWA'da Google girişi ✅, **Faz 26c** yönlendirme boşluğu + **504 zincir kırılması** ✅, **Faz 27 hesap silme ✅**, **Faz 28 barkod okuma ✅** (**641 Python + 67 auth + 19 SW + 17 kamera testi**). Sırada: **Capacitor** (App Store / Google Play) — mağazanın zorunlu kıldığı uygulama içi hesap silme artık hazır. Kalan: varsayılan dalı `main` yapmak, sunum hazırlığı.
+- **Hafta 12 — mobil:** **Faz 26 PWA ✅** — uygulama artık Android/iOS'ta ana ekrana kurulabiliyor, mağaza gerekmeden. **Faz 26b** PWA'da Google girişi ✅, **Faz 26c** yönlendirme boşluğu + **504 zincir kırılması** ✅, **Faz 27 hesap silme ✅**, **Faz 28 barkod okuma ✅** (**645 Python + 67 auth + 19 SW + 17 kamera testi**). Sırada: **Capacitor** (App Store / Google Play) — mağazanın zorunlu kıldığı uygulama içi hesap silme artık hazır. Kalan: varsayılan dalı `main` yapmak, sunum hazırlığı.
 
 ## Şu Ana Kadar Tamamlanan Dosyalar (güncel)
 ### Backend
@@ -132,12 +132,12 @@
 - **Alışveriş Listesi (Faz 19):**
   - `api/tests/test_shopping.py` — 50 test: Katman 1 paylaşılan `ingredient_in_pantry` + **rozet↔liste tutarlılık testi**, `aggregate_ingredients` / `missing_ingredients` / `build_list` (bayat işaretin zararsızlığı, custom dedup) + Katman 1.5 overlay Firestore yazma (sahte doküman) + Katman 2 endpoint sözleşmesi (boş plan → ChromaDB atlanıyor, dolap çıkarması, overlay, silinmiş tarif, normalize, custom `/`).
 - **Besin değeri (Faz 21):**
-  - `api/tests/test_nutrition.py` — **227 test** (Faz 21'de 155, Faz 28'de +72): Katman 1 ölçekleme/toplama/ayrıştırma + `merge_duplicate_items` (gerçek fotoğrafta gözlenen kirazdomatesi vakası) + **OAuth imzası BAĞIMSIZ vektöre karşı** (Twitter'ın yayınlanmış OAuth 1.0a örneği — kendi HMAC'ini kendi HMAC'iyle doğrulamak totolojik olurdu, ayrıca yanlış imza *sessizce* fail-open'a düşeceği için başka türlü fark edilmezdi) + Katman 1.5 sahte HTTP ile `lookup_macros`'un tam zinciri + Katman 2 endpoint sözleşmesi (kota → 200+CORS, **ChromaDB'ye dokunulmaması**).
+  - `api/tests/test_nutrition.py` — **231 test** (Faz 21'de 155, Faz 28'de +76): Katman 1 ölçekleme/toplama/ayrıştırma + `merge_duplicate_items` (gerçek fotoğrafta gözlenen kirazdomatesi vakası) + **OAuth imzası BAĞIMSIZ vektöre karşı** (Twitter'ın yayınlanmış OAuth 1.0a örneği — kendi HMAC'ini kendi HMAC'iyle doğrulamak totolojik olurdu, ayrıca yanlış imza *sessizce* fail-open'a düşeceği için başka türlü fark edilmezdi) + Katman 1.5 sahte HTTP ile `lookup_macros`'un tam zinciri + Katman 2 endpoint sözleşmesi (kota → 200+CORS, **ChromaDB'ye dokunulmaması**).
     **Faz 28 — barkod:** `gtin_check_digit` **BAĞIMSIZ gerçek barkodlara karşı** (EAN-13 / UPC-A / EAN-8, üç farklı sembolojinin yayınlanmış örnekleri — kendi hesabımızı kendi hesabımızla doğrulamak totolojik olurdu), `normalize_barcode` (tek hane bozuk / komşu hane takası / koli kodu / doldurma), OFF ayrıştırıcıları **canlı yanıtlardan alınan fixture'larla** (Nutella'nın "Nutella, Ferrero, Yum yum" markası ve "Nutella Nutella" tekrarı), 404'ün istisna olarak gelmesi, **anahtarsız çalıştığının regresyonu**, `SOURCE_OFF`'un frontend etiketinin varlığı.
 - **Uptime ucu (Faz 26):** `test_api_contract.py` → `TestUptimeProbe` — `/` hem GET hem **HEAD**'e 200 dönüyor ve auth istemiyor. HEAD kritik: izleme araçları varsayılan olarak onu atıyor ve FastAPI GET rotasına HEAD'i **otomatik eklemiyor**.
 - **Hesap silme (Faz 27):**
   - `api/tests/test_account.py` — 19 test: **AST tabanlı drift testi** (hiçbir Firestore koleksiyonu atlanmasın — bu özelliğin en sinsi bozulma biçimi), silme sırası (Auth en son), komşu kullanıcının verisine dokunulmaması, pantry dokümanının boşaltılmayıp **silinmesi**, batch sınırı (900 doküman), endpoint sözleşmesi (yanlış onayda **hiçbir şey silinmiyor**, e-posta **token'dan** geliyor).
-- **Toplam: 641 test + 1 xfail**, ~4 sn, container/ağ gerekmiyor.
+- **Toplam: 645 test + 1 xfail**, ~4 sn, container/ağ gerekmiyor.
 - **Ayrıca JS tarafında (CI'da, pytest'ten bağımsız):** `node scripts/check_frontend.js` (sözdizimi + HTML↔JS ID eşleşmesi + sidebar iskeleti + **sw.js precache senkronu**), `node scripts/test_camera.js` (17), `node scripts/test_sw.js` (**19**, Faz 26), `node scripts/test_auth_gate.js` (**67**, Faz 26b/26c/27 — giriş kapısı + bekleme ekranı + **yönlendirme boyunca örtünün kalması** + silme sonrası onay mesajı; sahte DOM + sahte saat).
 - Çalıştırma: `python -m pytest` · `-v` test adlarını gösterir · `--lf` sadece son kırılanları çalıştırır.
 - Windows notu: konsol cp1254 olduğu için Türkçe karakterli mesajlar bozuk görünür (çökme değil). `$env:PYTHONIOENCODING = "utf-8"` düzeltiyor.
@@ -185,7 +185,7 @@ Proje **canlıda ve çalışıyor**. Aşağıdakiler cila/temizlik; hiçbiri uyg
 - **`firebase-auth` branch'i.** Faz 6–26'nın tamamı burada; **varsayılan ve canlı dal bu** (hem Render hem Vercel onu izliyor). `origin/main` **hiç push edilmemiş** — yani "main'e merge" diye bir iş YOK, yapılacak şey GitHub arayüzünden dalı yeniden adlandırmak, sonra Render ve Vercel'in izlediği dalı güncellemek (bkz. Faz 24).
 - **Faz 26/26b/26c canlıda:** PWA + `HEAD /` (Faz 26), PWA'da Google girişi (26b), yönlendirme örtüsü + 504 zincir düzeltmesi (26c) deploy edildi. **Gerçek telefonda kurulum ve çevrimdışı davranış doğrulandı.** Frontend'in canlı sürümü `auth.js`'teki `BUILD` sabitinden okunuyor (bugün `26c-4`) — kurulu PWA sayfayı bellekte tuttuğu için "telefondaki kod güncel mi?" sorusunun tek kesin cevabı bu.
 - **Faz 27 hesap silme ✅** — gerçek Firestore + Auth'a karşı doğrulandı, canlıda. Teşhis kutusu `?debug=0` ile kapatıldı (web ve PWA).
-- **Faz 28 barkod okuma ✅** — gerçek Open Food Facts'e karşı doğrulandı. **Henüz canlıya çıkmadı / gerçek telefonda denenmedi.** Sunumdan önce iki adım: (1) `git push` sonrası Render + Vercel deploy'unu beklemek, (2) **mutfaktaki gerçek ürünlerle** taramak — Türk ürünlerinde OFF kapsamı belirsiz (aşağıdaki bilinen sınır).
+- **Faz 28 barkod okuma ✅ — CANLIDA ve gerçek telefonda doğrulandı.** Deploy ~60 sn'de indi. Tarayıcının `BarcodeDetector`'ı telefonda çalışıyor (uçtan uca **50–80 ms**, Gemini'ye hiç uğramadan). Gerçek ürün testi bir kusur ortaya çıkardı ve düzeltildi (`_prepared_100g` varyantı — bkz. Faz 28). Ölçülen kapsam: **4 üründen 3'ü**.
 - **Sırada: Capacitor** (App Store / Google Play). Mağazanın istediği uygulama içi hesap silme artık var. Kırılacağı bilinen 4 nokta Faz 26'da listeli. Küçük temizlik: merge edilmiş `pwa-google-signin` dalını silmek, varsayılan dalı `main` yapmak.
 - Repo **GitHub'da**: `github.com/Gokdeniz-hub/recipe-rag-assistant` (Private). Sırlar (`firebase-key.json`, `.env`) gitignored, repoda yok — Render'da env var olarak duruyor.
 
@@ -241,27 +241,34 @@ Modülün geri kalanının kuralı "veri kaynağı çökerse Gemini tahminine d�
 - **Porsiyon notu artık koşullu:** fotoğrafta "tahmin, kaba", barkodda "ürünün kendi etiketinden" + "≈" işareti kalkıyor. Aynı uyarıyı ikisine birden basmak, elimizdeki en iyi veriyi haksız yere kötülemek olurdu.
 - **Porsiyon beyanı sağlaması var ama SEBEBİ FARKLI:** tabak yolunda risk model halüsinasyonu, burada **topluluk verisi** — OFF'u herkes düzenleyebiliyor. Aralık dışı bir `serving_quantity` 100 g tabanına düşüyor.
 
-### Canlı veriden çıkan iki ayrıştırma hatası
-Fixture'lar uydurulmadı, gerçek yanıtlardan alındı — ve ikisi de ancak orada görülebilirdi:
+### Canlı veriden çıkan üç ayrıştırma hatası
+Fixture'lar uydurulmadı, gerçek yanıtlardan alındı — ve üçü de ancak orada görülebilirdi:
 1. **`brands` virgülle ayrılmış bir LİSTE:** Nutella kaydında `"Nutella, Ferrero, Yum yum"`. Hepsini basmak ada çöp eklerdi → yalnızca ilki alınıyor.
 2. **Marka adın içinde tekrar edebiliyor:** marka `"Nutella"`, ürün adı `"Nutella"` → birleştirme **"Nutella Nutella"** üretiyordu → marka adın içindeyse düşürülüyor.
+3. **🔴 `_prepared_100g` VARYANTI — deploy sonrası TELEFONDA yakalandı, ve "kapsam boşluğu" sanılan şeyin aslında bizim hatamız olduğunu gösterdi.** OFF besin değerlerini iki varyantta tutuyor: `energy-kcal_100g` (satıldığı gibi) ve `energy-kcal_prepared_100g` (hazırlandığı gibi). **Ülker Çubuk kraker** (`8690504017301`) OFF'ta **%90 dolu** bir kayıtla duruyordu ama değerleri yalnızca `_prepared` alanlarındaydı → biz `None` görüp kullanıcıya "veritabanında yok" diyorduk. Artık "satıldığı gibi" tercih ediliyor, yoksa "hazırlandığı gibi"ye düşülüyor.
+   **TÜM makrolar aynı varyanttan okunuyor** — kaloriyi birinden, proteini diğerinden almak kendi içinde tutarsız bir tablo üretirdi; eksik alan 0 kalıyor, karışık olmuyor.
+   ⚠️ Bu, **teşhisin kendisiyle ilgili bir ders**: rapor "bazı ürünleri tanımadı" idi ve en kolay açıklama (kapsam) yanlıştı. Ayıran şey, `main.py`'nin iki durumu ZATEN ayrı loglaması oldu — `has no product` (404) vs `found but has no usable nutrition data`. İkinci satır olmasaydı bu hata "Türkiye'de OFF zayıf" diye kapanır ve hiç düzeltilmezdi.
 
-### Test (569 → **641**, +72)
+### Test (569 → **645**, +76)
 Katman 1: `gtin_check_digit` **BAĞIMSIZ gerçek barkodlara karşı** (EAN-13 `4006381333931`, UPC-A `036000291452`, EAN-8 `96385074` — üç farklı sembolojinin yayınlanmış örnekleri; kendi hesabımızı kendi hesabımızla doğrulamak totolojik olurdu), `normalize_barcode` (tek hane bozuk, komşu hane takası, koli kodu reddi, doldurma), OFF ayrıştırıcıları (yukarıdaki iki canlı vaka dahil). Katman 1.5: sahte HTTP ile tam zincir + **404'ün İSTİSNA olarak gelmesi** (yakalanmasaydı endpoint 500 döner ve tarayıcıda yanıltıcı CORS hatası görünürdü — Faz 11b dersi). Katman 2: auth, taranmış barkodun **vision'a hiç uğramaması**, yanlış okumanın FatSecret'a/OFF'a **hiç gitmemesi**, anahtarsız çalışma, ChromaDB'ye dokunulmaması, kota → 200+CORS.
 
 ### Doğrulama ✅
 | Kontrol | Sonuç |
 |---|---|
-| Python testleri | **641 geçiyor** + 1 xfail (~4 sn) |
+| Python testleri | **645 geçiyor** + 1 xfail (~4 sn) |
 | Canlı OFF — Nutella | `Nutella` · 100 g · 539 kcal · "Nutella Nutella" **önlendi** |
 | Canlı OFF — Coca-Cola | `1 portion (330 ml)` · **138.6 kcal** (gerçek ~139) |
 | Canlı OFF — Türk ürünü `8690504015437` | **404 → dürüst "bulunamadı"** |
+| **CANLIDA, GERÇEK TELEFONDA** (deploy sonrası) | Polmak Kremfıstık ✅ · Pınar Labne ✅ · **Ülker Çubuk kraker ✅** (`_prepared` düzeltmesiyle, 15 g → 60.4 kcal) · `8693354003555` OFF'ta yok |
+| Telefonda `BarcodeDetector` yolu | **çalışıyor** — uçtan uca **50–80 ms** (Gemini'ye hiç uğramadan; loglarda `read_barcode_from_image` satırı yok) |
+| **OCR yolu ÇAPRAZ DOĞRULANDI** | Aynı ürünü Gemini OCR (3 kez) ve tarayıcının okuyucusu (1 kez) **birebir aynı 13 haneyi** verdi (`8690504017301`) — iki bağımsız mekanizmanın uyuşması |
 | Tek hane bozuk barkod | ağa **çıkmadan** reddedildi |
 | JS: check_frontend · camera · sw · auth gate | hepsi geçti (18 dosya derleniyor) |
 | `git status api/chroma_data` | temiz |
 
 ### Bilinen sınırlar
-- **🔴 Türk ürünlerinde kapsam boşluğu — DEMO RİSKİ.** OFF topluluk verisi; test edilen Türk barkodu yoktu. Global markalar (Nutella, Coca-Cola, Mars) sorunsuz. **Sunumdan önce gerçek ürünlerle taranmalı.**
+- **Türk ürünlerinde kapsam boşluğu var ama SANILDIĞINDAN AZ.** Gerçek telefonla denenen 4 üründen ilk turda 2'si geldi; kalan ikisinden **biri bizim `_prepared` hatamızdı** (düzeltildi, artık geliyor), yalnızca biri OFF'ta gerçekten yok. Yani ölçülen oran **3/4**. Global markalar (Nutella, Coca-Cola, Mars) sorunsuz. Bulunamayan ürün zarif davranıyor ("fotoğrafla dene") ve OFF topluluk veritabanı olduğu için eklenebiliyor.
+  ⚠️ **Genelleme yapmak için 4 ürün az** — sunumda gösterilecek ürünler önceden taranmalı.
 - **Bu makinede B yolu çalışacak** (Windows'ta `BarcodeDetector` yok) → her tarama 1 Gemini kotası. **Demo Android PWA'da yapılmalı**: hem bedava hem anlık, hem de "telefonla ürün taratmak" hikâyesine doğal oturuyor.
 - **Bu RAG değil, öneri sistemi de değil** — dış bir veritabanına barkodla yapılan anahtar araması. Ne embedding, ne ChromaDB, ne (A yolunda) LLM. Faz 25'teki adlandırma düzeltmesinin aynı ailesi; sunumda böyle konumlandırılmalı.
 - **Sadece gösteriyor, kaydetmiyor** (Faz 21'in kapsam kararı korundu). Ama asıl kazanç bu: **günlük besin kaydının önündeki engel Firestore koleksiyonu değil VERİ KALİTESİYDİ** — kimse tahmine dayalı bir besin günlüğü tutmaz. Barkod o adımı *inandırıcı* kılıyor, yani premium hikâyeyi **mümkün kıldı, teslim etmedi**.

@@ -800,13 +800,24 @@ OFF_USER_AGENT = "recipe-rag-assistant/1.0 (university project)"
 # desen; yanıtta dönüyor ve frontend basıyor.
 OFF_ATTRIBUTION = "Product data from Open Food Facts, available under the ODbL."
 
-# OFF'un per-100g alan adları → bizim makro anahtarlarımız.
+# OFF'un alan adları → bizim makro anahtarlarımız (sonek olmadan).
 _OFF_MACRO_FIELDS = {
-    "calories": "energy-kcal_100g",
-    "protein_g": "proteins_100g",
-    "carbs_g": "carbohydrates_100g",
-    "fat_g": "fat_100g",
+    "calories": "energy-kcal",
+    "protein_g": "proteins",
+    "carbs_g": "carbohydrates",
+    "fat_g": "fat",
 }
+
+# ⚠️ OFF AYNI BESİNİ İKİ VARYANTTA TUTUYOR ve bu, canlı testte gerçek bir ürünü
+# kaybettirdi: "Ülker Çubuk kraker" (8690504017301) OFF'ta **%90 dolu** kayıtla
+# duruyordu, ama besin değerleri yalnızca `_prepared_100g` alanlarındaydı —
+# yalnızca `_100g`'ye baktığımız için kullanıcıya "veritabanında yok" diyorduk.
+#
+# Sıra ÖNEMLİ: "satıldığı gibi" tercih ediliyor, çünkü porsiyonu da ambalajın
+# gramından alıyoruz. "Hazırlandığı gibi" yalnızca diğeri HİÇ yoksa devreye
+# giriyor — orada "bir şey göstermek" ile "hiçbir şey göstermemek" arasında
+# seçim yapıyoruz.
+_OFF_SUFFIXES = ("_100g", "_prepared_100g")
 
 # kcal yoksa kJ'den çevirmek için (1 kcal = 4.184 kJ).
 KJ_PER_KCAL = 4.184
@@ -822,18 +833,25 @@ def off_macros_per_100g(nutriments: dict) -> dict | None:
     if not isinstance(nutriments, dict):
         return None
 
-    calories = _finite(nutriments.get(_OFF_MACRO_FIELDS["calories"]))
-    if calories is None:
-        # Bazı kayıtlarda yalnızca kJ var; kcal'a çevirmek kaydı kurtarıyor.
-        kj = _finite(nutriments.get("energy-kj_100g")) or _finite(nutriments.get("energy_100g"))
-        if kj is None:
-            return None
-        calories = kj / KJ_PER_KCAL
+    for suffix in _OFF_SUFFIXES:
+        calories = _finite(nutriments.get(_OFF_MACRO_FIELDS["calories"] + suffix))
+        if calories is None:
+            # Bazı kayıtlarda yalnızca kJ var; kcal'a çevirmek kaydı kurtarıyor.
+            kj = (_finite(nutriments.get("energy-kj" + suffix))
+                  or _finite(nutriments.get("energy" + suffix)))
+            if kj is None:
+                continue
+            calories = kj / KJ_PER_KCAL
 
-    macros = {"calories": round(calories, 1)}
-    for key in ("protein_g", "carbs_g", "fat_g"):
-        macros[key] = round(_finite(nutriments.get(_OFF_MACRO_FIELDS[key])) or 0.0, 1)
-    return macros
+        # TÜM MAKROLAR AYNI VARYANTTAN okunuyor. Karıştırmak — kaloriyi
+        # "satıldığı gibi", proteini "hazırlandığı gibi" almak — kendi içinde
+        # tutarsız bir tablo üretirdi; eksik alan 0 kalsın, karışık olmasın.
+        macros = {"calories": round(calories, 1)}
+        for key in ("protein_g", "carbs_g", "fat_g"):
+            macros[key] = round(_finite(nutriments.get(_OFF_MACRO_FIELDS[key] + suffix)) or 0.0, 1)
+        return macros
+
+    return None
 
 
 def off_portion(product: dict) -> tuple[float, str | None]:

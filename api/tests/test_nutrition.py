@@ -385,6 +385,42 @@ class TestOffMacrosPer100g:
         """Kalorisiz bir 'besin değeri' tablosu kullanıcıya hiçbir şey söylemez."""
         assert nutrition.off_macros_per_100g({"proteins_100g": 6.3}) is None
 
+    def test_prepared_fields_are_used_when_as_sold_is_missing(self):
+        """🔴 REGRESYON — CANLI KULLANIMDA GERÇEK BİR ÜRÜNÜ KAYBETTİRDİ:
+        "Ülker Çubuk kraker" (8690504017301) OFF'ta %90 dolu bir kayıtla
+        duruyordu, ama besin değerleri yalnızca `_prepared_100g` alanlarındaydı.
+        Yalnızca `_100g`'ye baktığımız için kullanıcıya "veritabanında yok"
+        diyorduk — kapsam boşluğu sanılan şey aslında bizim hatamızdı.
+        Fixture canlı yanıttan alındı."""
+        macros = nutrition.off_macros_per_100g({
+            "energy-kcal_prepared_100g": 403, "carbohydrates_prepared_100g": 73,
+            "fat_prepared_100g": 6.3, "proteins_prepared_100g": 7.5,
+        })
+        assert macros["calories"] == 403.0
+        assert macros["carbs_g"] == 73.0
+        assert macros["fat_g"] == 6.3
+
+    def test_as_sold_wins_when_both_variants_exist(self):
+        """Porsiyonu ambalajın gramından aldığımız için "satıldığı gibi"
+        varyantı doğru olan; prepared yalnızca YEDEK."""
+        macros = nutrition.off_macros_per_100g({
+            "energy-kcal_100g": 100, "energy-kcal_prepared_100g": 400,
+        })
+        assert macros["calories"] == 100.0
+
+    def test_macros_are_never_mixed_across_variants(self):
+        """Kaloriyi bir varyanttan, proteini diğerinden almak kendi içinde
+        tutarsız bir tablo üretirdi — eksik alan 0 kalsın, karışık olmasın."""
+        macros = nutrition.off_macros_per_100g({
+            "energy-kcal_100g": 100, "proteins_prepared_100g": 99,
+        })
+        assert macros["calories"] == 100.0
+        assert macros["protein_g"] == 0.0
+
+    def test_prepared_kilojoules_are_also_converted(self):
+        macros = nutrition.off_macros_per_100g({"energy-kj_prepared_100g": 1698.9})
+        assert macros["calories"] == 406.0          # 1698.9 / 4.184
+
     def test_partially_filled_records_default_the_rest_to_zero(self):
         """Topluluk verisinde eksik alan olağan — kaydı komple atmak yerine
         bilinen kısmı gösteriyoruz."""
