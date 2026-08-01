@@ -67,7 +67,7 @@
   <main class="page">
     <section class="search-hero">
       <h1 class="page-title">What's on your plate?</h1>
-      <p class="page-sub">Take a photo of a meal, a fruit or a vegetable to see its approximate nutrition.</p>
+      <p class="page-sub">Take a photo of a meal, a fruit or a vegetable to see its approximate nutrition — or scan a packaged product's barcode for its exact label values.</p>
     </section>
 
     <section class="search-panel">
@@ -89,6 +89,9 @@
 
         <div id="analyze-row" class="camera-actions hidden">
           <button type="button" id="analyze-btn" class="btn-accent">Analyze photo</button>
+          <!-- Ambalajlı üründe DOĞRU yol bu: porsiyon fotoğraftan tahmin
+               edilmiyor, üreticinin kendi beyanı okunuyor. -->
+          <button type="button" id="barcode-btn" class="btn-outline">Scan barcode</button>
           <span id="analyze-status" class="detected-status"></span>
         </div>
       </div>
@@ -113,8 +116,11 @@
 
       <!-- DÜRÜST SINIR: porsiyon fotoğraftan tahmin ediliyor ve bu doğası gereği
            kaba (100 g mı 300 g mı belli olmaz; yağ/tereyağı/şeker görünmez).
-           Arayüz tıbbi/diyet aracı gibi durmamalı. -->
-      <p class="nutrition-note">
+           Arayüz tıbbi/diyet aracı gibi durmamalı.
+           ⚠️ METİN SABİT DEĞİL: barkod yolunda porsiyon TAHMİN DEĞİL, üreticinin
+           beyanı. Aynı uyarıyı orada da göstermek kendi verimizi haksız yere
+           kötülemek olurdu, o yüzden nutrition.js metni kaynağa göre yazıyor. -->
+      <p id="nutrition-note" class="nutrition-note">
         Portion size is estimated from the photo, so these numbers are rough.
         This is not medical or dietary advice.
       </p>
@@ -124,6 +130,8 @@
     <!-- Boş durum: henüz fotoğraf yok -->
     <section id="nutrition-empty" class="nutrition-empty">
       <p>Start the camera or upload a photo, then choose <strong>Analyze photo</strong>.</p>
+      <p>Packaged product? Frame its <strong>barcode</strong> and choose <strong>Scan barcode</strong> —
+         the portion and the numbers then come from the product's own label instead of a guess.</p>
     </section>
 
     <!-- Hata mesajı -->

@@ -383,6 +383,53 @@ Respond with ONLY JSON in exactly this shape:
     return _parse_plate_json(response.text)
 
 
+@timed(slow_ms=5000)
+def read_barcode_from_image(image_base64: str) -> str | None:
+    """Fotoğraftaki barkodun ALTINDA YAZAN rakamları okur. Yoksa None.
+
+    NEDEN VAR — bu bir yedek yol: tarayıcının yerleşik `BarcodeDetector` API'si
+    Chrome'da yalnızca Android, macOS ve ChromeOS'ta çalışıyor; Windows'ta ve
+    iOS Safari'de HİÇ YOK. Tek yol o olsaydı özellik masaüstünde görünmezdi
+    (ve geliştirme makinesinde test bile edilemezdi). Destek varsa istemci
+    zaten kendi çözüyor ve buraya hiç gelinmiyor — yani bu çağrı, ve harcadığı
+    kota, yalnızca desteğin olmadığı yerlerde ödeniyor.
+
+    ÇUBUKLARI ÇÖZMÜYOR, RAKAMLARI OKUYOR: barkodun altında insan tarafından
+    okunabilir hâli zaten basılı, yani bu bir görüntü çözme değil OCR işi ve
+    modeller bunda iyi. Çubukları saydırmaya çalışmak (çizgi kalınlığı, açı,
+    parlama) bir vision modelinin işi değil.
+
+    YANLIŞ OKUMA RİSKİ KODDA KARŞILANIYOR: tek bir haneyi yanlış görmek burada
+    sessizce BAŞKA BİR ÜRÜNÜ getirebilirdi. `nutrition.normalize_barcode` GTIN
+    kontrol hanesini doğruluyor ve tek haneli okuma hatalarının tamamını
+    yakalıyor — sonuç "yanlış ürün" değil "okunamadı" oluyor.
+    """
+    image_bytes = _decode_image(image_base64)
+
+    prompt = """Look at this photo and find the product barcode in it.
+
+Read the digits printed underneath the barcode and reply with ONLY those digits — no spaces, no dashes, no other words.
+Most retail barcodes have 13 digits (EAN-13) or 12 digits (UPC-A).
+If there is no barcode in the photo, or its digits are not clearly readable, reply with exactly: NONE
+"""
+
+    response = _generate(
+        VISION_MODELS,
+        [{"inline_data": {"mime_type": "image/jpeg", "data": image_bytes}}, prompt],
+        # Transkripsiyon işi — yaratıcılık istemiyoruz, aynı fotoğraf her zaman
+        # aynı rakamları vermeli. Sınıflandırıcıdaki temperature=0 kararının aynısı.
+        config=types.GenerateContentConfig(temperature=0.0),
+    )
+
+    # ASCII rakam süzgeci: `str.isdigit()` Unicode'a duyarlı ve Arap-Hint
+    # rakamlarını da geçirirdi; onlar kontrol hanesi aritmetiğine hiç girmemeli.
+    digits = "".join(ch for ch in (response.text or "") if ch in "0123456789")
+    if not digits:
+        log.info("No barcode digits read from photo")
+        return None
+    return digits
+
+
 # --- TEST ---
 if __name__ == "__main__":
     # Test 1: Metin tabanlı cevap üretimi

@@ -9,7 +9,12 @@ from llm import (
     detect_ingredients_from_image,
     is_food_request,
     analyze_plate_from_image,
+    read_barcode_from_image,
 )
+# Barkod yolu modül üzerinden çağrılıyor (`nutrition.build_product`), tek tek
+# import edilmiyor: normalize/credentials/build_product üçü de aynı akışta
+# kullanılıyor ve modül referansı monkeypatch'in de doğru yeri.
+import nutrition
 from nutrition import build_plate
 from auth import get_current_user_email
 from account import delete_account
@@ -412,6 +417,82 @@ def nutrition_from_image(
     # burada ayrıca yakalanacak bir hata yolu yok (fail-open modülün içinde).
     return build_plate(detected)
 
+
+class NutritionBarcodeRequest(BaseModel):
+    """İki giriş yolu, TEK endpoint — çünkü ikisi de aynı soruyu soruyor.
+
+    `barcode`: istemci numarayı kendi çözdü (tarayıcının BarcodeDetector'ı).
+    `image_base64`: çözemedi, rakamları sunucuda Gemini okuyacak.
+
+    Neden ayrı iki endpoint DEĞİL: sonrasında yapılan iş (normalize → GTIN
+    doğrula → FatSecret → tablo) satırı satırına aynı. Ayırmak o zinciri iki
+    yere kopyalamak ya da ikinci endpoint'i birincisine çağırtmak olurdu.
+    """
+    barcode: str | None = Field(None, max_length=64)
+    image_base64: str | None = None
+
+
+@app.post("/api/nutrition/from-barcode")
+# Yalnızca OCR yolunda vision çağrısı var; eşik from-image ile aynı tutuluyor.
+@timed(slow_ms=5000)
+def nutrition_from_barcode(
+    request: NutritionBarcodeRequest,
+    user_email: str = Depends(get_current_user_email),
+):
+    """Ambalajlı bir ürünün barkodundan besin değeri.
+
+    `from-image`'ın kardeşi ama FARKLI BİR SORUYU cevaplıyor ve bu fark
+    sayıların kalitesini belirliyor: fotoğraf yolunda porsiyon TAHMİN ediliyor
+    (100 g mı 300 g mı belli olmaz — sayfadaki dürüst uyarı bunun için),
+    barkodda porsiyon üreticinin beyanı, yani ölçülmüş veri. Ambalajlı üründe
+    doğru cevap her zaman bu yol.
+
+    ChromaDB'ye burada da HİÇ dokunulmuyor (`from-image`'daki gerekçe).
+    """
+    barcode = (request.barcode or "").strip()
+
+    # İstemci çözemediyse rakamları vision okuyor. Vision çağrısı 500'e
+    # dönüşmemeli: 500 CORS middleware'ine uğramadan çıkar ve tarayıcıda
+    # yanıltıcı bir "blocked by CORS policy" görünür (Faz 11b dersi).
+    if not barcode:
+        if not request.image_base64:
+            return {"error": "Send a barcode or a photo of one."}
+        try:
+            barcode = read_barcode_from_image(request.image_base64) or ""
+        except Exception as e:
+            log.error("Barcode vision error: %s", e)
+            quota_exhausted = "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)
+            return {
+                "error": (
+                    "Daily AI quota reached, so reading barcodes from photos is "
+                    "unavailable right now."
+                    if quota_exhausted
+                    else "Could not read the photo. Please try again."
+                )
+            }
+
+    # İstemciden gelen değer — %r (log injection).
+    log.info("Barcode lookup: %r", barcode[:32])
+
+    # ⚠️ KONTROL HANESİ BURADA ELENİYOR ve bu, OCR yolunun güvenlik ağı:
+    # yanlış okunan tek bir hane sessizce BAŞKA bir ürünün besin değerini
+    # göstermek yerine burada duruyor.
+    if not nutrition.normalize_barcode(barcode):
+        log.warning("Unusable barcode %r", barcode[:32])
+        return {"error": "That barcode could not be read. Try again, closer and in focus."}
+
+    # ANAHTAR KONTROLÜ YOK ve olmamalı: barkod verisi Open Food Facts'ten
+    # geliyor, o da anahtarsız. FatSecret anahtarları burayı hiç ilgilendirmiyor
+    # (tabak yolunu ilgilendiriyor) — bir kimlik kontrolü koymak, özelliği
+    # ihtiyaç duymadığı bir sırra bağlamak olurdu.
+    product = nutrition.build_product(barcode)
+    if not product:
+        # BİLEREK Gemini'ye düşülmüyor: model bir sayıdan ürünü bilemez, ancak
+        # uydurabilir (bkz. nutrition.build_product). Fotoğraf yolu gerçek ve
+        # işe yarar bir alternatif olduğu için kullanıcı oraya yönlendiriliyor.
+        return {"error": "That product isn't in the nutrition database. "
+                         "Try the photo instead."}
+    return product
 
 
 # Tarif sayfasının altında kaç öneri gösterileceği.

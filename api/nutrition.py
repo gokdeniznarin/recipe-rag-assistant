@@ -386,6 +386,67 @@ def pick_serving(servings: list) -> dict | None:
     return None
 
 
+# ── Barkod (GTIN) ─────────────────────────────────────────
+
+# FatSecret barkodu GTIN-13 istiyor: 13 hane, soldan sıfırla doldurulmuş.
+# Kabul edilen ham uzunluklar: EAN-8, UPC-A (12), EAN-13, GTIN-14.
+BARCODE_LENGTHS = (8, 12, 13, 14)
+
+_NON_DIGIT_RE = re.compile(r"\D")
+
+
+def gtin_check_digit(body: str) -> int:
+    """GTIN kontrol hanesi — EAN-8 / UPC-A / EAN-13 / GTIN-14 için aynı algoritma.
+
+    Sağdan sola 3,1,3,1… ağırlıklarıyla toplanıp 10'a tamamlanıyor. `body`
+    yalnızca RAKAM içermeli (çağıran `normalize_barcode` bunu garantiliyor).
+
+    Baştaki sıfırlar sonucu değiştirmiyor (0 × ağırlık = 0), yani doldurmadan
+    önce de sonra da aynı cevabı veriyor — bu yüzden 12 haneli bir UPC'yi
+    13'e tamamlamak kontrol hanesini bozmuyor.
+    """
+    total = 0
+    for i, digit in enumerate(reversed(body)):
+        total += int(digit) * (3 if i % 2 == 0 else 1)
+    return (10 - total % 10) % 10
+
+
+def normalize_barcode(raw) -> str | None:
+    """Taranan/okunan barkodu FatSecret'ın istediği GTIN-13'e çevirir.
+
+    🔑 KONTROL HANESİ DOĞRULANIYOR VE BU, OCR YEDEĞİ YÜZÜNDEN ŞART.
+    Barkodu tarayıcının BarcodeDetector'ı okuduğunda numara zaten kesin; ama o
+    API Chrome'da yalnızca Android/macOS/ChromeOS'ta var, Windows'ta ve iOS'ta
+    YOK. Oralarda rakamları Gemini okuyor (llm.read_barcode_from_image) ve bir
+    OCR tek haneyi yanlış görebilir.
+
+    Doğrulama olmasaydı yanlış numaranın iki sonucu olurdu: ya hiçbir ürün
+    bulunmaz (zararsız) ya da BAŞKA BİR ÜRÜN bulunur — ve kullanıcı, "aranmış
+    veri" etiketiyle bambaşka bir gıdanın besin değerini görürdü. Sessizce
+    yanlış sayı göstermek, hiçbir şey göstermemekten çok daha kötü; bu, modülün
+    `lookup_macros`'taki alaka tabanı kararıyla aynı ilke.
+
+    Kontrol hanesi tek haneli okuma hatalarının TAMAMINI yakalıyor.
+    """
+    digits = _NON_DIGIT_RE.sub("", str(raw or ""))
+    if len(digits) not in BARCODE_LENGTHS:
+        return None
+
+    # GTIN-14 bir KOLİ kodu ve ilk hanesi "indicator". 0 ise altındaki tüketici
+    # biriminin GTIN-13'ünü aynen içeriyor, o yüzden kabul ediliyor. 1-8 ise
+    # elimizdeki şey rafta satılan birim değil bir koli — FatSecret'ta karşılığı
+    # yok, kabul etmek yanlış ürüne gitmek olurdu.
+    if len(digits) == 14:
+        if digits[0] != "0":
+            return None
+        digits = digits[1:]
+
+    if int(digits[-1]) != gtin_check_digit(digits[:-1]):
+        return None
+
+    return digits.zfill(13)
+
+
 # "Green Chili Peppers (Canned)" → parantez içi bir İŞLENME DURUMU bildiriyor.
 _QUALIFIER_RE = re.compile(r"\s*\([^)]*\)")
 
@@ -701,6 +762,195 @@ def lookup_many(names: list[str]) -> list[dict | None]:
 
 
 # ═══════════════════════════════════════════════════════════
+#  OPEN FOOD FACTS — barkod araması
+#
+#  ⚠️ NEDEN FATSECRET DEĞİL: `food.find_id_for_barcode` **Premier-only**.
+#  Ücretsiz katmanda çağrı "Unknown method" (kod 10) dönüyor — ölçüldü
+#  (2026-07-31). İmza ve hesap sağlam: aynı anahtarla `foods.search` ve
+#  `food.get.v4` aynı turda başarıyla cevap verdi, yani sorun kimlikte değil
+#  yetkide. (Faz 20 araştırma notunda "Basic katmanda barkod var" yazıyordu;
+#  bu ampirik olarak YANLIŞ çıktı ve düzeltildi.)
+#
+#  Open Food Facts barkod-NATIVE: veritabanının anahtarı zaten barkodun kendisi.
+#  Anahtar, katman, IP kısıtı YOK ve ölçüldü — 226-341 ms, FatSecret'ın aynı
+#  makinedeki 515 ms'inden hızlı. Yeni bağımlılık da yok (stdlib urllib).
+#
+#  İKİ KAYNAK, İKİ AYRI SORU: tabak yolu FatSecret'ta kalıyor ("bu yemeğin
+#  100 g'ı ne kadar?" — küratörlü, tutarlı porsiyon tablosu), barkod OFF'ta
+#  ("bu ÜRÜN ne?" — barkod indeksli, topluluk verisi).
+# ═══════════════════════════════════════════════════════════
+
+# Yanıttaki `source` değeri. Tabak yolundaki "fatsecret"/"estimate"/"mixed"
+# ailesine katılan dördüncü değer; frontend'in SOURCE_LABELS sözlüğünde
+# KARŞILIĞI OLMAK ZORUNDA — eksik anahtar orada sessizce "AI estimate"e
+# düşüyor, yani aranmış veriyi tahmin diye etiketlerdi.
+SOURCE_OFF = "openfoodfacts"
+
+OFF_URL = "https://world.openfoodfacts.org/api/v2/product/{gtin}.json"
+
+# OFF sadece ihtiyacımız olan alanları döndürsün: yanıt aksi hâlde yüzlerce
+# alan taşıyor (etiket fotoğrafları, ekoskor, katkı maddeleri…).
+OFF_FIELDS = "product_name,product_name_en,generic_name,brands,serving_size,serving_quantity,nutriments"
+
+# OFF açıklayıcı bir User-Agent istiyor ve jenerik olanları kısıtlayabiliyor.
+OFF_USER_AGENT = "recipe-rag-assistant/1.0 (university project)"
+
+# ⚠️ ATIF ZORUNLU: OFF verisi **ODbL** lisanslı, yani kullanan uygulamanın
+# kaynağı göstermesi şart. FatSecret ve Amazon Associates açıklamalarıyla aynı
+# desen; yanıtta dönüyor ve frontend basıyor.
+OFF_ATTRIBUTION = "Product data from Open Food Facts, available under the ODbL."
+
+# OFF'un per-100g alan adları → bizim makro anahtarlarımız.
+_OFF_MACRO_FIELDS = {
+    "calories": "energy-kcal_100g",
+    "protein_g": "proteins_100g",
+    "carbs_g": "carbohydrates_100g",
+    "fat_g": "fat_100g",
+}
+
+# kcal yoksa kJ'den çevirmek için (1 kcal = 4.184 kJ).
+KJ_PER_KCAL = 4.184
+
+
+def off_macros_per_100g(nutriments: dict) -> dict | None:
+    """OFF `nutriments` bloğundan 100 g'lık makrolar. Enerji yoksa None.
+
+    Enerji ZORUNLU sayılıyor: kalorisiz bir "besin değeri" tablosu göstermek
+    kullanıcıya hiçbir şey söylemez. Diğer makrolar eksikse 0 kabul ediliyor —
+    topluluk verisinde kısmen doldurulmuş kayıtlar olağan.
+    """
+    if not isinstance(nutriments, dict):
+        return None
+
+    calories = _finite(nutriments.get(_OFF_MACRO_FIELDS["calories"]))
+    if calories is None:
+        # Bazı kayıtlarda yalnızca kJ var; kcal'a çevirmek kaydı kurtarıyor.
+        kj = _finite(nutriments.get("energy-kj_100g")) or _finite(nutriments.get("energy_100g"))
+        if kj is None:
+            return None
+        calories = kj / KJ_PER_KCAL
+
+    macros = {"calories": round(calories, 1)}
+    for key in ("protein_g", "carbs_g", "fat_g"):
+        macros[key] = round(_finite(nutriments.get(_OFF_MACRO_FIELDS[key])) or 0.0, 1)
+    return macros
+
+
+def off_portion(product: dict) -> tuple[float, str | None]:
+    """Gösterilecek porsiyon: `(gram, etiket)`. Bilinmiyorsa 100 g'a düşüyor.
+
+    ⚠️ SAĞLAMA BURADA ŞART, tabak yolundakinden FARKLI BİR SEBEPLE: oradaki
+    risk modelin halüsinasyonuydu, buradaki risk TOPLULUK VERİSİ. OFF'u
+    herkes düzenleyebiliyor, yani `serving_quantity` alanına yanlış birimle
+    ya da elle yazılmış uçuk bir değer girmiş olabilir. Aralık dışındaysa
+    100 g'a düşüyoruz — o değer her kayıtta var ve tanım gereği doğru.
+    """
+    grams = _finite(product.get("serving_quantity"))
+    if grams is not None and MIN_GRAMS <= grams <= MAX_TOTAL_GRAMS:
+        label = str(product.get("serving_size") or "").strip() or None
+        return grams, label
+
+    # 100 g evrensel taban: OFF besin değerlerini zaten bu birimde tutuyor.
+    return 100.0, None
+
+
+def parse_off_product(product: dict) -> dict | None:
+    """OFF ürün kaydını bizim öğe sözleşmemize çevirir. Kullanılamazsa None.
+
+    SAF (ağ yok) — OFF'un alan tuhaflıkları burada toplanıyor ve Katman 1'de
+    mock'suz test ediliyor.
+    """
+    if not isinstance(product, dict):
+        return None
+
+    macros = off_macros_per_100g(product.get("nutriments") or {})
+    if macros is None:
+        return None
+
+    name = next(
+        (str(product.get(field) or "").strip()
+         for field in ("product_name", "product_name_en", "generic_name")
+         if str(product.get(field) or "").strip()),
+        "",
+    )
+
+    # `brands` VİRGÜLLE AYRILMIŞ BİR LİSTE — gerçek veride görüldü: Nutella
+    # kaydında "Nutella, Ferrero, Yum yum". Hepsini basmak ada çöp eklerdi.
+    brand = str(product.get("brands") or "").split(",")[0].strip() or None
+
+    # Marka adın İÇİNDEYSE düşürülüyor, yoksa "Nutella Nutella" çıkıyordu
+    # (yine gerçek veriden: marka "Nutella", ürün adı "Nutella").
+    if brand and name and brand.lower() in name.lower():
+        brand = None
+
+    if not name:
+        name = brand or "Unknown product"
+        brand = None
+
+    grams, label = off_portion(product)
+    factor = grams / 100.0
+    return {
+        "name": name,
+        # MARKA BURADA KİMLİĞİN KENDİSİ. Tabak yolunda `score_food` markalı
+        # kayıtları −100 ile cezalandırıyor, çünkü orada fotoğraftaki şey bir
+        # yemek ve bir zincir restoranın tarifi onu temsil etmiyor. Barkod ise
+        # tam olarak O ürünü işaret ediyor — aynı sinyal, zıt anlam.
+        "brand": brand,
+        "grams": grams,
+        "serving_label": label,
+        **{key: round(value * factor, 1) for key, value in macros.items()},
+    }
+
+
+def fetch_off_product(gtin: str) -> dict | None:
+    """OFF'tan ham ürün kaydı. Bulunamazsa/erişilemezse None.
+
+    ⚠️ BULUNAMAYAN BARKOD **HTTP 404** — yani bir istisna olarak geliyor ve
+    yakalanmazsa 500'e dönüşürdü. Burada hata değil, olağan bir cevap:
+    "bu barkod veritabanında yok". Gövdedeki `status: 0` de aynı anlama
+    geliyor ve bazı kayıtlarda 200 ile birlikte dönüyor — ikisi de kontrol
+    ediliyor.
+    """
+    url = OFF_URL.format(gtin=gtin) + f"?fields={OFF_FIELDS}"
+    request = urllib.request.Request(url, headers={"User-Agent": OFF_USER_AGENT})
+
+    start = time.perf_counter()
+    try:
+        with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT_SEC) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        # 404 = ürün yok; bu bir arıza değil, sıradan bir sonuç.
+        log.info("Open Food Facts has no product for %s (HTTP %s)", gtin, e.code)
+        return None
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError) as e:
+        log.warning("Open Food Facts call failed for %s: %s", gtin, e)
+        return None
+
+    log_duration(log, "openfoodfacts product", (time.perf_counter() - start) * 1000, slow_ms=2000)
+
+    if not isinstance(payload, dict) or payload.get("status") == 0:
+        log.info("Open Food Facts has no product for %s", gtin)
+        return None
+    return payload.get("product") or None
+
+
+def lookup_barcode(barcode: str) -> dict | None:
+    """Barkod → ürün kaydı (ad, marka, porsiyon, makrolar). Bulunamazsa None."""
+    gtin = normalize_barcode(barcode)
+    if not gtin:
+        return None
+
+    product = fetch_off_product(gtin)
+    if not product:
+        return None
+
+    parsed = parse_off_product(product)
+    if not parsed:
+        log.info("Product %s found but has no usable nutrition data", gtin)
+    return parsed
+
+
+# ═══════════════════════════════════════════════════════════
 #  TABAK BİRLEŞTİRME
 # ═══════════════════════════════════════════════════════════
 
@@ -760,4 +1010,46 @@ def build_plate(detected_items: list[dict]) -> dict:
         # her yanıta koymak, tahminle üretilmiş sayılara da o kaynağı atfetmek
         # olurdu (sözleşmenin istediğinin tersi: yanıltıcı atıf).
         "attribution": ATTRIBUTION if source in ("fatsecret", "mixed") else None,
+    }
+
+
+def build_product(barcode: str) -> dict | None:
+    """Barkodu, fotoğraf yolunun döndürdüğüyle AYNI ŞEKİLLİ yanıta çevirir.
+
+    Şeklin aynı olması bilinçli: frontend besin tablosunu çizen kodu ikinci kez
+    yazmıyor, yalnızca aynı tabloyu yeni bir kaynaktan besliyor. Tek ek alan
+    `serving_label` ("1 bar (45 g)") ve o da opsiyonel — varsa gösteriliyor.
+
+    ⚠️ BU YOL FAIL-OPEN DEĞİL — VE OLMAMALI. Modülün geri kalanındaki kural
+    "veri kaynağı çökerse Gemini tahminine düş" ve orada anlamlı, çünkü model
+    tabağı GÖRÜYOR. Barkodda ise elimizde yalnızca 13 haneli bir sayı var;
+    hiçbir model o sayıdan ürünün besin değerini bilemez, ancak UYDURABİLİR.
+    Bulunamadığında dürüstçe None dönüyor ve kullanıcıya "bulamadık, fotoğrafla
+    dene" deniyor — yanlış bir sayı göstermektense hiçbir şey göstermemek.
+    """
+    product = lookup_barcode(barcode)
+    if not product:
+        return None
+
+    item = {
+        # Marka + ad tek satırda: rafta aranan şey bu.
+        "name": " ".join(p for p in (product.get("brand"), product["name"]) if p),
+        "grams": round(product["grams"]),
+        # KAYNAK ADI DÜRÜST: veri FatSecret'tan değil OFF'tan geliyor.
+        # "fatsecret" yazmak arayüzü doğru ama kaydı yanlış tutardı — ve
+        # `overall_source`'un sözlüğüyle sessizce karışırdı.
+        "source": SOURCE_OFF,
+        # Ad ZATEN veritabanının adı; "matched as …" satırı kendini tekrar ederdi.
+        "matched_food": None,
+        "serving_label": product.get("serving_label"),
+        **{key: product.get(key, 0.0) for key in MACRO_KEYS},
+    }
+    return {
+        "items": [item],
+        "totals": total_macros([item]),
+        "source": SOURCE_OFF,
+        # FatSecret'ın DEĞİL, OFF'un atfı: veri oradan geliyor. Yanlış kaynağa
+        # atıf vermek, atıf vermemekten daha kötü olurdu (iki lisansın da
+        # istediğinin tersi).
+        "attribution": OFF_ATTRIBUTION,
     }

@@ -304,6 +304,189 @@ class TestPickServing:
         assert chosen is not None
 
 
+class TestGtinCheckDigit:
+    """BAĞIMSIZ, GERÇEK barkodlara karşı — kendi hesabımızı kendi hesabımızla
+    doğrulamak totolojik olurdu. Üçü de yayınlanmış standart örnekler ve üç
+    farklı sembolojiyi (EAN-13 / UPC-A / EAN-8) temsil ediyor."""
+
+    @pytest.mark.parametrize("full", [
+        "4006381333931",   # EAN-13
+        "036000291452",    # UPC-A
+        "96385074",        # EAN-8
+    ])
+    def test_real_world_barcodes_validate(self, full):
+        assert nutrition.gtin_check_digit(full[:-1]) == int(full[-1])
+
+    def test_leading_zeros_do_not_change_the_answer(self):
+        """UPC-A'yı GTIN-13'e doldurmanın kontrol hanesini bozmadığının kanıtı —
+        normalize_barcode tam olarak buna güveniyor."""
+        assert nutrition.gtin_check_digit("03600029145") == \
+               nutrition.gtin_check_digit("003600029145")
+
+
+class TestNormalizeBarcode:
+    """Kontrol hanesi doğrulaması OCR yedeğinin güvenlik ağı: yanlış okunan tek
+    bir hane, sessizce BAŞKA bir ürünün besin değerini göstermemeli."""
+
+    def test_ean13_passes_through(self):
+        assert nutrition.normalize_barcode("4006381333931") == "4006381333931"
+
+    def test_upc_a_is_padded_to_gtin13(self):
+        # FatSecret barkodu 13 hane, soldan sıfır doldurulmuş istiyor.
+        assert nutrition.normalize_barcode("036000291452") == "0036000291452"
+
+    def test_ean8_is_padded_to_gtin13(self):
+        assert nutrition.normalize_barcode("96385074") == "0000096385074"
+
+    def test_separators_and_whitespace_are_ignored(self):
+        assert nutrition.normalize_barcode("  4006381 33393-1 ") == "4006381333931"
+
+    def test_a_single_wrong_digit_is_rejected(self):
+        """OCR'ın en olası hatası. Kontrol hanesi bunu MATEMATİKSEL OLARAK her
+        zaman yakalıyor — yani bu senaryoda asla yanlış ürüne gidilmiyor."""
+        assert nutrition.normalize_barcode("4006381333932") is None
+        assert nutrition.normalize_barcode("4006381353931") is None
+
+    def test_a_transposition_is_rejected(self):
+        # 33 93 → 39 33: komşu hane takası (ikinci en sık OCR/yazım hatası)
+        assert nutrition.normalize_barcode("4006381339331") is None
+
+    @pytest.mark.parametrize("raw", [
+        "", None, "   ", "abc", "12345", "400638133393",        # 12 hane ama UPC değil
+        "40063813339311",                                        # 14 hane, indicator 4
+    ])
+    def test_unusable_input_returns_none(self, raw):
+        assert nutrition.normalize_barcode(raw) is None
+
+    def test_a_case_code_is_rejected_rather_than_truncated(self):
+        """GTIN-14'ün ilk hanesi 0 değilse elimizdeki şey rafta satılan birim
+        değil bir KOLİ. Kırpıp kabul etmek başka bir ürüne gitmek olurdu."""
+        assert nutrition.normalize_barcode("14006381333938") is None
+
+    def test_a_gtin14_with_a_zero_indicator_is_accepted(self):
+        assert nutrition.normalize_barcode("04006381333931") == "4006381333931"
+
+
+class TestOffMacrosPer100g:
+    def test_reads_the_metric_fields(self):
+        macros = nutrition.off_macros_per_100g({
+            "energy-kcal_100g": 539, "proteins_100g": 6.3,
+            "carbohydrates_100g": 57.5, "fat_100g": 30.9,
+        })
+        assert macros == {"calories": 539.0, "protein_g": 6.3,
+                          "carbs_g": 57.5, "fat_g": 30.9}
+
+    def test_kilojoules_are_converted_when_kcal_is_missing(self):
+        """Bazı OFF kayıtlarında yalnızca kJ var; çevirmek kaydı kurtarıyor."""
+        macros = nutrition.off_macros_per_100g({"energy-kj_100g": 2255})
+        assert macros["calories"] == 539.0          # 2255 / 4.184 = 538.96
+
+    def test_missing_energy_makes_the_record_unusable(self):
+        """Kalorisiz bir 'besin değeri' tablosu kullanıcıya hiçbir şey söylemez."""
+        assert nutrition.off_macros_per_100g({"proteins_100g": 6.3}) is None
+
+    def test_partially_filled_records_default_the_rest_to_zero(self):
+        """Topluluk verisinde eksik alan olağan — kaydı komple atmak yerine
+        bilinen kısmı gösteriyoruz."""
+        macros = nutrition.off_macros_per_100g({"energy-kcal_100g": 42, "carbohydrates_100g": 10.6})
+        assert macros["calories"] == 42.0
+        assert macros["protein_g"] == 0.0
+        assert macros["fat_g"] == 0.0
+
+    @pytest.mark.parametrize("nutriments", [None, {}, "nope", {"energy-kcal_100g": "abc"}])
+    def test_unusable_input_returns_none(self, nutriments):
+        assert nutrition.off_macros_per_100g(nutriments) is None
+
+
+class TestOffPortion:
+    def test_uses_the_declared_serving_when_there_is_one(self):
+        grams, label = nutrition.off_portion(
+            {"serving_quantity": "28", "serving_size": "1 serving (28 g)"}
+        )
+        assert (grams, label) == (28.0, "1 serving (28 g)")
+
+    def test_falls_back_to_100g_when_no_serving_is_declared(self):
+        """Gerçek veriden: Nutella kaydında porsiyon alanı boş. 100 g her
+        kayıtta var ve OFF besin değerlerini zaten o birimde tutuyor."""
+        assert nutrition.off_portion({"product_name": "Nutella"}) == (100.0, None)
+
+    @pytest.mark.parametrize("quantity", [0, -5, 99999, "abc", None])
+    def test_an_implausible_serving_falls_back_to_100g(self, quantity):
+        """⚠️ OFF'u HERKES DÜZENLEYEBİLİYOR — yanlış birimle girilmiş bir değer
+        gerçek bir risk. Tabak yolundaki kelepçeyle aynı fikir, farklı sebep:
+        orada model halüsinasyonu, burada topluluk verisi."""
+        grams, label = nutrition.off_portion({"serving_quantity": quantity})
+        assert grams == 100.0
+        assert label is None
+
+
+class TestParseOffProduct:
+    """Fixture'lar CANLI OFF yanıtlarından alındı (2026-07-31), uydurulmadı."""
+
+    NUTELLA = {
+        "product_name": "Nutella", "brands": "Nutella, Ferrero, Yum yum",
+        "nutriments": {"energy-kcal_100g": 539, "proteins_100g": 6.3,
+                       "carbohydrates_100g": 57.5, "fat_100g": 30.9},
+    }
+    PRINGLES = {
+        "product_name": "Original Potato Crisps", "brands": "Pringles",
+        "serving_size": "1 serving (28 g)", "serving_quantity": 28,
+        "nutriments": {"energy-kcal_100g": 535.714285714286, "proteins_100g": 6.2,
+                       "carbohydrates_100g": 50, "fat_100g": 31},
+    }
+
+    def test_only_the_first_brand_is_kept(self):
+        """`brands` VİRGÜLLE AYRILMIŞ BİR LİSTE — canlı veride
+        "Nutella, Ferrero, Yum yum". Hepsini basmak ada çöp eklerdi."""
+        assert self.NUTELLA["brands"].count(",") == 2      # fixture gerçekten böyle
+        assert nutrition.parse_off_product(self.NUTELLA)["brand"] is None
+
+    def test_a_brand_already_inside_the_name_is_dropped(self):
+        """Yine canlı veriden: marka "Nutella", ürün adı "Nutella" →
+        birleştirme "Nutella Nutella" üretiyordu."""
+        parsed = nutrition.parse_off_product(self.NUTELLA)
+        assert parsed["name"] == "Nutella"
+        assert parsed["brand"] is None
+
+    def test_a_distinct_brand_is_kept(self):
+        parsed = nutrition.parse_off_product(self.PRINGLES)
+        assert parsed["brand"] == "Pringles"
+        assert parsed["name"] == "Original Potato Crisps"
+
+    def test_macros_are_scaled_to_the_declared_serving(self):
+        parsed = nutrition.parse_off_product(self.PRINGLES)
+        assert parsed["grams"] == 28.0
+        assert parsed["calories"] == 150.0          # 535.7 × 0.28
+        assert parsed["serving_label"] == "1 serving (28 g)"
+
+    def test_without_a_serving_the_numbers_are_per_100g(self):
+        parsed = nutrition.parse_off_product(self.NUTELLA)
+        assert parsed["grams"] == 100.0
+        assert parsed["calories"] == 539.0
+        assert parsed["serving_label"] is None
+
+    def test_an_english_name_is_used_when_the_default_is_empty(self):
+        parsed = nutrition.parse_off_product({
+            "product_name": "", "product_name_en": "Whole Milk",
+            "nutriments": {"energy-kcal_100g": 61},
+        })
+        assert parsed["name"] == "Whole Milk"
+
+    def test_a_nameless_product_falls_back_to_its_brand(self):
+        parsed = nutrition.parse_off_product({
+            "brands": "Ülker", "nutriments": {"energy-kcal_100g": 100},
+        })
+        assert parsed["name"] == "Ülker"
+        assert parsed["brand"] is None              # ada taşındı, tekrar etmiyor
+
+    def test_a_record_without_nutrition_is_unusable(self):
+        assert nutrition.parse_off_product({"product_name": "Mystery", "nutriments": {}}) is None
+
+    @pytest.mark.parametrize("product", [None, "nope", {}])
+    def test_unusable_input_returns_none(self, product):
+        assert nutrition.parse_off_product(product) is None
+
+
 class TestPickBestFood:
     """Fotoğraftan tanınan şey bir ürün değil bir yemek; markalı kayıtlar
     tesadüfen üste çıkabiliyor ve tabaktakini temsil etmiyor."""
@@ -742,6 +925,100 @@ class TestLookupMacros:
         assert plate["attribution"] == nutrition.ATTRIBUTION
 
 
+def _fake_off(monkeypatch, payload=None, error=None):
+    """OFF çağrısını sahteler. `error` verilirse urlopen onu fırlatıyor.
+
+    Çağrılan URL'ler toplanıyor — barkodun GTIN-13 olarak gidip gitmediği
+    başka türlü doğrulanamaz."""
+    calls = []
+
+    def fake_urlopen(request, timeout=None):
+        calls.append(getattr(request, "full_url", request))
+        if error is not None:
+            raise error
+        return _FakeResponse(payload)
+
+    monkeypatch.setattr(nutrition.urllib.request, "urlopen", fake_urlopen)
+    return calls
+
+
+class TestLookupBarcode:
+    """Barkod zinciri: normalize → Open Food Facts → parse."""
+
+    FOUND = {"status": 1, "product": {
+        "product_name": "Original Potato Crisps", "brands": "Pringles",
+        "serving_size": "1 serving (28 g)", "serving_quantity": 28,
+        "nutriments": {"energy-kcal_100g": 535.7, "proteins_100g": 6.2,
+                       "carbohydrates_100g": 50, "fat_100g": 31},
+    }}
+
+    def test_returns_the_product_with_its_declared_serving(self, monkeypatch):
+        calls = _fake_off(monkeypatch, self.FOUND)
+
+        product = nutrition.lookup_barcode("4006381333931")
+
+        assert len(calls) == 1                     # tek istek yetiyor
+        assert product["name"] == "Original Potato Crisps"
+        assert product["brand"] == "Pringles"
+        assert product["grams"] == 28.0
+        assert product["serving_label"] == "1 serving (28 g)"
+
+    def test_the_barcode_is_requested_as_gtin13(self, monkeypatch):
+        """OFF'un anahtarı 13 haneli biçim; ham UPC-A ile sorulursa ürün
+        bulunamaz ve bu bir hata olarak da görünmez — sessizce boş döner."""
+        calls = _fake_off(monkeypatch, self.FOUND)
+
+        nutrition.lookup_barcode("036000291452")
+
+        assert "/0036000291452.json" in calls[0]
+
+    def test_an_unknown_barcode_is_a_404_not_a_crash(self, monkeypatch):
+        """⚠️ OFF BULUNAMAYAN BARKODA HTTP 404 VERİYOR, yani urlopen İSTİSNA
+        fırlatıyor. Yakalanmasaydı endpoint 500 döner ve tarayıcıda yanıltıcı
+        bir CORS hatası görünürdü (Faz 11b dersi)."""
+        _fake_off(monkeypatch, error=nutrition.urllib.error.HTTPError(
+            "u", 404, "Not Found", {}, None))
+
+        assert nutrition.lookup_barcode("4006381333931") is None
+
+    def test_a_status_zero_body_also_means_not_found(self, monkeypatch):
+        """404 tek yol değil: bazı kayıtlar 200 + status: 0 ile geliyor."""
+        _fake_off(monkeypatch, {"status": 0, "product": {}})
+        assert nutrition.lookup_barcode("4006381333931") is None
+
+    def test_an_invalid_barcode_never_reaches_the_network(self, monkeypatch):
+        calls = _fake_off(monkeypatch, self.FOUND)
+        assert nutrition.lookup_barcode("4006381333932") is None
+        assert calls == []
+
+    def test_a_network_failure_returns_none(self, monkeypatch):
+        _fake_off(monkeypatch, error=nutrition.urllib.error.URLError("boom"))
+        assert nutrition.lookup_barcode("4006381333931") is None
+
+    def test_malformed_json_returns_none(self, monkeypatch):
+        def fake_urlopen(request, timeout=None):
+            class Broken(_FakeResponse):
+                def read(self):
+                    return b"<html>not json</html>"
+            return Broken({})
+        monkeypatch.setattr(nutrition.urllib.request, "urlopen", fake_urlopen)
+
+        assert nutrition.lookup_barcode("4006381333931") is None
+
+    def test_a_product_without_nutrition_returns_none(self, monkeypatch):
+        _fake_off(monkeypatch, {"status": 1, "product": {
+            "product_name": "Mystery Snack", "nutriments": {}}})
+        assert nutrition.lookup_barcode("4006381333931") is None
+
+    def test_no_api_key_is_needed(self, monkeypatch):
+        """FatSecret anahtarları BURAYI İLGİLENDİRMİYOR — autouse fixture
+        onları zaten siliyor ve arama yine çalışıyor. Özelliği ihtiyaç
+        duymadığı bir sırra bağlamamanın regresyon testi."""
+        assert nutrition.credentials() is None
+        _fake_off(monkeypatch, self.FOUND)
+        assert nutrition.lookup_barcode("4006381333931") is not None
+
+
 # ═══════════════════════════════════════════════════════════
 #  KATMAN 1.5 — build_plate (sahte lookup_macros, ağ yok)
 # ═══════════════════════════════════════════════════════════
@@ -1118,3 +1395,205 @@ class TestNutritionEndpoint:
 
     def test_missing_image_field_is_422(self, auth_client):
         assert auth_client.post("/api/nutrition/from-image", json={}).status_code == 422
+
+
+# ═══════════════════════════════════════════════════════════
+#  BARKOD — build_product (Katman 1.5) + endpoint (Katman 2)
+# ═══════════════════════════════════════════════════════════
+
+class TestBuildProduct:
+    LOOKED_UP = {
+        "name": "Chocolate Chip Granola Bar", "brand": "Nature Valley",
+        "grams": 42.0, "serving_label": "1 bar (42 g)",
+        "calories": 190.0, "protein_g": 3.0, "carbs_g": 29.0, "fat_g": 7.0,
+    }
+
+    def test_shape_matches_the_photo_endpoint(self, monkeypatch):
+        """Aynı şekil bilinçli: frontend besin tablosunu ikinci kez yazmıyor."""
+        monkeypatch.setattr(nutrition, "lookup_barcode", lambda code: self.LOOKED_UP)
+
+        product = nutrition.build_product("4006381333931")
+
+        assert set(product) == {"items", "totals", "source", "attribution"}
+        assert product["source"] == nutrition.SOURCE_OFF
+        assert product["totals"]["calories"] == 190.0
+
+    def test_the_attribution_names_the_source_that_was_actually_used(self, monkeypatch):
+        """ODbL atıf istiyor — ama FatSecret'ın atfını basmak, veriyi YANLIŞ
+        kaynağa mal etmek olurdu (iki lisansın da istediğinin tersi)."""
+        monkeypatch.setattr(nutrition, "lookup_barcode", lambda code: self.LOOKED_UP)
+
+        product = nutrition.build_product("4006381333931")
+
+        assert product["attribution"] == nutrition.OFF_ATTRIBUTION
+        assert product["attribution"] != nutrition.ATTRIBUTION
+
+    def test_the_brand_becomes_part_of_the_name(self, monkeypatch):
+        """Tabak yolunda marka −100 ile CEZALANDIRILIYOR (score_food), çünkü
+        orada fotoğraftaki şey bir yemek. Barkod tam olarak o ürünü işaret
+        ediyor — aynı sinyal, zıt anlam."""
+        monkeypatch.setattr(nutrition, "lookup_barcode", lambda code: self.LOOKED_UP)
+        item = nutrition.build_product("4006381333931")["items"][0]
+        assert item["name"] == "Nature Valley Chocolate Chip Granola Bar"
+        assert item["serving_label"] == "1 bar (42 g)"
+        assert item["source"] == nutrition.SOURCE_OFF
+
+    def test_the_source_value_has_a_frontend_label(self):
+        """⚠️ SESSİZ BOZULMA KORUMASI: nutrition.js'teki SOURCE_LABELS'ta
+        karşılığı olmayan bir kaynak değeri orada `estimate`'e düşüyor, yani
+        ARANMIŞ veri "AI estimate" diye etiketlenirdi."""
+        import pathlib
+        js = pathlib.Path(__file__).resolve().parents[2] / "frontend" / "js" / "nutrition.js"
+        assert f"{nutrition.SOURCE_OFF}:" in js.read_text(encoding="utf-8")
+
+    def test_an_unbranded_product_keeps_a_clean_name(self, monkeypatch):
+        monkeypatch.setattr(nutrition, "lookup_barcode",
+                            lambda code: {**self.LOOKED_UP, "brand": None, "name": "Whole Milk"})
+        assert nutrition.build_product("4006381333931")["items"][0]["name"] == "Whole Milk"
+
+    def test_nothing_found_returns_none_rather_than_a_guess(self, monkeypatch):
+        """🔑 BU YOL FAIL-OPEN DEĞİL. Fotoğrafta Gemini tahminine düşmek
+        anlamlı — model tabağı GÖRÜYOR. Burada elimizde yalnızca bir sayı var
+        ve hiçbir model o sayıdan besin değerini bilemez, ancak uydurabilir."""
+        monkeypatch.setattr(nutrition, "lookup_barcode", lambda code: None)
+        assert nutrition.build_product("4006381333931") is None
+
+
+class TestBarcodeEndpointAuth:
+    def test_requires_an_authorization_header(self, client):
+        response = client.post("/api/nutrition/from-barcode", json={"barcode": "4006381333931"})
+        assert response.status_code == 422
+
+
+class TestBarcodeEndpoint:
+    GOOD = "4006381333931"
+    PRODUCT = {"items": [{"name": "Nature Valley Granola Bar", "grams": 42,
+                          "source": nutrition.SOURCE_OFF, "serving_label": "1 bar (42 g)",
+                          "calories": 190.0, "protein_g": 3.0, "carbs_g": 29.0, "fat_g": 7.0}],
+               "totals": {"calories": 190.0, "protein_g": 3.0, "carbs_g": 29.0, "fat_g": 7.0},
+               "source": nutrition.SOURCE_OFF, "attribution": nutrition.OFF_ATTRIBUTION}
+
+    def test_returns_the_product(self, auth_client, monkeypatch):
+        monkeypatch.setattr(nutrition, "build_product", lambda code: self.PRODUCT)
+
+        data = auth_client.post("/api/nutrition/from-barcode", json={"barcode": self.GOOD}).json()
+
+        assert data["items"][0]["serving_label"] == "1 bar (42 g)"
+        assert data["source"] == nutrition.SOURCE_OFF
+        assert data["attribution"] == nutrition.OFF_ATTRIBUTION
+
+    def test_works_without_any_fatsecret_keys(self, auth_client, monkeypatch):
+        """Barkod verisi Open Food Facts'ten geliyor ve o anahtarsız. Endpoint'e
+        bir kimlik kapısı koymak, özelliği ihtiyaç duymadığı bir sırra
+        bağlamak olurdu. (Autouse fixture anahtarları siliyor.)"""
+        assert nutrition.credentials() is None
+        monkeypatch.setattr(nutrition, "build_product", lambda code: self.PRODUCT)
+
+        data = auth_client.post("/api/nutrition/from-barcode", json={"barcode": self.GOOD}).json()
+
+        assert data["source"] == nutrition.SOURCE_OFF
+
+    def test_a_scanned_barcode_never_costs_a_vision_call(self, api, auth_client, monkeypatch):
+        """İstemci numarayı kendi çözdüyse fotoğraf hiç gönderilmiyor ve
+        sunucuda kota YANMIYOR — OCR yedeğinin bedeli yalnızca ona ihtiyaç
+        duyulan cihazlarda ödeniyor."""
+        main, _ = api
+        calls = []
+        monkeypatch.setattr(main, "read_barcode_from_image",
+                            lambda img: calls.append(img) or "")
+        monkeypatch.setattr(nutrition, "build_product", lambda code: self.PRODUCT)
+
+        auth_client.post("/api/nutrition/from-barcode", json={"barcode": self.GOOD})
+
+        assert calls == []
+
+    def test_a_photo_falls_back_to_reading_the_digits_with_vision(self, api, auth_client,
+                                                                  monkeypatch):
+        """BarcodeDetector'ın olmadığı yerler (Windows Chrome, iOS Safari)."""
+        main, _ = api
+        seen = []
+        monkeypatch.setattr(main, "read_barcode_from_image", lambda img: self.GOOD)
+
+        def record(code):
+            seen.append(code)
+            return self.PRODUCT
+
+        monkeypatch.setattr(nutrition, "build_product", record)
+
+        data = auth_client.post("/api/nutrition/from-barcode",
+                                json={"image_base64": "data:image/jpeg;base64,AAAA"}).json()
+
+        assert seen == [self.GOOD]
+        assert data["source"] == nutrition.SOURCE_OFF
+
+    def test_a_misread_barcode_is_refused_instead_of_looked_up(self, api, auth_client,
+                                                               monkeypatch):
+        """🔑 OCR'IN GÜVENLİK AĞI. Vision tek haneyi yanlış okursa o numara ya
+        hiçbir şey bulmaz ya da BAŞKA BİR ÜRÜNÜ bulur — ve kullanıcı bambaşka
+        bir gıdanın değerlerini 'aranmış veri' etiketiyle görürdü. Kontrol
+        hanesi burada duruyor: FatSecret'a hiç gidilmiyor."""
+        main, _ = api
+        monkeypatch.setattr(main, "read_barcode_from_image", lambda img: "4006381333932")
+
+        def explode(code):
+            raise AssertionError("build_product must not run on an invalid barcode")
+
+        monkeypatch.setattr(nutrition, "build_product", explode)
+
+        data = auth_client.post("/api/nutrition/from-barcode",
+                                json={"image_base64": "data:image/jpeg;base64,AAAA"}).json()
+
+        assert "could not be read" in data["error"]
+
+    def test_no_barcode_and_no_photo_is_a_message_not_a_crash(self, auth_client):
+        data = auth_client.post("/api/nutrition/from-barcode", json={}).json()
+        assert "barcode or a photo" in data["error"]
+
+    def test_an_unknown_product_points_at_the_photo_path(self, auth_client, monkeypatch):
+        monkeypatch.setattr(nutrition, "build_product", lambda code: None)
+
+        data = auth_client.post("/api/nutrition/from-barcode", json={"barcode": self.GOOD}).json()
+
+        assert "isn't in the nutrition database" in data["error"]
+        assert "photo" in data["error"]
+
+    def test_a_vision_quota_error_is_200_with_cors_not_500(self, api, auth_client, monkeypatch):
+        """500 CORS middleware'ine UĞRAMADAN çıkar; tarayıcıda gerçek sebep
+        yerine yanıltıcı bir 'blocked by CORS policy' görünür (Faz 11b)."""
+        main, _ = api
+
+        def quota_exhausted(img):
+            raise Exception("429 RESOURCE_EXHAUSTED")
+
+        monkeypatch.setattr(main, "read_barcode_from_image", quota_exhausted)
+
+        response = auth_client.post(
+            "/api/nutrition/from-barcode", json={"image_base64": "x"},
+            headers={"Origin": "https://recipe-rag-assistant.vercel.app"},
+        )
+
+        assert response.status_code == 200
+        assert "quota" in response.json()["error"].lower()
+        assert response.headers["access-control-allow-origin"] == \
+            "https://recipe-rag-assistant.vercel.app"
+
+    def test_a_photo_without_a_barcode_is_a_message_not_a_crash(self, api, auth_client, monkeypatch):
+        main, _ = api
+        monkeypatch.setattr(main, "read_barcode_from_image", lambda img: None)
+
+        data = auth_client.post("/api/nutrition/from-barcode",
+                                json={"image_base64": "x"}).json()
+
+        assert "could not be read" in data["error"]
+
+    def test_chromadb_is_never_touched(self, auth_client, collection, monkeypatch):
+        monkeypatch.setattr(nutrition, "build_product", lambda code: self.PRODUCT)
+
+        auth_client.post("/api/nutrition/from-barcode", json={"barcode": self.GOOD})
+
+        assert collection.query.called is False
+        assert collection.get.called is False
+
+    def test_an_overlong_barcode_field_is_422(self, auth_client):
+        response = auth_client.post("/api/nutrition/from-barcode", json={"barcode": "1" * 65})
+        assert response.status_code == 422
