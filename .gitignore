@@ -36,3 +36,8 @@ Thumbs.db
 # Firebase service-account anahtarı — ASLA commit etme!
 firebase-key.json
 *-firebase-adminsdk-*.json
+
+# Mühendislik günlüğü / karar kaydı — yerelde tutuluyor, repoda değil.
+# Kodda ona atıf yapan yorumlar var (favorites.py, docker-compose.yml,
+# config.js, sw.js, load_to_chromadb.py); repoyu klonlayan onu göremez.
+CLAUDE.md
