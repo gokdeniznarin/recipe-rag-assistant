@@ -1,6 +1,6 @@
 # Recipe RAG Assistant
 
-[![tests](https://github.com/Gokdeniz-hub/recipe-rag-assistant/actions/workflows/tests.yml/badge.svg)](https://github.com/Gokdeniz-hub/recipe-rag-assistant/actions/workflows/tests.yml)
+[![tests](https://github.com/gokdeniznarin/recipe-rag-assistant/actions/workflows/tests.yml/badge.svg)](https://github.com/gokdeniznarin/recipe-rag-assistant/actions/workflows/tests.yml)
 
 A recipe assistant built on retrieval-augmented generation. Describe what you
 feel like eating, photograph what is in your fridge, or search from the
