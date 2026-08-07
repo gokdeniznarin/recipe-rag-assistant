@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/recipe.js": {
+      "includeFiles": "recipe.html"
+    },
+    "api/discover.js": {
+      "includeFiles": "discover.html"
+    }
+  },
+  "rewrites": [
+    { "source": "/recipes/:slug", "destination": "/api/recipe" },
+    { "source": "/recipes", "destination": "/api/recipe" },
+    { "source": "/discover/:slug", "destination": "/api/discover" },
+    { "source": "/discover", "destination": "/api/discover" }
+  ]
+}

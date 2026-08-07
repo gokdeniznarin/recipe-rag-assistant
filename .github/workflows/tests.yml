@@ -72,3 +72,20 @@ jobs:
       # sonsuz yönlendirme döngüsünün yaşandığı yer.
       - name: Login gate behaviour
         run: node scripts/test_auth_gate.js
+
+      # Pinterest ve Google bir sayfadan SADECE bu etiketleri okuyor, ve
+      # etiketler ekranda görünmüyor: bozulduklarında uygulama kusursuz
+      # çalışmaya devam eder, pin'ler sessizce görselsiz/başlıksız çıkar.
+      # Ayrıca `suitableForDiet`'in ASLA yayınlanmadığını sabitliyor —
+      # diyet etiketlerimizin iki ölçülmüş hatası var ve yapılandırılmış
+      # veride "otomatik tahmin" uyarısı basacak yer yok.
+      - name: SEO / Rich Pin metadata
+        run: node scripts/test_seo_meta.js
+
+      # Tarif sayfası artık giriş yapmamış ziyaretçiye açık. O istisna iki
+      # yönde de sessizce bozulur: gevşerse korumalı sayfalar herkese açılır,
+      # sıkışırsa Pinterest trafiği kapıda geri döner. Ayrıca hangi HTML'lerin
+      # kendini "açık" ilan ettiğini sabitliyor — işaretin kopyala-yapıştır ile
+      # başka bir sayfaya sızması hiçbir şeyi kırmaz, sadece o sayfayı açar.
+      - name: Auth guard (public vs protected pages)
+        run: node scripts/test_auth_guard.js

@@ -3,6 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Faz 29: `/recipes/{id}-{slug}` ile gelindiginde api/recipe.js bu isareti
+       o tarife ait baslik + OG + schema.org etiketleriyle DEGISTIRIYOR ve
+       asagidaki statik basligi siler. Isaret silinirse etiketler kafanin
+       sonuna dusuyor (sessizce kaybolmasinlar diye) ama yeri burasi olmali.
+       NOT: bu yoruma etiket YAZMAYIN - enjeksiyon metin uzerinde calisiyor. -->
+  <!--seo-->
   <title>Recipe — Recipe Assistant</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -54,13 +60,20 @@
       <a href="favorites.html" class="side-link">Your recipes</a>
     </nav>
 
-    <div class="side-user">
+    <div class="side-user" data-auth="in">
       <div class="side-user-row">
         <span id="user-avatar" class="user-avatar"></span>
         <span id="user-email" class="side-user-email">…</span>
       </div>
       <a href="account.html" class="side-account-link">Account settings</a>
       <button id="logout-btn" class="side-signout">Sign out</button>
+    </div>
+
+    <!-- Giriş yapmamış ziyaretçi (Faz 29). Bu sayfa Pinterest'ten gelenin
+         indiği yer, yani burada oturum OLMAMASI normal bir durum. -->
+    <div class="side-user hidden" data-auth="out">
+      <a href="index.html" class="side-signin">Sign in</a>
+      <p class="side-signin-note">Save recipes, plan your week, track what is in your kitchen.</p>
     </div>
   </aside>
 
@@ -203,6 +216,10 @@
   <script src="js/firebase.js"></script>
   <script src="js/logger.js"></script>
   <script src="js/config.js"></script>
+  <!-- Faz 29: bu sayfa giriş yapmamış ziyaretçiyi KOVMUYOR (Pinterest/Google
+       trafiğinin indiği yer). İşaret api.js'ten ÖNCE kurulmalı — guard orada
+       çalışıyor. Varsayılan hâlâ "korumalı"; açık olmak açıkça istenmeli. -->
+  <script>window.PUBLIC_PAGE = true;</script>
   <script src="js/api.js"></script>
   <script src="js/recipe.js"></script>
   <script src="js/pwa.js"></script>

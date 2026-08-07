@@ -105,17 +105,39 @@ function logout() {
 
 // ── Auth guard ───────────────────────────────────────────
 // Oturum durumu netleşince: giriş yoksa index'e at, varsa menüyü kur.
+//
+// ⚠️ İSTİSNA (Faz 29): `window.PUBLIC_PAGE` işaretli sayfalar giriş yapmamış
+// ziyaretçiyi KOVMUYOR. Tarif sayfası Pinterest'ten ve arama motorlarından
+// gelen kişinin indiği yer; onu giriş formuna atmak, gelen trafiğin
+// tamamını kapıda geri çevirmek olurdu. İşaret sayfanın kendisinde
+// (api.js'ten ÖNCE) kuruluyor — yani bir sayfa açık hale gelmek için
+// bunu AÇIKÇA istemek zorunda; varsayılan hâlâ "korumalı".
 authReady.then((user) => {
-  if (!user) {
+  if (!user && !window.PUBLIC_PAGE) {
     window.location.href = 'index.html';
     return;
   }
+  const setup = user ? initUserMenu : initSignedOutUI;
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initUserMenu);
+    document.addEventListener('DOMContentLoaded', setup);
   } else {
-    initUserMenu();
+    setup();
   }
 });
+
+/**
+ * Açık bir sayfada giriş YAPMAMIŞ ziyaretçi için kenar çubuğu (Faz 29).
+ *
+ * Kullanıcı bloğu (e-posta, avatar, çıkış, hesap ayarları) anlamsız — yerine
+ * tek bir "Sign in" bağlantısı geçiyor. Gezinme linkleri DURUYOR: onlara
+ * tıklayan ziyaretçi giriş sayfasına gidiyor ve bu, uygulamanın ne yaptığını
+ * gösteren yumuşak bir davet olarak iş görüyor.
+ */
+function initSignedOutUI() {
+  document.querySelectorAll('[data-auth="in"]').forEach((el) => el.classList.add('hidden'));
+  document.querySelectorAll('[data-auth="out"]').forEach((el) => el.classList.remove('hidden'));
+  initSidebar();
+}
 
 // ── Fetch wrapper ────────────────────────────────────────
 // Ölçüm burada duruyor çünkü BÜTÜN istekler buradan geçiyor: tek yere yazılan
@@ -132,9 +154,13 @@ async function apiRequest(path, options = {}) {
   const token = await getToken();
   const headers = {
     'Content-Type': 'application/json',
-    'authorization': `Bearer ${token}`,
     ...(options.headers || {}),
   };
+  // Token YOKSA başlık HİÇ konmuyor (Faz 29). Önceden `Bearer null` gidiyordu;
+  // açık uçlar bunu görmezden geldiği için zararsızdı, ama artık giriş
+  // yapmamış ziyaretçi de istek atıyor ve sunucuya anlamsız bir kimlik
+  // göndermek yerine hiç göndermemek doğrusu.
+  if (token) headers['authorization'] = `Bearer ${token}`;
 
   let res;
   try {
@@ -149,6 +175,13 @@ async function apiRequest(path, options = {}) {
   }
 
   if (res.status === 401) {
+    // Oturum YOKKEN gelen 401 "süresi doldu" demek değil, "bu uç giriş
+    // istiyor" demek — çıkış yaptırmak yanlış olur ve açık bir sayfadaki
+    // ziyaretçiyi sebepsiz giriş formuna atardı (Faz 29).
+    if (!auth.currentUser) {
+      apiLog.debug(`${method} ${path} -> 401 (signed out, expected)`);
+      throw new Error('Sign in required');
+    }
     apiLog.warn(`${method} ${path} -> 401, signing out`);
     logout();
     throw new Error('Session expired');

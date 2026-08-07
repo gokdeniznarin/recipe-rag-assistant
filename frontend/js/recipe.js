@@ -1,6 +1,16 @@
-// URL'den ID al: recipe.html?id=37913
+// Tarif kimliği İKİ yoldan gelebiliyor (Faz 29):
+//   /recipes/25500-cheesy-asparagus  → sunucu `__RECIPE_ID__`'yi gömüyor
+//   recipe.html?id=25500             → uygulama içi linkler (eski biçim)
+// İkisi de çalışmak zorunda: ilki dış dünyanın gördüğü kanonik adres, ikincisi
+// arama sonuçlarından/favorilerden gelen mevcut linkler.
 const params   = new URLSearchParams(window.location.search);
-const recipeId = params.get('id');
+const recipeId = window.__RECIPE_ID__ || params.get('id');
+
+// Sunucu tarafı render tarifi de gömüyor. Varsa hiç istek atılmıyor — ve asıl
+// kazanç ağ turu değil: `apiRequest` önce `authReady`'yi bekliyor ve o bekleme
+// bir sayfanın İLK isteğinde canlıda ~975 ms ölçüldü (Faz 13b). Pinterest'ten
+// gelen ziyaretçi için bu, hiçbir şey görmeden geçen bir saniye demekti.
+const embeddedRecipe = window.__RECIPE_DATA__ || null;
 
 if (!recipeId) {
   window.location.href = 'search.html';
@@ -181,7 +191,26 @@ async function checkIfFavorited() {
   }
 }
 
+/**
+ * Kişisel bir eylem için giriş şart mı? (Faz 29)
+ *
+ * Butonlar giriş yapmamış ziyaretçide GİZLENMİYOR, bilerek: gizli buton
+ * kimseyi dönüştürmez, tıklanan buton dönüştürür — tıklayan kişi o an ne
+ * istediğini kendisi söylemiş oluyor.
+ *
+ * ⚠️ Şimdilik düz yönlendirme. Niyetin hatırlanması ve kayıttan sonra bu
+ * tarife geri dönülmesi Adım 6'nın işi ve `auth.js`'teki `goToApp()`'e
+ * dokunuyor — orası Faz 26c'de tek yönlendirme noktasına indirgenmişti,
+ * 67 testle sarılı, dikkat isteyen bir yer.
+ */
+function requiresSignIn() {
+  if (auth.currentUser) return false;
+  window.location.href = 'index.html';
+  return true;
+}
+
 favoriteBtn.addEventListener('click', async () => {
+  if (requiresSignIn()) return;
   favoriteBtn.disabled = true;
 
   try {
@@ -215,6 +244,7 @@ favoriteBtn.addEventListener('click', async () => {
 // Seçiciyi aç/kapat
 addCollectionBtn.addEventListener('click', (e) => {
   e.stopPropagation();
+  if (requiresSignIn()) return;
   const willOpen = collectionPicker.classList.contains('hidden');
   collectionPicker.classList.toggle('hidden');
   if (willOpen) loadCollectionsPicker();
@@ -362,6 +392,7 @@ function fillDayOptions() {
 }
 
 addPlanBtn.addEventListener('click', () => {
+  if (requiresSignIn()) return;
   fillDayOptions();
   planModalError.classList.add('hidden');
   planModal.classList.remove('hidden');
@@ -409,7 +440,10 @@ planConfirm.addEventListener('click', async () => {
 // ── Yükleme ──────────────────────────────────────────────
 (async () => {
   try {
-    const recipe = await apiRequest(`/api/recipes/${encodeURIComponent(recipeId)}`);
+    // Gömülü veri varsa tarif ANINDA çiziliyor: ne Firebase beklemesi, ne
+    // ağ turu. Ziyaretçi sayfayı boş görmüyor.
+    const recipe = embeddedRecipe
+      || await apiRequest(`/api/recipes/${encodeURIComponent(recipeId)}`);
 
     if (recipe.error) {
       loading.classList.add('hidden');
@@ -419,13 +453,33 @@ planConfirm.addEventListener('click', async () => {
     }
 
     renderRecipe(recipe);
-    await checkIfFavorited();
-
     loading.classList.add('hidden');
     recipeEl.classList.remove('hidden');
+
+    // Favori durumu tarifin ÇİZİLMESİNDEN SONRA ve yalnızca giriş varsa.
+    // Sıra önemli: eskiden bu await tarifin görünmesini geciktiriyordu,
+    // oysa kalp butonunun dolu mu boş mu olduğu sayfanın ikincil bir
+    // ayrıntısı. Giriş yoksa uç zaten 401 döner — hiç sorulmuyor.
+    await refreshAuthDependentUI();
   } catch (err) {
     loading.classList.add('hidden');
     errorEl.textContent = 'Could not load recipe.';
     errorEl.classList.remove('hidden');
   }
 })();
+
+/**
+ * Oturuma bağlı parçalar (Faz 29).
+ *
+ * `authReady` bekleniyor ama tarif ÇOKTAN ekranda — yani bu bekleme
+ * kullanıcının gördüğü hiçbir şeyi geciktirmiyor.
+ */
+async function refreshAuthDependentUI() {
+  try {
+    await authReady;
+  } catch {
+    return;                       // oturum durumu okunamadı: sayfa yine çalışsın
+  }
+  if (!auth.currentUser) return;  // giriş yok → korumalı uçlara hiç gidilmiyor
+  await checkIfFavorited();
+}

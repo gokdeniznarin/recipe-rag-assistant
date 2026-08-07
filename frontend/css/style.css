@@ -2727,6 +2727,96 @@ body.auth-page .auth-container {
   color: #fff;
 }
 
+/* Giriş yapmamış ziyaretçi (Faz 29). Tarif sayfası Pinterest/Google
+   trafiğinin indiği yer, yani oturumsuz görüntülenmesi normal bir durum.
+   Turuncu dolgu: bu sayfadaki tek birincil eylem. */
+.side-signin {
+  display: block;
+  padding: 0.55rem;
+  background: var(--accent);
+  border-radius: var(--radius-sm);
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+  transition: filter 0.15s;
+}
+
+.side-signin:hover { filter: brightness(1.08); }
+
+.side-signin-note {
+  margin: 0.6rem 0 0;
+  color: rgba(245, 240, 232, 0.6);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+/* ── Koleksiyon iniş sayfaları (Faz 29) ────────────────── */
+.discover-header { margin-bottom: 1.6rem; }
+
+.discover-count {
+  margin: 0.4rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* Kayıt daveti sayfanın SONUNDA: buraya kadar inen ziyaretçi listeyi
+   gezmiş demektir. İçeriğin önüne koymak, Pinterest'ten gelenin gördüğü
+   ilk şeyi bir kapıya çevirirdi. */
+.discover-cta {
+  margin-top: 2.5rem;
+  padding: 1.8rem;
+  background: var(--olive);
+  border-radius: var(--radius-md);
+  color: var(--cream);
+  text-align: center;
+}
+
+.discover-cta h2 {
+  margin: 0 0 0.6rem;
+  font-family: 'Playfair Display', serif;
+  font-size: 1.5rem;
+}
+
+.discover-cta p {
+  max-width: 46ch;
+  margin: 0 auto 1.2rem;
+  color: rgba(245, 240, 232, 0.8);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.discover-more { margin-top: 2.5rem; }
+
+.discover-more-title {
+  margin: 0 0 0.9rem;
+  font-family: 'Playfair Display', serif;
+  font-size: 1.2rem;
+}
+
+.discover-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.discover-chip {
+  padding: 0.4rem 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 0.85rem;
+  text-decoration: none;
+  transition: all 0.15s;
+}
+
+.discover-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* ── Mobil: dar ekranda çekmece ───────────────────────── */
 /* Üst bar yalnızca burada görünüyor; masaüstünde sidebar zaten markayı
    taşıdığı için gereksiz. */

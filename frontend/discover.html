@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Faz 29: `/discover/{slug}` ile gelindiginde api/discover.js bu isareti
+       koleksiyona ait baslik + OG etiketleriyle DEGISTIRIYOR ve asagidaki
+       statik basligi siler. Isaret silinirse etiketler kafanin sonuna dusuyor.
+       NOT: bu yoruma etiket YAZMAYIN - enjeksiyon metin uzerinde calisiyor. -->
+  <!--seo-->
+  <title>Recipe collections — Recipe Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#2D3B2D" />
+  <link rel="icon" href="/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Recipes" />
+</head>
+<body class="has-sidebar">
+
+  <div class="mobile-bar">
+    <button id="nav-toggle" class="nav-toggle" aria-label="Open menu"
+            aria-controls="sidebar" aria-expanded="false">☰</button>
+    <a href="search.html" class="brand">
+      <span class="brand-mark">✦</span>
+      <span class="brand-name">Recipe Assistant</span>
+    </a>
+  </div>
+  <div id="nav-overlay" class="nav-overlay hidden"></div>
+
+  <aside id="sidebar" class="sidebar">
+    <a href="search.html" class="brand">
+      <span class="brand-mark">✦</span>
+      <span class="brand-name">Recipe Assistant</span>
+    </a>
+
+    <nav class="side-nav">
+      <a href="search.html" class="side-link side-link--primary">Search</a>
+
+      <p class="side-heading">Kitchen</p>
+      <a href="pantry.html" class="side-link">Pantry</a>
+      <a href="plan.html" class="side-link">Meal plan</a>
+      <a href="shopping.html" class="side-link">Shopping list</a>
+
+      <p class="side-heading">Tools</p>
+      <a href="nutrition.html" class="side-link">Nutrition</a>
+
+      <p class="side-heading">Saved</p>
+      <a href="favorites.html" class="side-link">Your recipes</a>
+    </nav>
+
+    <div class="side-user" data-auth="in">
+      <div class="side-user-row">
+        <span id="user-avatar" class="user-avatar"></span>
+        <span id="user-email" class="side-user-email">…</span>
+      </div>
+      <a href="account.html" class="side-account-link">Account settings</a>
+      <button id="logout-btn" class="side-signout">Sign out</button>
+    </div>
+
+    <!-- Giris yapmamis ziyaretci: bu sayfa Pinterest trafiginin indigi yer. -->
+    <div class="side-user hidden" data-auth="out">
+      <a href="index.html" class="side-signin">Sign in</a>
+      <p class="side-signin-note">Save recipes, plan your week, track what is in your kitchen.</p>
+    </div>
+  </aside>
+
+  <main class="page">
+    <p id="discover-loading" class="loading">Loading…</p>
+    <p id="discover-error" class="error-text hidden"></p>
+
+    <div id="discover-content" class="hidden">
+      <header class="discover-header">
+        <h1 id="discover-title" class="page-title"></h1>
+        <p id="discover-description" class="page-subtitle"></p>
+        <p id="discover-count" class="discover-count"></p>
+      </header>
+
+      <div id="discover-grid" class="recipe-grid"></div>
+
+      <!-- Kayit daveti sayfanin SONUNDA: buraya kadar inen kisi listeyi
+           gezmis demektir, yani ilgisi yuksek. Icerigin onune koymak,
+           Pinterest'ten gelenin gordugu ilk seyi bir kapiya cevirirdi. -->
+      <section class="discover-cta" data-auth="out">
+        <h2>Cook from what you already have</h2>
+        <p>
+          Tell the app what is in your kitchen and it will show you which of these
+          recipes you can make tonight — then build the shopping list for the rest.
+        </p>
+        <a href="index.html" class="btn-primary">Create a free account</a>
+      </section>
+
+      <section class="discover-more hidden">
+        <h2 class="discover-more-title">More collections</h2>
+        <div id="discover-index" class="discover-chips"></div>
+      </section>
+    </div>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="js/firebase.js"></script>
+  <script src="js/logger.js"></script>
+  <script src="js/config.js"></script>
+  <!-- Faz 29: acik sayfa. Isaret api.js'ten ONCE kurulmali. -->
+  <script>window.PUBLIC_PAGE = true;</script>
+  <script src="js/api.js"></script>
+  <script src="js/discover.js"></script>
+  <script src="js/pwa.js"></script>
+</body>
+</html>

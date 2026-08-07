@@ -19,6 +19,9 @@ import nutrition
 from nutrition import build_plate
 from auth import get_current_user_email
 from ratelimit import allow, client_key
+# Modül üzerinden: hem tanımlar hem PAGE_SIZE hem sort_key kullanılıyor ve
+# modül referansı testlerde monkeypatch'in de doğru yeri.
+import discover
 from account import delete_account
 from favorites import add_favorite, get_favorites, remove_favorite
 from collections_store import (
@@ -530,6 +533,58 @@ def _similar_recipes(recipe_id: str, limit: int = SIMILAR_COUNT) -> list[dict]:
     # limit+1 çekiliyor: en yakın sonuç tarifin KENDİSİ (mesafe 0.000).
     results = collection.query(query_embeddings=[embeddings[0]], n_results=limit + 1)
     return [c for c in _cards_from_query(results) if c["id"] != recipe_id][:limit]
+
+
+@app.get("/api/discover")
+@timed
+def list_discover_collections(request: Request):
+    """Küratörlü koleksiyonların dizini. Giriş gerektirmiyor (Faz 29)."""
+    if not allow(request):
+        return JSONResponse(status_code=429, content={"error": "Too many requests. Please slow down."})
+    return {"collections": discover.list_definitions()}
+
+
+@app.get("/api/discover/{slug}")
+@timed
+def get_discover_collection(slug: str, request: Request):
+    """
+    Bir koleksiyon + içindeki tarif kartları. Giriş gerektirmiyor (Faz 29).
+
+    ⚡ `collection.get` kullanılıyor, `collection.query` DEĞİL: koleksiyon bir
+    metadata filtresi, semantic arama değil. Ölçüm (aynı konteyner): get
+    2.6 ms, query 6.4 sn — fark sorgu metninin ONNX ile embed edilmesi ve
+    Render'da 0.1 vCPU olması (Faz 17). Bir iniş sayfasında 6 saniye ödemek
+    kabul edilemezdi. Teste bağlandı.
+    """
+    if not allow(request):
+        return JSONResponse(status_code=429, content={"error": "Too many requests. Please slow down."})
+
+    definition = discover.get_definition(slug)
+    if definition is None:
+        log.warning("Unknown discover collection: %r", slug)
+        return {"error": "Collection not found"}
+
+    with timed_block("chromadb get (discover)"):
+        results = collection.get(
+            where=definition["where"],
+            limit=discover.PAGE_SIZE,
+            include=["metadatas", "documents"],
+        )
+
+    cards = [
+        _recipe_card(rid, meta, doc)
+        for rid, meta, doc in zip(
+            results["ids"], results["metadatas"], results["documents"]
+        )
+    ]
+    cards.sort(key=discover.sort_key)
+
+    return {
+        "slug": slug,
+        "title": definition["title"],
+        "description": definition["description"],
+        "recipes": cards,
+    }
 
 
 @app.get("/api/recipes/{recipe_id}")
