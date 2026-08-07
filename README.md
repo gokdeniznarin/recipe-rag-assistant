@@ -137,6 +137,7 @@ Frontend on `localhost:3000`, API on `localhost:8080`.
 | `GEMINI_API_KEY` | yes | Text generation and vision |
 | `FIREBASE_CREDENTIALS_JSON` | in production | Service-account JSON as text. Locally a mounted `api/firebase-key.json` is used instead. |
 | `FATSECRET_CONSUMER_KEY` / `_SECRET` | no | Nutrition lookups. Without them the feature still works from the model's estimate. |
+| `INTERNAL_API_KEY` | in production | Lets the Vercel renderer skip the rate limit on the public recipe endpoint. Must match on both hosts. |
 
 Secrets are gitignored and kept out of the image by `.dockerignore` — verified,
 the built image contains neither.

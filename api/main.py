@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Request
+from fastapi.responses import JSONResponse
 import os
 from pydantic import BaseModel, Field
 import chromadb
@@ -17,6 +18,7 @@ from llm import (
 import nutrition
 from nutrition import build_plate
 from auth import get_current_user_email
+from ratelimit import allow, client_key
 from account import delete_account
 from favorites import add_favorite, get_favorites, remove_favorite
 from collections_store import (
@@ -532,7 +534,27 @@ def _similar_recipes(recipe_id: str, limit: int = SIMILAR_COUNT) -> list[dict]:
 
 @app.get("/api/recipes/{recipe_id}")
 @timed
-def get_recipe_detail(recipe_id: str, user_email: str = Depends(get_current_user_email)):
+def get_recipe_detail(recipe_id: str, request: Request):
+    # GİRİŞ GEREKTİRMİYOR (Faz 29). Sebep: Pinterest'ten gelen ziyaretçi ve
+    # arama motoru kazıyıcıları tarifi hesap açmadan görebilmeli. Bu bir gevşetme
+    # değil, bilinçli bir ürün kararı — tarif verisi Food.com'un **CC0** (kamu
+    # malı) veri setinden geliyor, bize ait değil, ve başkasının kamu malı
+    # verisini kilit arkasına koymak savunulabilir değil. Kilitli kalan şey
+    # BİZİM ürettiğimiz: AI yorumu, dolap, plan, liste, favoriler.
+    #
+    # Kullanıcıya özel HİÇBİR VERİ dönmüyor — yanıt tamamen salt-okunur tarif
+    # verisi, yani açmak bir gizlilik yüzeyi yaratmıyor (teste bağlı).
+    if not allow(request):
+        # 429 + açık mesaj. Faz 11b dersi burada GEÇERSİZ değil ama farklı:
+        # oradaki sorun YAKALANMAMIŞ istisnanın 500'e düşüp CORS middleware'ine
+        # hiç uğramamasıydı. Bu bilinçli bir yanıt, middleware yığınından
+        # geçiyor — yine de varsayıma bırakılmadı, CORS başlığı teste bağlandı.
+        log.warning("Rate limit hit for %r on recipe %r", client_key(request), recipe_id)
+        return JSONResponse(
+            status_code=429,
+            content={"error": "Too many requests. Please slow down."},
+        )
+
     results = collection.get(ids=[recipe_id])
 
     if len(results["ids"]) == 0:
