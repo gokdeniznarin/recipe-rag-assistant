@@ -74,7 +74,25 @@ function run(user, publicPage) {
     firstChild: null,
   });
 
+  // Faz 29: guard, oturum netleşene kadar sayfayı `html.auth-pending` ile
+  // gizliyor. Sınıfın gerçekten kurulup KALDIRILDIĞI teste bağlı — kaldırma
+  // unutulursa kullanıcı boş bir sayfa görür ve hiçbir hata çıkmaz.
+  const rootClasses = new Set();
+  // ⚠️ AYRI bir kayit: `rootClasses` SON durumu tutuyor ve ortu her kosulda
+  // kaldirildigi icin son durum HER ZAMAN temiz. Ilk surumde "acik sayfa
+  // ortulmuyor" testi bunu kontrol ediyordu ve bir TOTOLOJIYDI — mutasyon
+  // testinde yakalandi. Ortunun HIC kurulup kurulmadigini bilmek icin
+  // eklemeler ayrica kaydediliyor.
+  const everAdded = new Set();
+
   const documentStub = {
+    documentElement: {
+      classList: {
+        add: (c) => { rootClasses.add(c); everAdded.add(c); },
+        remove: (c) => rootClasses.delete(c),
+        contains: (c) => rootClasses.has(c),
+      },
+    },
     readyState: 'complete',
     addEventListener() {},
     getElementById: () => null,           // menü/sidebar elemanları yok
@@ -100,7 +118,10 @@ function run(user, publicPage) {
     location: {
       pathname: '/recipe.html',
       get href() { return '/recipe.html'; },
-      set href(v) { redirects.push(v); },
+      set href(v) { redirects.push({ to: v, mode: 'push' }); },
+      // Faz 29: guard artik `replace()` kullaniyor — geri tusu asla
+      // gorulmemesi gereken sayfaya donmesin diye.
+      replace(v) { redirects.push({ to: v, mode: 'replace' }); },
     },
     addEventListener() {},
   };
@@ -133,14 +154,14 @@ function run(user, publicPage) {
 
   // guard `authReady.then(...)` içinde — mikrogörev kuyruğunun boşalmasını bekle.
   return new Promise((resolve) =>
-    setTimeout(() => resolve({ redirects, shown, hidden }), 0));
+    setTimeout(() => resolve({ redirects, shown, hidden, rootClasses, everAdded }), 0));
 }
 
 (async () => {
   // ── 1–2. Korumalı sayfa: davranış DEĞİŞMEDİ ────────────
   const protectedOut = await run(null, undefined);
   check('a protected page still bounces a signed-out visitor',
-        protectedOut.redirects.includes('/index.html'), JSON.stringify(protectedOut.redirects));
+        protectedOut.redirects.some((r) => r.to === '/index.html'), JSON.stringify(protectedOut.redirects));
 
   const protectedIn = await run({ email: 'a@b.com' }, undefined);
   check('a protected page lets a signed-in user through',
@@ -194,7 +215,35 @@ function run(user, publicPage) {
           blocks.filter((b) => !/\bhidden\b/.test(b)).join(' | ') || 'blok yok');
   }
 
-  // ── 11. İşaret api.js'ten ÖNCE kurulmalı ───────────────
+  // ── 11–14. Geri tuşu + çakma (kullanıcı bildirdi, 2026-08-08) ──
+  //
+  // ⚠️ `replace()` yerine `href =` kullanılırsa geri tuşu ÇALIŞMIYOR gibi
+  // görünüyor: ziyaretçi koleksiyon sayfasından "Search"e basıyor, giriş
+  // ekranına atılıyor (doğru), geri tuşuna basınca `search.html`'e düşüyor,
+  // guard onu yine kovuyor. Asla görülmemesi gereken sayfa geçmişte kalıyor.
+  check('the bounce replaces history instead of pushing to it',
+        protectedOut.redirects.every((r) => r.mode === 'replace'),
+        JSON.stringify(protectedOut.redirects));
+
+  // Örtü: karar `authReady`'yi bekliyor (canlıda ~975 ms) ve o süre boyunca
+  // korumalı sayfa görünüyordu.
+  check('a protected page is hidden until auth is known, then revealed',
+        !protectedOut.rootClasses.has('auth-pending'),
+        [...protectedOut.rootClasses].join(','));
+  check('a signed-in user never stays hidden',
+        !protectedIn.rootClasses.has('auth-pending'));
+  // 🔴 Açık sayfalar örtülMEMELİ: veriyi HTML'e gömülü alıyorlar ve anında
+  // çiziliyorlar. `authReady`'yi beklemek Faz 29 adım 3'te kazanılan ~1.2 sn'yi
+  // geri verirdi — yani Pinterest'ten gelen ziyaretçi yine boş ekran görürdü.
+  check('a public page is NEVER hidden while auth settles',
+        !publicOut.everAdded.has('auth-pending'),
+        'ortu acik sayfada HIC kurulmamali — son durum degil, kurulup kurulmadigi');
+  // Korumali sayfada ise ortu GERCEKTEN kurulmus olmali; yoksa yukaridaki
+  // "sonra kaldirildi" testi de bosa duser.
+  check('a protected page really was covered first',
+        protectedOut.everAdded.has('auth-pending'));
+
+  // ── 15. İşaret api.js'ten ÖNCE kurulmalı ───────────────
   // Sonra kurulursa guard onu göremez ve ziyaretçi yine kovulur — üstelik
   // sayfa hatasız göründüğü için sessizce.
   for (const page of ALLOWED) {

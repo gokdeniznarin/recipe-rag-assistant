@@ -1,6 +1,13 @@
 /* ── Tokens ────────────────────────────────────────────── */
 :root {
   --bg:        #F5F0E8;
+  /* Aynı krem, ama ROLÜ farklı: `--bg` sayfa zemini, `--cream` koyu zemin
+     üstündeki metin. Faz 29'da eklendi — o zamana kadar `var(--cream)` üç
+     yerde kullanılıyordu ve TANIMSIZ olduğu için renk bildirimi sessizce
+     düşüyor, metin `--text`i (koyu) miras alıyordu: koyu zeytin kutunun
+     üstünde okunamayan koyu başlık. Geçersiz bir custom property hata
+     vermiyor, sadece yok sayılıyor — o yüzden gözle yakalanana kadar durdu. */
+  --cream:     #F5F0E8;
   --surface:   #FFFFFF;
   --olive:     #2D3B2D;
   --olive-mid: #4A5E4A;
@@ -18,6 +25,19 @@
 
   --shadow-card: 0 2px 16px rgba(0,0,0,0.08);
 }
+
+/* Oturum durumu netleşene kadar korumalı sayfayı gizle (Faz 29).
+   Sınıfı `api.js` senkron olarak kuruyor ve `authReady` çözülünce kaldırıyor.
+
+   NEDEN: girişsiz bir ziyaretçi korumalı bir sayfaya gittiğinde guard onu
+   kovuyor, ama karar `authReady`'yi bekliyor (canlıda ~975 ms ölçüldü,
+   Faz 13b) ve o süre boyunca sayfa görünüyordu — kullanıcı bunu bildirdi.
+
+   Görünürlük `visibility` ile kapatılıyor, `display` ile DEĞİL: düzen
+   hesaplanmaya devam ediyor, yani örtü kalkınca içerik zıplamıyor.
+   Zemin krem kalıyor ki beyaz bir çakma da olmasın. */
+html.auth-pending body { visibility: hidden; }
+html.auth-pending { background: var(--bg); }
 
 /* ── Reset ─────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -2823,30 +2843,8 @@ body.auth-page .auth-container {
 .inline-cta-text strong { display: block; color: var(--text); }
 
 /* ④ Sayfa sonu — buraya kadar inen kişi tarifi okumuş, ilgisi yüksek.
-   Ürünün tamamını anlatabileceğimiz tek yer. */
-.page-cta {
-  margin-top: 2.5rem;
-  padding: 2rem 1.5rem;
-  background: var(--olive);
-  border-radius: var(--radius-md);
-  color: var(--cream);
-  text-align: center;
-}
-
-.page-cta h2 {
-  margin: 0 0 0.7rem;
-  font-family: 'Playfair Display', serif;
-  font-size: 1.45rem;
-}
-
-.page-cta p {
-  max-width: 48ch;
-  margin: 0 auto 1.3rem;
-  color: rgba(245, 240, 232, 0.82);
-  font-size: 0.93rem;
-  line-height: 1.6;
-}
-
+   Ürünün tamamını anlatabileceğimiz tek yer. Görsel kuralları koleksiyon
+   sayfasındaki davetle PAYLAŞILIYOR (yukarıdaki `.discover-cta, .page-cta`). */
 .page-cta-note {
   margin: 0.9rem auto 0 !important;
   color: rgba(245, 240, 232, 0.55) !important;
@@ -2865,28 +2863,63 @@ body.auth-page .auth-container {
 /* Kayıt daveti sayfanın SONUNDA: buraya kadar inen ziyaretçi listeyi
    gezmiş demektir. İçeriğin önüne koymak, Pinterest'ten gelenin gördüğü
    ilk şeyi bir kapıya çevirirdi. */
-.discover-cta {
-  margin-top: 2.5rem;
-  padding: 1.8rem;
+/* Koleksiyon ve tarif sayfalarının sonundaki kayıt daveti aynı bileşen —
+   ikisine iki kez yazmak yerine seçici paylaşılıyor. */
+.discover-cta,
+.page-cta {
+  margin-top: 2.75rem;
+  padding: 2.5rem 1.75rem;
   background: var(--olive);
   border-radius: var(--radius-md);
   color: var(--cream);
   text-align: center;
 }
 
-.discover-cta h2 {
-  margin: 0 0 0.6rem;
+.discover-cta h2,
+.page-cta h2 {
+  margin: 0 0 0.7rem;
+  /* Başlık BURADA da açıkça renklendiriliyor: kutu `color`'u miras yeterli
+     olurdu ama bu blok sayfanın tek dönüşüm noktası — rengin bir üst
+     seçiciye bağlı kalması, ileride o seçici değişince sessizce solmasına
+     yol açıyor (tam olarak yaşandı). */
+  color: var(--cream);
   font-family: 'Playfair Display', serif;
-  font-size: 1.5rem;
+  font-size: 1.7rem;
+  line-height: 1.25;
 }
 
-.discover-cta p {
-  max-width: 46ch;
-  margin: 0 auto 1.2rem;
-  color: rgba(245, 240, 232, 0.8);
-  font-size: 0.92rem;
-  line-height: 1.6;
+.discover-cta p,
+.page-cta p {
+  max-width: 44ch;
+  margin: 0 auto 1.6rem;
+  color: rgba(245, 240, 232, 0.78);
+  font-size: 0.95rem;
+  line-height: 1.62;
 }
+
+/* 🔴 `.btn-primary` BURADA KULLANILAMAZ: zemini `var(--olive)` ve bu kutu da
+   zeytin — buton zeminle aynı renge düşüp altı çizili bir metne benziyordu.
+   Turuncu aksan, paletin koyu zeytinle eşleşen birincil eylem rengi. */
+.cta-button {
+  display: inline-block;
+  padding: 0.85rem 2rem;
+  background: var(--accent);
+  border-radius: var(--radius-sm);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+  transition: transform 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.cta-button:hover {
+  background: var(--accent-dk);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+}
+
+.cta-button:active { transform: translateY(0); }
 
 .discover-more { margin-top: 2.5rem; }
 

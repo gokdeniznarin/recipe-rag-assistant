@@ -3,7 +3,7 @@ const params       = new URLSearchParams(window.location.search);
 const collectionId = params.get('id');
 
 if (!collectionId) {
-  window.location.href = '/favorites.html';
+  window.location.replace('/favorites.html');
 }
 
 // ── DOM ──────────────────────────────────────────────────
@@ -186,7 +186,7 @@ deleteConfirm.addEventListener('click', async () => {
   deleteConfirm.disabled = true;
   try {
     await apiRequest(`/api/collections/${encodeURIComponent(collectionId)}`, { method: 'DELETE' });
-    window.location.href = '/favorites.html';
+    window.location.replace('/favorites.html');
   } catch (err) {
     deleteConfirm.disabled = false;
     deleteModal.classList.add('hidden');

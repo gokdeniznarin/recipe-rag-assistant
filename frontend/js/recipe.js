@@ -13,7 +13,8 @@ const recipeId = window.__RECIPE_ID__ || params.get('id');
 const embeddedRecipe = window.__RECIPE_DATA__ || null;
 
 if (!recipeId) {
-  window.location.href = '/search.html';
+  // replace: kimliksiz tarif sayfasi gecersiz bir durum, gecmiste yeri yok.
+  window.location.replace('/search.html');
 }
 
 // ── DOM ──────────────────────────────────────────────────

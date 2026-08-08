@@ -104,7 +104,8 @@ function logout() {
     // Çıkış da giriş gibi tamamen istemci tarafında: Firebase yerel oturumu
     // siliyor, sunucumuza istek gitmiyor. Genelde milisaniyeler sürer.
     Logger.duration('auth', 'sign out', performance.now() - start);
-    window.location.href = '/index.html';
+    // replace: cikis yaptiktan sonra geri tusu uygulamaya donmemeli.
+    window.location.replace('/index.html');
   });
 }
 
@@ -118,8 +119,17 @@ function logout() {
 // (api.js'ten ÖNCE) kuruluyor — yani bir sayfa açık hale gelmek için
 // bunu AÇIKÇA istemek zorunda; varsayılan hâlâ "korumalı".
 authReady.then((user) => {
+  revealPage();
   if (!user && !window.PUBLIC_PAGE) {
-    window.location.href = '/index.html';
+    // ⚠️ `replace()`, `href =` DEĞİL. Kullanıcı bildirdi: açık bir koleksiyon
+    // sayfasından sidebar'daki "Search"e basınca giriş ekranına atılıyor
+    // (doğru), ama tarayıcıda GERİ tuşuna basınca `search.html`'e düşüyordu —
+    // guard onu yine kovuyor, yani geri tuşu çalışmıyor gibi görünüyor.
+    // Sebep: `href =` geçmişe YENİ bir kayıt ekliyor, dolayısıyla asla
+    // görülmemesi gereken sayfa geçmişte kalıyor. `replace()` mevcut kaydı
+    // değiştiriyor → geçmiş `discover → index` oluyor ve geri tuşu
+    // ziyaretçiyi koleksiyona geri götürüyor.
+    window.location.replace('/index.html');
     return;
   }
   const setup = user ? initUserMenu : initSignedOutUI;
@@ -129,6 +139,34 @@ authReady.then((user) => {
     setup();
   }
 });
+
+/**
+ * Oturum durumu netleşene kadar sayfayı gizle (Faz 29).
+ *
+ * Kullanıcı bildirdi: korumalı bir sayfaya girişsiz gidildiğinde giriş
+ * ekranına atılmadan ÖNCE o sayfa kısa süre görünüyor. Bekleme canlıda
+ * ~975 ms ölçülmüştü (Faz 13b) — yani gözle görülür bir çakma.
+ *
+ * ⚠️ YALNIZCA KORUMALI SAYFALARDA. Açık sayfalarda (tarif, koleksiyon) örtü
+ * KURULMUYOR: onlar veriyi HTML'e gömülü alıyor ve anında çiziliyor;
+ * `authReady`'yi beklemek Faz 29 adım 3'te kazanılan ~1.2 sn'yi geri verirdi.
+ *
+ * ⚠️ ZAMAN AŞIMI ŞART: `authReady` hiç çözülmezse (ağ, depolama kilidi) örtü
+ * sonsuza dek kalır ve kullanıcı BOŞ bir sayfa görür. 3 sn sonra kendiliğinden
+ * kalkıyor — bozuk bir kimlik akışında bile sayfa görünür oluyor (Faz 26b'de
+ * giriş kapısı için kurulan aynı yedek).
+ */
+function hidePageUntilAuthKnown() {
+  if (window.PUBLIC_PAGE) return;
+  document.documentElement.classList.add('auth-pending');
+  setTimeout(revealPage, 3000);
+}
+
+function revealPage() {
+  document.documentElement.classList.remove('auth-pending');
+}
+
+hidePageUntilAuthKnown();
 
 /**
  * Açık bir sayfada giriş YAPMAMIŞ ziyaretçi için kenar çubuğu (Faz 29).
