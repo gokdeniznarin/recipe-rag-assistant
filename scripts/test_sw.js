@@ -24,7 +24,11 @@ const vm = require('vm');
 
 const ORIGIN = 'https://recipe-rag-assistant.vercel.app';
 const SW_PATH = path.join(__dirname, '..', 'frontend', 'sw.js');
-const CACHE = 'recipe-assistant-v1';
+// Sürüm sw.js'ten OKUNUYOR, sabit yazılmıyor: Faz 29'da CACHE_VERSION v1→v2
+// çıkarıldı ve sabit yazılmış hâli bu süiti kırdı. Testin, sürümün ne olduğuna
+// değil önbelleğin DOĞRU KULLANILDIĞINA bakması gerekiyor.
+const CACHE = 'recipe-assistant-'
+  + /CACHE_VERSION = '([^']+)'/.exec(fs.readFileSync(SW_PATH, 'utf8'))[1];
 
 let pass = 0;
 let failures = 0;

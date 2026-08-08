@@ -24,12 +24,21 @@
  * Kaybedilen hız da bu uygulamada önemsiz: darboğaz statik dosyalar değil,
  * ölçülmüş 6.4 sn'lik ChromaDB embedding'i (CLAUDE.md Faz 17).
  *
- * 3) SÜRÜM: aşağıdaki CACHE_VERSION'ı elle artırmak GEREKMİYOR — network-first
- * olduğu için çevrimiçi kullanıcı zaten hep tazesini alıyor. Sürüm yalnızca
- * çevrimdışı kopyayı ve eski önbelleklerin temizliğini ilgilendiriyor.
+ * 3) SÜRÜM: normal güncellemeler için CACHE_VERSION'ı artırmak GEREKMİYOR —
+ * network-first olduğu için çevrimiçi kullanıcı zaten hep tazesini alıyor.
+ *
+ * ⚠️ AMA BİR İSTİSNA VAR ve Faz 29'da yaşandı: önbellekteki KOPYANIN KENDİSİ
+ * hatalıysa, network-first onu yalnızca ağ erişilebildiği sürece gizliyor.
+ * Mobil bağlantı titrek olduğunda `fetch` düşüyor, `catch` bloğu devreye
+ * giriyor ve BAYAT kopya servis ediliyor. Faz 29'da 8 korumalı sayfanın
+ * önbellekteki kopyası, örtü (`auth-pending`) eklenmeden ÖNCEki hâlleriydi —
+ * yani o kopya her servis edildiğinde çakma geri geliyordu, ve tam olarak
+ * telefonda, yalnızca bazı sayfalarda (hangi isteğin düştüğüne bağlı olarak).
+ * Sürümü artırmak eski önbelleği tamamen siliyor ve taze precache kuruyor;
+ * bayat bir kopyanın hataya SEBEP olduğu durumda doğru araç bu.
  */
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = `recipe-assistant-${CACHE_VERSION}`;
 
 // Uygulama kabuğu. Çevrimdışıyken bu liste sayesinde sayfalar AÇILIYOR
