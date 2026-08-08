@@ -136,6 +136,26 @@ const COLLECTIONS = [
   { slug: 'vegan-recipes', title: 'Vegan Recipes', description: 'No meat, no dairy, no eggs. Nothing that tastes like a compromise.' },
 ];
 
+// Pinterest'te insanlar tarif degil NIYET ariyor; pinin ust satiri o niyeti
+// soyluyor. Basligin kendisi kategoriyi, bu satir "ne zaman lazim olur"u
+// anlatiyor.
+const KICKERS = {
+  '30-minute-dinners': 'weeknight',
+  '15-minute-recipes': 'in a hurry',
+  'easy-desserts': 'something sweet',
+  'breakfast-ideas': 'mornings',
+  'chicken-dinners': 'the usual, better',
+  'one-pot-meals': 'one pan',
+  'homemade-bread': 'from scratch',
+  'cookies': 'the cookie jar',
+  'vegetable-sides': 'on the side',
+  'potato-recipes': 'comfort',
+  'lunch-and-snacks': 'midday',
+  'drinks': 'in a glass',
+  'vegetarian-dinners': 'meat-free',
+  'vegan-recipes': 'fully plant-based',
+};
+
 const esc = (s) => { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
 
 /** `photos/<slug>.<ext>` var mi? Ilk bulunani dondur, yoksa null. */
@@ -157,6 +177,13 @@ function findPhoto(slug) {
 
 (async () => {
   const status = document.getElementById('status');
+  // Hata olursa sayfa "Loading collections..." diye asili kalmasin — sebebi
+  // ekranda gorunsun. (Ilk surumde `KICKERS` silinmisti ve sayfa sessizce
+  // takilmisti; konsolu acmadan anlamak mumkun degildi.)
+  window.addEventListener('error', (e) => {
+    status.textContent = 'HATA: ' + e.message;
+    status.style.color = '#ff8080';
+  });
   const collections = COLLECTIONS;
 
   const sheet = document.getElementById('sheet');
