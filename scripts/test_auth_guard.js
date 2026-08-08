@@ -280,6 +280,18 @@ function run(user, publicPage) {
     check(`${page} covers itself in <head>, before the stylesheet`,
           head.includes("classList.add('auth-pending')")
           && head.indexOf('auth-pending') < head.indexOf('css/style.css'));
+    // 🔴 GİZLEME KURALI SATIR İÇİ OLMAK ZORUNDA — asıl hata buydu ve ancak
+    // cihazdan ölçüm alınca göründü. Sınıf 0 ms'de kuruluyor ama onu anlamlı
+    // kılan `visibility: hidden` dış stil dosyasındaydı ve o AĞDAN geliyor.
+    // Aradaki pencerede sınıf VAR, kural YOK — iOS gövdeyi çiziyordu.
+    // Teşhis kutusu 251 ms'de `class=true body-visibility=hidden sheets=2`
+    // diyordu: CSS gelince örtü doğru çalışıyor, çakma ondan ÖNCEki pencere.
+    // Masaüstünde ve Android'de CSS yeterince hızlı geldiği için görünmüyordu.
+    check(`${page} hides the body with an inline rule, not from style.css`,
+          /html\.auth-pending\s+body\s*\{[^}]*visibility:\s*hidden/.test(head)
+          && head.indexOf('html.auth-pending body') < head.indexOf('css/style.css'),
+          'kural style.css dosyasina tasinirsa yavas baglantida sayfa cakar');
+
     // 🔴 ZAMAN AŞIMI SAYFAYI GÖSTERMEMELİ, GİRİŞ SAYFASINA GİTMELİ.
     // Telefondaki çakmanın sebebi tam olarak buydu: mobilde `authReady`
     // 3 sn'yi aşabiliyor (Firebase SDK gstatic'ten iniyor + oturum

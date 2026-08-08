@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <!-- ⚠️ BU KURAL SATIR İÇİ OLMAK ZORUNDA, style.css'te DEĞİL.
+       Ölçüldü (iPhone, ekran içi teşhis kutusu): sınıf 0 ms'de kuruluyor ama
+       onu anlamlı kılan kural dış stil dosyasında ve o AĞDAN geliyor. Aradaki
+       pencerede sınıf var, kural yok — iOS gövdeyi çiziyor. Kayıt 251 ms'de
+       `class=true body-visibility=hidden sheets=2` diyordu, yani CSS gelince
+       örtü doğru çalışıyordu; çakma ondan ÖNCEki pencereydi. Masaüstünde ve
+       Android'de CSS yeterince hızlı geldiği için hiç görünmüyordu.
+       Dönen gösterge style.css'te kalabilir — o yalnızca kozmetik. -->
+  <style>html.auth-pending body{visibility:hidden}</style>
   <!-- Faz 29: oturum durumu netlesene kadar sayfayi gizle.
        ⚠️ BURADA, <head>'DE olmak ZORUNDA. api.js <body>'nin SONUNDA yukleniyor,
        yani tarayici oraya gelene kadar sayfayi coktan boyamis oluyor.
