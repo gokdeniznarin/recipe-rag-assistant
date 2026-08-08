@@ -1,19 +1,22 @@
 /**
  * Örtü (`auth-pending`) teşhisi — geçici tanı aracı (Faz 29).
  *
- * NEDEN VAR: korumalı bir sayfada örtünün ne zaman ve KİM TARAFINDAN
- * kaldırıldığı yalnızca cihazda görülebiliyor. iPhone'da çakma sürüyor ama
- * Android'de sürmüyor; üç turdur sebebi TAHMİN ederek arıyorum ve üçü de
- * yanlış çıktı. Faz 26b'nin dersi tam buydu: cihazda yaşanan bir hatada
- * tarifi yorumlamak yerine ölçüm almak çok daha ucuz.
+ * NEDEN VAR: iPhone'da korumalı sayfa örtüye rağmen bir an görünüyor,
+ * Android'de görünmüyor. Sebebi üç turdur TAHMİN ederek aradım, üçü de yanlış
+ * çıktı. Faz 26b'nin dersi buydu: cihazda yaşanan bir hatada tarifi
+ * yorumlamak yerine ölçüm almak çok daha ucuz.
  *
- * NASIL ÇALIŞIYOR: `classList.remove('auth-pending')` sarmalanıyor ve çağıran
- * yığın izi kaydediliyor. Sayfa hemen yönlendiği için kayıt `sessionStorage`'a
- * yazılıyor ve VARIŞ sayfasında (index.html) ekrana basılıyor — telefonda
- * konsol okumak kablo istiyor.
+ * ⚠️ EN ÖNEMLİ ÖLÇÜM `body-visibility`. İki ihtimali ayırıyor:
+ *   - `hidden` iken sayfa görünüyorsa  → CSS uygulanıyor ama iOS onu
+ *     çizmeye devam ediyor (WebKit tarafı)
+ *   - `visible` ise                     → kural hiç uygulanmıyor; örtü sınıfı
+ *     var ama işe yaramıyor
+ * Bu ikisi tamamen farklı düzeltme gerektiriyor.
  *
- * AÇMA/KAPAMA: `?debug=1` / `?debug=0` (Faz 26b'deki `debug_auth` bayrağının
- * aynısı — kurulu PWA'da adres çubuğu olmadığı için bayrak KALICI).
+ * Sayfa hemen yönlendiği için kayıt `sessionStorage`'a yazılıyor ve VARIŞ
+ * sayfasında ekrana basılıyor — telefonda konsol okumak kablo istiyor.
+ *
+ * AÇMA/KAPAMA: `?debug=1` / `?debug=0` (Faz 26b'deki kalıcı bayrağın aynısı).
  *
  * ⚠️ GEÇİCİ. Sebep bulunup düzeltildiğinde bu dosya ve onu yükleyen satırlar
  * silinmeli.
@@ -33,9 +36,20 @@
 
   if (!debugOn()) return;
 
+  // ⚠️ ÖNCEKİ SAYFANIN KAYDI EN BAŞTA OKUNUYOR. İlk sürümdeki hata buydu:
+  // kendi kaydımızı yazınca öncekini eziyorduk ve kutuda hiçbir şey
+  // görünmüyordu. Okuma, yazmadan ÖNCE olmak zorunda.
+  var previous = null;
+  try {
+    var raw = sessionStorage.getItem(KEY);
+    if (raw) previous = JSON.parse(raw);
+    sessionStorage.removeItem(KEY);
+  } catch (e) { /* yoksay */ }
+
   var t0 = Date.now();
   var page = window.location.pathname.split('/').pop() || '/';
   var log = [];
+  var root = document.documentElement;
 
   function add(what) {
     log.push((Date.now() - t0) + 'ms ' + what);
@@ -45,66 +59,62 @@
   add('load ' + page);
 
   // ── Örtüyü kaldıran KİM? ────────────────────────────────
-  var root = document.documentElement;
   var realRemove = root.classList.remove.bind(root.classList);
   root.classList.remove = function () {
     for (var i = 0; i < arguments.length; i++) {
       if (arguments[i] === 'auth-pending') {
-        var who = 'bilinmiyor';
-        try {
-          // Yığın izinin 2. satırı çağıranı gösteriyor.
-          who = (new Error().stack || '').split('\n')[2] || '';
-          who = who.trim().slice(0, 90);
-        } catch (e) {}
-        add('COVER REMOVED by ' + who);
+        var who = '?';
+        try { who = ((new Error().stack || '').split('\n')[2] || '').trim().slice(0, 80); } catch (e) {}
+        add('COVER REMOVED <- ' + who);
       }
     }
     return realRemove.apply(null, arguments);
   };
 
-  // ── Yönlendirmeler ──────────────────────────────────────
-  var realReplace = window.location.replace.bind(window.location);
   try {
-    window.location.replace = function (url) { add('replace -> ' + url); return realReplace(url); };
+    var realReplace = window.location.replace.bind(window.location);
+    window.location.replace = function (u) { add('replace -> ' + u); return realReplace(u); };
   } catch (e) { add('replace sarmalanamadi'); }
 
-  // ── authReady ne zaman, hangi sonuçla ───────────────────
-  // `authReady` bu dosyadan SONRA tanımlanıyor (firebase.js), o yüzden
-  // bir sonraki tik'te bakılıyor.
   setTimeout(function () {
     if (typeof authReady === 'undefined') { add('authReady TANIMSIZ'); return; }
-    authReady.then(function (u) {
-      add('authReady -> ' + (u ? 'user ' + (u.email || '?') : 'null'));
-    }, function (e) { add('authReady REDDEDILDI ' + e.message); });
+    authReady.then(
+      function (u) { add('authReady -> ' + (u ? 'user' : 'null')); },
+      function (e) { add('authReady RED ' + e.message); }
+    );
   }, 0);
 
-  // Örtü hâlâ duruyor mu, aralıklarla bak (sayfa görünür oldu mu).
+  // ── 🔑 Örtü GERÇEKTEN gizliyor mu ───────────────────────
   var ticks = 0;
   var iv = setInterval(function () {
     ticks++;
-    if (!root.classList.contains('auth-pending')) {
-      add('cover GONE (sayfa gorunur)');
-      clearInterval(iv);
+    var hasClass = root.classList.contains('auth-pending');
+    var vis = '?';
+    var sheets = '?';
+    try { vis = document.body ? getComputedStyle(document.body).visibility : 'no-body'; } catch (e) {}
+    try { sheets = document.styleSheets.length; } catch (e) {}
+    if (ticks === 1 || ticks === 3 || ticks === 8) {
+      add('t' + ticks + ' class=' + hasClass + ' body-visibility=' + vis + ' sheets=' + sheets);
     }
+    if (!hasClass) { add('class GONE'); clearInterval(iv); }
     if (ticks > 40) clearInterval(iv);
   }, 250);
 
-  // ── Varış sayfasında kaydı göster ───────────────────────
-  window.addEventListener('DOMContentLoaded', function () {
-    var raw;
-    try { raw = sessionStorage.getItem(KEY); } catch (e) { return; }
-    if (!raw) return;
-    var prev;
-    try { prev = JSON.parse(raw); } catch (e) { return; }
-    // Kendi sayfamızın kaydını gösterme; ÖNCEKİ sayfanınkini göster.
-    if (prev.page === page) return;
-
+  // ── Varış sayfasında önceki kaydı göster ────────────────
+  function render() {
+    if (!previous || !document.body) return;
     var box = document.createElement('pre');
-    box.style.cssText = 'position:fixed;left:6px;right:6px;bottom:6px;z-index:99999;'
-      + 'background:#111;color:#0f0;font:11px/1.45 monospace;padding:8px;'
-      + 'border-radius:6px;max-height:45vh;overflow:auto;white-space:pre-wrap;';
-    box.textContent = '[' + prev.page + ']\n' + prev.log.join('\n');
+    box.style.cssText = 'position:fixed;left:4px;right:4px;top:4px;z-index:2147483647;'
+      + 'background:#000;color:#0f0;font:11px/1.4 monospace;padding:8px;'
+      + 'border-radius:6px;max-height:60vh;overflow:auto;white-space:pre-wrap;';
+    box.textContent = '[' + previous.page + ']\n' + previous.log.join('\n');
     document.body.appendChild(box);
-    try { sessionStorage.removeItem(KEY); } catch (e) {}
-  });
+    previous = null;
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', render);
+  } else {
+    render();
+  }
 })();
