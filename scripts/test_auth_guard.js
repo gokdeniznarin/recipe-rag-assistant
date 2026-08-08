@@ -84,12 +84,13 @@ function run(user, publicPage) {
   // testinde yakalandi. Ortunun HIC kurulup kurulmadigini bilmek icin
   // eklemeler ayrica kaydediliyor.
   const everAdded = new Set();
+  const removed = new Set();
 
   const documentStub = {
     documentElement: {
       classList: {
         add: (c) => { rootClasses.add(c); everAdded.add(c); },
-        remove: (c) => rootClasses.delete(c),
+        remove: (c) => { rootClasses.delete(c); removed.add(c); },
         contains: (c) => rootClasses.has(c),
       },
     },
@@ -154,7 +155,7 @@ function run(user, publicPage) {
 
   // guard `authReady.then(...)` içinde — mikrogörev kuyruğunun boşalmasını bekle.
   return new Promise((resolve) =>
-    setTimeout(() => resolve({ redirects, shown, hidden, rootClasses, everAdded }), 0));
+    setTimeout(() => resolve({ redirects, shown, hidden, rootClasses, everAdded, removed }), 0));
 }
 
 (async () => {
@@ -225,23 +226,39 @@ function run(user, publicPage) {
         protectedOut.redirects.every((r) => r.mode === 'replace'),
         JSON.stringify(protectedOut.redirects));
 
-  // Örtü: karar `authReady`'yi bekliyor (canlıda ~975 ms) ve o süre boyunca
-  // korumalı sayfa görünüyordu.
-  check('a protected page is hidden until auth is known, then revealed',
-        !protectedOut.rootClasses.has('auth-pending'),
-        [...protectedOut.rootClasses].join(','));
-  check('a signed-in user never stays hidden',
-        !protectedIn.rootClasses.has('auth-pending'));
-  // 🔴 Açık sayfalar örtülMEMELİ: veriyi HTML'e gömülü alıyorlar ve anında
-  // çiziliyorlar. `authReady`'yi beklemek Faz 29 adım 3'te kazanılan ~1.2 sn'yi
-  // geri verirdi — yani Pinterest'ten gelen ziyaretçi yine boş ekran görürdü.
-  check('a public page is NEVER hidden while auth settles',
-        !publicOut.everAdded.has('auth-pending'),
-        'ortu acik sayfada HIC kurulmamali — son durum degil, kurulup kurulmadigi');
-  // Korumali sayfada ise ortu GERCEKTEN kurulmus olmali; yoksa yukaridaki
-  // "sonra kaldirildi" testi de bosa duser.
-  check('a protected page really was covered first',
-        protectedOut.everAdded.has('auth-pending'));
+  // ── Örtü: KURULUM HTML'de, KALDIRMA api.js'te ──────────
+  //
+  // ⚠️ İlk sürümde kurulum da api.js'teydi ve bu YANLIŞTI: o dosya <body>'nin
+  // SONUNDA yükleniyor, tarayıcı oraya gelene kadar sayfayı çoktan boyamış
+  // oluyor — örtü ilk boyamadan SONRA kuruluyordu ve içerik bir an
+  // görünüyordu. Kullanıcı bunu İKİ KEZ bildirdi.
+  check('api.js reveals the page once auth is known',
+        protectedOut.removed.has('auth-pending'),
+        [...protectedOut.removed].join(','));
+  check('it reveals for a signed-in user too',
+        protectedIn.removed.has('auth-pending'));
+
+  // Kurulum artık HTML'de olduğu için DOSYADAN doğrulanıyor.
+  const PROTECTED = ['search.html', 'pantry.html', 'plan.html', 'shopping.html',
+                     'nutrition.html', 'favorites.html', 'collection.html', 'account.html'];
+  for (const page of PROTECTED) {
+    const head = fs.readFileSync(path.join(FRONTEND, page), 'utf8').split('</head>')[0];
+    // ⚠️ <head>'DE ve STİL DOSYASINDAN ÖNCE olmak zorunda — asıl hata buydu.
+    check(`${page} covers itself in <head>, before the stylesheet`,
+          head.includes("classList.add('auth-pending')")
+          && head.indexOf('auth-pending') < head.indexOf('css/style.css'));
+    // Kendi zaman aşımını taşımalı: api.js hiç yüklenmezse sayfa BOŞ kalırdı.
+    check(`${page} uncovers itself if api.js never loads`,
+          /3000/.test(head.slice(head.indexOf('auth-pending'))));
+  }
+
+  // 🔴 Açık sayfalar örtüyü HİÇ kurmamalı: veriyi HTML'e gömülü alıyorlar ve
+  // anında çiziliyorlar. Beklemek, Faz 29 adım 3'te Pinterest ziyaretçisi için
+  // kazanılan ~1.2 sn'yi geri vermek olurdu.
+  for (const page of ['recipe.html', 'discover.html']) {
+    check(`${page} is NEVER covered while auth settles`,
+          !fs.readFileSync(path.join(FRONTEND, page), 'utf8').includes('auth-pending'));
+  }
 
   // ── 15. İşaret api.js'ten ÖNCE kurulmalı ───────────────
   // Sonra kurulursa guard onu göremez ve ziyaretçi yine kovulur — üstelik

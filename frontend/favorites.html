@@ -1,6 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <!-- Faz 29: oturum durumu netlesene kadar sayfayi gizle.
+       ⚠️ BURADA, <head>'DE olmak ZORUNDA. Ilk denemede bunu api.js yapiyordu
+       ama o dosya <body>'nin SONUNDA yukleniyor: tarayici oraya gelene kadar
+       sayfayi COKTAN boyamis oluyor, yani ortu ilk boyamadan SONRA kuruluyor
+       ve kullanici icerigi bir an goruyor (kullanici bildirdi, iki kez).
+       Kendi kendine yeten: zaman asimi da burada, boylece api.js hic
+       yuklenmese bile sayfa 3 sn sonra gorunur oluyor. -->
+  <script>
+    (function () {
+      var r = document.documentElement;
+      r.classList.add('auth-pending');
+      setTimeout(function () { r.classList.remove('auth-pending'); }, 3000);
+    })();
+  </script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Favorites — Recipe Assistant</title>

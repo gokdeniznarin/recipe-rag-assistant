@@ -141,32 +141,25 @@ authReady.then((user) => {
 });
 
 /**
- * Oturum durumu netleşene kadar sayfayı gizle (Faz 29).
+ * Örtüyü kaldır (Faz 29).
  *
- * Kullanıcı bildirdi: korumalı bir sayfaya girişsiz gidildiğinde giriş
- * ekranına atılmadan ÖNCE o sayfa kısa süre görünüyor. Bekleme canlıda
- * ~975 ms ölçülmüştü (Faz 13b) — yani gözle görülür bir çakma.
+ * ⚠️ ÖRTÜYÜ BU DOSYA KURMUYOR — korumalı sayfaların `<head>`'indeki satır içi
+ * script kuruyor. Sebep ölçülmüş bir hata: ilk sürümde kurulum buradaydı, ama
+ * bu dosya `<body>`'nin SONUNDA yükleniyor ve tarayıcı oraya gelene kadar
+ * sayfayı çoktan boyamış oluyor. Yani örtü ilk boyamadan SONRA kuruluyordu ve
+ * kullanıcı içeriği bir an görüyordu — kullanıcı bunu iki kez bildirdi.
  *
- * ⚠️ YALNIZCA KORUMALI SAYFALARDA. Açık sayfalarda (tarif, koleksiyon) örtü
- * KURULMUYOR: onlar veriyi HTML'e gömülü alıyor ve anında çiziliyor;
- * `authReady`'yi beklemek Faz 29 adım 3'te kazanılan ~1.2 sn'yi geri verirdi.
+ * O satır içi script kendi zaman aşımını da taşıyor (3 sn), böylece bu dosya
+ * hiç yüklenmese bile sayfa görünür oluyor. Buradaki iş yalnızca "oturum
+ * netleşti, göster".
  *
- * ⚠️ ZAMAN AŞIMI ŞART: `authReady` hiç çözülmezse (ağ, depolama kilidi) örtü
- * sonsuza dek kalır ve kullanıcı BOŞ bir sayfa görür. 3 sn sonra kendiliğinden
- * kalkıyor — bozuk bir kimlik akışında bile sayfa görünür oluyor (Faz 26b'de
- * giriş kapısı için kurulan aynı yedek).
+ * Açık sayfalar (tarif, koleksiyon) örtüyü HİÇ kurmuyor: veriyi HTML'e gömülü
+ * alıyor ve anında çiziliyorlar; `authReady`'yi beklemek Faz 29 adım 3'te
+ * kazanılan ~1.2 sn'yi geri verirdi.
  */
-function hidePageUntilAuthKnown() {
-  if (window.PUBLIC_PAGE) return;
-  document.documentElement.classList.add('auth-pending');
-  setTimeout(revealPage, 3000);
-}
-
 function revealPage() {
   document.documentElement.classList.remove('auth-pending');
 }
-
-hidePageUntilAuthKnown();
 
 /**
  * Açık bir sayfada giriş YAPMAMIŞ ziyaretçi için kenar çubuğu (Faz 29).
