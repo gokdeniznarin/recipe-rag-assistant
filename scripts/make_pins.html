@@ -8,24 +8,28 @@
 
   NASIL KULLANILIR
     1. `docker compose up -d api` (koleksiyon listesi oradan geliyor)
-    2. Bu dosyayi tarayicida ac (cift tik yeterli, sunucu gerekmiyor)
-    3. Her karta sag tik -> Inspect -> secili dugumde sag tik ->
+    2. Fotograflari `scripts/photos/` klasorune koy: `<slug>.jpg`
+       (orn. `scripts/photos/cookies.jpg`). Fotografi olmayan koleksiyon
+       otomatik olarak TIPOGRAFIK tasarima dusuyor - yani hepsini bulmak
+       zorunda degilsin, elindekiyle basla.
+    3. Bu dosyayi tarayicida ac
+    4. Her karta sag tik -> Inspect -> secili dugumde sag tik ->
        "Capture node screenshot"  =>  tam 1000x1500 PNG
-    Chrome/Edge bu menuyu veriyor; Firefox'ta "Screenshot Node".
 
-  NEDEN ELLE DEGIL URETIM: `scripts/make_icons.py` ile ayni ilke - 14
-  koleksiyon x tasarim revizyonu, elle yapilinca tutarsizlasir. Burada palet
-  ve tipografi UYGULAMANIN KENDISIYLE ayni kaynaktan geliyor.
+  FOTOGRAFLARI NEREDEN
+    Unsplash (unsplash.com) ve Pexels (pexels.com) - ikisi de TICARI
+    kullanima acik, atif zorunlu degil. "pasta", "cookies", "breakfast"
+    gibi ara, indir, slug adiyla kaydet.
 
-  NEDEN PILLOW DEGIL: metin agirlikli bir tasarim font dosyasi gerektirir
-  (Playfair Display + Inter repoya girmeliydi). Tarayici o fontlari zaten
-  yukluyor ve cizimi bizden iyi yapiyor.
-
-  🔴 NEDEN FOOD.COM FOTOGRAFI KULLANILMIYOR: veri seti CC0 ama bu, yukleyenin
+  🔴 FOOD.COM FOTOGRAFLARI KULLANILAMAZ. Veri seti CC0 ama bu, yukleyenin
   SAHIP OLMADIGI fotograflari kapsamiyor (CC0 deed'inin "Other Information"
-  bolumu zaten bunu soyluyor). Sayfada gosterirken baytlari onlarin CDN'i
-  sunuyor - hotlink, standart web davranisi. Ama kendi board'umuza pin
-  YUKLEMEK kopyalamaktir. Bu yuzden pinler tipografik.
+  bolumu zaten bunu soyluyor). Uygulamanin ICINDE gostermek hotlink -
+  baytlari onlarin CDN'i sunuyor, standart web davranisi. Kendi board'umuza
+  YUKLEMEK ise kopyalamak. Ikisi ayni sey degil.
+
+  ⚠️ FOTOGRAF KATEGORIYI temsil ediyor, belirli bir tarifi DEGIL. Bu
+  editoryal olarak normal - ama "Vegan Recipes" pinine et fotografi koymak
+  degil. Fotograf koleksiyonun ICERIGIYLE tutarli olmali.
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -42,43 +46,62 @@
     font-family: 'Inter', sans-serif; color: var(--cream);
   }
   .sheet { display: flex; flex-wrap: wrap; gap: 2rem; }
-  #status { margin: 0 0 1.5rem; font-size: 0.9rem; }
+  #status { margin: 0 0 1.5rem; font-size: 0.9rem; line-height: 1.6; }
+  #status b { color: #ffd8a8; }
 
   /* Pinterest'in formati: dikey 2:3. */
   .pin {
     width: 1000px; height: 1500px; flex: 0 0 auto;
     background: var(--olive); color: var(--cream);
-    display: flex; flex-direction: column;
-    justify-content: space-between;
-    padding: 110px 90px; box-sizing: border-box;
-    position: relative; overflow: hidden;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    box-sizing: border-box; position: relative; overflow: hidden;
   }
-  /* Marka isareti (sidebar'daki ✦ ile ayni astroid), dev ve sonuk. */
-  .pin::after {
+
+  /* ── Fotografli varyant ──────────────────────────────── */
+  .pin-photo { position: absolute; inset: 0; object-fit: cover; width: 100%; height: 100%; }
+  /* Metnin okunabilirligi FOTOGRAFA birakilamaz: acik bir fotografta krem
+     yazi kaybolur. Alttan yukari koyu bir gecis her fotografta ayni
+     kontrasti garanti ediyor. */
+  .scrim {
+    position: absolute; inset: 0;
+    background: linear-gradient(to top,
+      rgba(24,32,24,0.94) 0%, rgba(24,32,24,0.86) 26%,
+      rgba(24,32,24,0.35) 52%, rgba(24,32,24,0.10) 100%);
+  }
+  .content { position: relative; padding: 0 90px 110px; }
+
+  /* ── Fotografsiz (tipografik) varyant ────────────────── */
+  .pin--text { justify-content: space-between; padding: 110px 90px; }
+  .pin--text .content { padding: 0; }
+  .pin--text::after {
     content: '✦'; position: absolute;
     right: -110px; bottom: -190px;
     font-size: 620px; line-height: 1;
     color: rgba(245, 240, 232, 0.055);
   }
+
   .kicker {
     font-size: 34px; font-weight: 600; letter-spacing: 0.22em;
     text-transform: uppercase; color: var(--accent);
   }
   .title {
     font-family: 'Playfair Display', serif; font-weight: 700;
-    font-size: 132px; line-height: 1.04; margin: 40px 0 34px;
+    font-size: 132px; line-height: 1.04; margin: 34px 0 30px;
+    text-shadow: 0 2px 24px rgba(0,0,0,0.35);
   }
   .desc {
     font-size: 42px; line-height: 1.45; max-width: 24ch;
-    color: rgba(245, 240, 232, 0.82);
+    color: rgba(245, 240, 232, 0.9);
   }
-  .foot { display: flex; align-items: baseline; gap: 22px; }
+  .foot {
+    display: flex; align-items: baseline; gap: 22px;
+    margin-top: 46px; position: relative;
+  }
+  .pin--text .foot { margin-top: 0; }
   .brand { font-family: 'Playfair Display', serif; font-size: 46px; }
-  .url { font-size: 32px; color: rgba(245, 240, 232, 0.55); }
-  .cap { font-size: 12px; color: #aaa; margin: 6px 0 0; }
-
-  /* Ekran goruntusu alinirken golge/kenar cikmasin. */
-  @media print { body { background: #fff; padding: 0; } }
+  .url { font-size: 32px; color: rgba(245, 240, 232, 0.62); }
+  .cap { font-size: 12px; color: #aaa; margin: 6px 0 0; max-width: 1000px; word-break: break-all; }
+  .cap b { color: #7ec87e; }
 </style>
 </head>
 <body>
@@ -109,6 +132,23 @@ const KICKERS = {
 
 const esc = (s) => { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
 
+/** `photos/<slug>.<ext>` var mi? Ilk bulunani dondur, yoksa null. */
+function findPhoto(slug) {
+  const tries = ['jpg', 'jpeg', 'png', 'webp'].map((e) => `photos/${slug}.${e}`);
+  return new Promise((resolve) => {
+    let i = 0;
+    const next = () => {
+      if (i >= tries.length) return resolve(null);
+      const img = new Image();
+      const src = tries[i++];
+      img.onload = () => resolve(src);
+      img.onerror = next;
+      img.src = src;
+    };
+    next();
+  });
+}
+
 (async () => {
   const status = document.getElementById('status');
   let collections;
@@ -120,31 +160,41 @@ const esc = (s) => { const d = document.createElement('div'); d.textContent = s;
     return;
   }
 
-  status.innerHTML =
-    `${collections.length} pins · right-click a card → Inspect → ` +
-    `right-click the highlighted node → <b>Capture node screenshot</b> (1000×1500)`;
-
   const sheet = document.getElementById('sheet');
-  collections.forEach((c) => {
+  let withPhoto = 0;
+
+  for (const c of collections) {
+    const photo = await findPhoto(c.slug);
+    if (photo) withPhoto++;
+
     const wrap = document.createElement('div');
-    // ⚠️ `utm_*` PIN URL'INE ELLE EKLENMIYOR: Pinterest'e pin yuklerken
-    // hedef adresi orada yaziyorsun. Buradaki metin yalnizca gorselde
-    // okunan adres, tiklanabilir bir link degil.
+    // ⚠️ `utm_*` PIN URL'INE ELLE EKLENMIYOR: hedef adresi Pinterest'e
+    // yuklerken sen yaziyorsun. Buradaki metin yalnizca gorselde okunan
+    // adres, tiklanabilir bir link degil.
     wrap.innerHTML = `
-      <div class="pin" data-slug="${esc(c.slug)}">
-        <div>
-          <p class="kicker">${esc(KICKERS[c.slug] || 'recipes')}</p>
-          <h1 class="title">${esc(c.title)}</h1>
-          <p class="desc">${esc(c.description)}</p>
-        </div>
-        <div class="foot">
-          <span class="brand">✦ Recipe Assistant</span>
-          <span class="url">${SITE}/discover/${esc(c.slug)}</span>
+      <div class="pin ${photo ? '' : 'pin--text'}" data-slug="${esc(c.slug)}">
+        ${photo ? `<img class="pin-photo" src="${esc(photo)}" alt=""><div class="scrim"></div>` : ''}
+        <div class="content">
+          <div>
+            <p class="kicker">${esc(KICKERS[c.slug] || 'recipes')}</p>
+            <h1 class="title">${esc(c.title)}</h1>
+            <p class="desc">${esc(c.description)}</p>
+          </div>
+          <div class="foot">
+            <span class="brand">✦ Recipe Assistant</span>
+            <span class="url">${SITE}/discover/${esc(c.slug)}</span>
+          </div>
         </div>
       </div>
-      <p class="cap">${esc(c.slug)}.png &nbsp;·&nbsp; ?utm_source=pinterest&amp;utm_medium=pin&amp;utm_campaign=${esc(c.slug)}</p>`;
+      <p class="cap">${photo ? '<b>photo</b>' : 'typographic'} · ${esc(c.slug)}.png<br>
+        ${SITE}/discover/${esc(c.slug)}?utm_source=pinterest&amp;utm_medium=pin&amp;utm_campaign=${esc(c.slug)}</p>`;
     sheet.appendChild(wrap);
-  });
+  }
+
+  status.innerHTML =
+    `${collections.length} pins · <b>${withPhoto} with a photo</b>, ${collections.length - withPhoto} typographic<br>` +
+    `Drop images into <b>scripts/photos/&lt;slug&gt;.jpg</b> to swap a card to the photo layout.<br>` +
+    `Right-click a card → Inspect → right-click the highlighted node → <b>Capture node screenshot</b> (1000×1500)`;
 })();
 </script>
 </body>
