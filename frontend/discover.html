@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="/css/style.css" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#2D3B2D" />
   <link rel="icon" href="/icons/icon-192.png" />
@@ -27,7 +27,7 @@
   <div class="mobile-bar">
     <button id="nav-toggle" class="nav-toggle" aria-label="Open menu"
             aria-controls="sidebar" aria-expanded="false">☰</button>
-    <a href="search.html" class="brand">
+    <a href="/search.html" class="brand">
       <span class="brand-mark">✦</span>
       <span class="brand-name">Recipe Assistant</span>
     </a>
@@ -35,24 +35,24 @@
   <div id="nav-overlay" class="nav-overlay hidden"></div>
 
   <aside id="sidebar" class="sidebar">
-    <a href="search.html" class="brand">
+    <a href="/search.html" class="brand">
       <span class="brand-mark">✦</span>
       <span class="brand-name">Recipe Assistant</span>
     </a>
 
     <nav class="side-nav">
-      <a href="search.html" class="side-link side-link--primary">Search</a>
+      <a href="/search.html" class="side-link side-link--primary">Search</a>
 
       <p class="side-heading">Kitchen</p>
-      <a href="pantry.html" class="side-link">Pantry</a>
-      <a href="plan.html" class="side-link">Meal plan</a>
-      <a href="shopping.html" class="side-link">Shopping list</a>
+      <a href="/pantry.html" class="side-link">Pantry</a>
+      <a href="/plan.html" class="side-link">Meal plan</a>
+      <a href="/shopping.html" class="side-link">Shopping list</a>
 
       <p class="side-heading">Tools</p>
-      <a href="nutrition.html" class="side-link">Nutrition</a>
+      <a href="/nutrition.html" class="side-link">Nutrition</a>
 
       <p class="side-heading">Saved</p>
-      <a href="favorites.html" class="side-link">Your recipes</a>
+      <a href="/favorites.html" class="side-link">Your recipes</a>
     </nav>
 
     <div class="side-user" data-auth="in">
@@ -60,13 +60,13 @@
         <span id="user-avatar" class="user-avatar"></span>
         <span id="user-email" class="side-user-email">…</span>
       </div>
-      <a href="account.html" class="side-account-link">Account settings</a>
+      <a href="/account.html" class="side-account-link">Account settings</a>
       <button id="logout-btn" class="side-signout">Sign out</button>
     </div>
 
     <!-- Giris yapmamis ziyaretci: bu sayfa Pinterest trafiginin indigi yer. -->
     <div class="side-user hidden" data-auth="out">
-      <a href="index.html" class="side-signin">Sign in</a>
+      <a href="/index.html" class="side-signin">Sign in</a>
       <p class="side-signin-note">Save recipes, plan your week, track what is in your kitchen.</p>
     </div>
   </aside>
@@ -93,7 +93,7 @@
           Tell the app what is in your kitchen and it will show you which of these
           recipes you can make tonight — then build the shopping list for the rest.
         </p>
-        <a href="index.html" class="btn-primary">Create a free account</a>
+        <a href="/index.html" class="btn-primary">Create a free account</a>
       </section>
 
       <section class="discover-more hidden">
@@ -105,13 +105,13 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-  <script src="js/firebase.js"></script>
-  <script src="js/logger.js"></script>
-  <script src="js/config.js"></script>
+  <script src="/js/firebase.js"></script>
+  <script src="/js/logger.js"></script>
+  <script src="/js/config.js"></script>
   <!-- Faz 29: acik sayfa. Isaret api.js'ten ONCE kurulmali. -->
   <script>window.PUBLIC_PAGE = true;</script>
-  <script src="js/api.js"></script>
-  <script src="js/discover.js"></script>
-  <script src="js/pwa.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/discover.js"></script>
+  <script src="/js/pwa.js"></script>
 </body>
 </html>

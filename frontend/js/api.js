@@ -104,7 +104,7 @@ function logout() {
     // Çıkış da giriş gibi tamamen istemci tarafında: Firebase yerel oturumu
     // siliyor, sunucumuza istek gitmiyor. Genelde milisaniyeler sürer.
     Logger.duration('auth', 'sign out', performance.now() - start);
-    window.location.href = 'index.html';
+    window.location.href = '/index.html';
   });
 }
 
@@ -119,7 +119,7 @@ function logout() {
 // bunu AÇIKÇA istemek zorunda; varsayılan hâlâ "korumalı".
 authReady.then((user) => {
   if (!user && !window.PUBLIC_PAGE) {
-    window.location.href = 'index.html';
+    window.location.href = '/index.html';
     return;
   }
   const setup = user ? initUserMenu : initSignedOutUI;

@@ -32,7 +32,7 @@ function renderRecipeCard(recipe) {
     .join('');
 
   const card = document.createElement('a');
-  card.href = `recipe.html?id=${encodeURIComponent(recipe.id)}`;
+  card.href = `/recipes/${encodeURIComponent(recipe.id)}`;
   card.className = 'recipe-card';
   card.innerHTML = `
     ${recipeThumbHtml(recipe)}

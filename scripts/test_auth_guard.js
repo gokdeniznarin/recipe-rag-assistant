@@ -140,7 +140,7 @@ function run(user, publicPage) {
   // ── 1–2. Korumalı sayfa: davranış DEĞİŞMEDİ ────────────
   const protectedOut = await run(null, undefined);
   check('a protected page still bounces a signed-out visitor',
-        protectedOut.redirects.includes('index.html'), JSON.stringify(protectedOut.redirects));
+        protectedOut.redirects.includes('/index.html'), JSON.stringify(protectedOut.redirects));
 
   const protectedIn = await run({ email: 'a@b.com' }, undefined);
   check('a protected page lets a signed-in user through',

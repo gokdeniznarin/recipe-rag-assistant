@@ -117,7 +117,7 @@ confirmBtn.addEventListener('click', async () => {
       // kılmaz, kullanıcıyı yine de dışarı alıyoruz.
       accountLog.warn('Sign-out after deletion failed: ' + e.message);
     }
-    window.location.href = 'index.html?deleted=1';
+    window.location.href = '/index.html?deleted=1';
   } catch (err) {
     accountLog.error('Account deletion failed: ' + err.message);
     // Yarıda kalmış olabilir — ve bu SIRA sayesinde güvenli: Firestore verisi

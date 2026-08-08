@@ -13,7 +13,7 @@ const recipeId = window.__RECIPE_ID__ || params.get('id');
 const embeddedRecipe = window.__RECIPE_DATA__ || null;
 
 if (!recipeId) {
-  window.location.href = 'search.html';
+  window.location.href = '/search.html';
 }
 
 // ── DOM ──────────────────────────────────────────────────
@@ -133,7 +133,7 @@ function renderSimilar(recipes) {
   // Kart markup'ı arama sonuçlarıyla AYNI (api.js'teki ortak recipeThumbHtml) —
   // aynı bileşeni üçüncü kez elle yazmamak için.
   similarList.innerHTML = recipes.map(r => `
-    <a href="recipe.html?id=${encodeURIComponent(r.id)}" class="recipe-card">
+    <a href="/recipes/${encodeURIComponent(r.id)}" class="recipe-card">
       ${recipeThumbHtml(r)}
       <div class="recipe-card-body">
         <h3 class="recipe-name">${escapeHtml(r.name)}</h3>
@@ -255,7 +255,7 @@ function requiresSignIn(favoriteId) {
   // tarif otomatik favorilenecek. Kullanıcıyı "hadi şimdi tekrar tıkla"
   // konumuna düşürmek klasik bir sızıntı — niyetini zaten söylemişti.
   saveReturnIntent(favoriteId);
-  window.location.href = 'index.html';
+  window.location.href = '/index.html';
   return true;
 }
 

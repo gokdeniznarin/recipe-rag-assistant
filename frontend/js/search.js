@@ -220,7 +220,7 @@ const renderResults = Logger.timed(function (data) {
 
   data.results.forEach(recipe => {
     const card = document.createElement('a');
-    card.href = `recipe.html?id=${encodeURIComponent(recipe.id)}`;
+    card.href = `/recipes/${encodeURIComponent(recipe.id)}`;
     card.className = 'recipe-card';
 
     // Aktif diyet tag'lerini önem sırasına göre sırala:

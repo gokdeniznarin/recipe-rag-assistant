@@ -172,7 +172,7 @@ check('falls back to </head> when the marker is gone',
 // etiketlerini kapanmamış bir yorumun içinde bıraktı. Sayfa stilsiz açılırdı,
 // ve etiketler yedek yoldan yine basıldığı için testler YEŞİL kalmıştı.
 check('the stylesheet link survives injection',
-      /<link rel="stylesheet" href="css\/style\.css"/.test(page));
+      /<link rel="stylesheet" href="\/css\/style\.css"/.test(page));
 check('every HTML comment is closed',
       (page.match(/<!--/g) || []).length === (page.match(/-->/g) || []).length,
       `${(page.match(/<!--/g) || []).length} açılış / ${(page.match(/-->/g) || []).length} kapanış`);
@@ -316,6 +316,39 @@ check('utm parameters never reach the canonical url',
 check('utm parameters do not break path parsing',
       seo.parseRecipePath('/recipes/25500-x?utm_source=pinterest') === '25500' &&
       seo.parseCollectionPath('/discover/cookies?utm_source=pinterest') === 'cookies');
+
+// ── 67–70. 🔴 İÇ İÇE ADRESTEN SUNULAN SAYFALARDA GÖRECELİ YOL OLAMAZ ──
+//
+// CANLIDA YAŞANAN HATA (2026-08-08): `discover.html` `href="css/style.css"`
+// taşıyordu. Kök seviyeden sunulduğu sürece çalışıyordu, ama SSR onu
+// `/discover/homemade-bread` adresinden sunuyor ve tarayıcı yolu
+// `/discover/css/style.css` diye çözüyor → **404**. Sayfa tamamen stilsiz
+// açıldı, JS hiç yüklenmedi, "Loading…" ekranda kaldı. Aynı hata
+// `/recipes/{id}-{slug}` sayfasında da vardı.
+//
+// ⚠️ ÖNCEKİ TEST BUNU KAÇIRDI çünkü dizginin VAR OLDUĞUNU doğruluyordu
+// (`/href="css\/style\.css"/`) — dizgi vardı. Doğrulanmayan şey, iç içe bir
+// adreste tarayıcının onu ÇÖZEBİLMESİYDİ. Varlığı ölçmek, doğruluğu ölçmek
+// değil.
+const NESTED_PAGES = ['recipe.html', 'discover.html'];
+
+for (const page of NESTED_PAGES) {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'frontend', page), 'utf8');
+  // Kabul edilenler: `/...` (kök), `https://...` (dış), `#...` (çapa).
+  // `src=""` HARIÇ: kapak görselinin yer tutucusu, JS onu hemen dolduruyor.
+  const bad = (html.match(/(?:href|src)="(?![/#]|https?:)[^"]+"/g) || []);
+  check(`${page} has no relative asset or link paths`, bad.length === 0,
+        bad.join(' | '));
+}
+
+// Aynı tuzağın JS karşılığı: `location.href = 'index.html'` iç içe bir
+// adreste `/discover/index.html`'e gider. Bu dosyalar iki SSR sayfasında da
+// yükleniyor, yani oradaki her göreceli gezinme bozuk.
+for (const js of ['api.js', 'recipe.js', 'discover.js']) {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'frontend', 'js', js), 'utf8');
+  const bad = (src.match(/location\.href\s*=\s*['"`](?![/#]|https?:)[^'"`]+/g) || []);
+  check(`js/${js} navigates with root-relative paths`, bad.length === 0, bad.join(' | '));
+}
 
 console.log(failures === 0
   ? `\nseo meta checks passed (${pass})`
