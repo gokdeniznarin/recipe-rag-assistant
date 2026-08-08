@@ -85,12 +85,18 @@ function run(user, publicPage) {
   // eklemeler ayrica kaydediliyor.
   const everAdded = new Set();
   const removed = new Set();
+  // ⚠️ SIRA kaydediliyor: ortunun kaldirilmasi ile yonlendirme arasindaki
+  // sira, cakmanin OLUP OLMAMASINI belirliyor (asagidaki teste bak).
+  const events = [];
 
   const documentStub = {
     documentElement: {
       classList: {
         add: (c) => { rootClasses.add(c); everAdded.add(c); },
-        remove: (c) => { rootClasses.delete(c); removed.add(c); },
+        remove: (c) => {
+          rootClasses.delete(c); removed.add(c);
+          if (c === 'auth-pending') events.push('reveal');
+        },
         contains: (c) => rootClasses.has(c),
       },
     },
@@ -119,10 +125,10 @@ function run(user, publicPage) {
     location: {
       pathname: '/recipe.html',
       get href() { return '/recipe.html'; },
-      set href(v) { redirects.push({ to: v, mode: 'push' }); },
+      set href(v) { redirects.push({ to: v, mode: 'push' }); events.push('redirect'); },
       // Faz 29: guard artik `replace()` kullaniyor — geri tusu asla
       // gorulmemesi gereken sayfaya donmesin diye.
-      replace(v) { redirects.push({ to: v, mode: 'replace' }); },
+      replace(v) { redirects.push({ to: v, mode: 'replace' }); events.push('redirect'); },
     },
     addEventListener() {},
   };
@@ -155,7 +161,7 @@ function run(user, publicPage) {
 
   // guard `authReady.then(...)` içinde — mikrogörev kuyruğunun boşalmasını bekle.
   return new Promise((resolve) =>
-    setTimeout(() => resolve({ redirects, shown, hidden, rootClasses, everAdded, removed }), 0));
+    setTimeout(() => resolve({ redirects, shown, hidden, rootClasses, everAdded, removed, events }), 0));
 }
 
 (async () => {
@@ -232,10 +238,19 @@ function run(user, publicPage) {
   // SONUNDA yükleniyor, tarayıcı oraya gelene kadar sayfayı çoktan boyamış
   // oluyor — örtü ilk boyamadan SONRA kuruluyordu ve içerik bir an
   // görünüyordu. Kullanıcı bunu İKİ KEZ bildirdi.
-  check('api.js reveals the page once auth is known',
-        protectedOut.removed.has('auth-pending'),
-        [...protectedOut.removed].join(','));
-  check('it reveals for a signed-in user too',
+  // 🔴 EN KRİTİK TEST. Faz 26c'de ölçüldü: `location.replace()` anında geçiş
+  // yapmıyor (~0.25 sn) ve o boşlukta sayfa hâlâ ekranda. İlk sürümde
+  // `revealPage()` yönlendirmeden ÖNCE çağrılıyordu — örtü kalkıyor, sayfa
+  // görünüyor, sonra tarayıcı geçiş yapıyordu. Kullanıcı çakmayı ÜÇ KEZ
+  // bildirdi ve ikisi bu sıradan kaynaklandı.
+  check('the cover is NEVER lifted on a page we are leaving',
+        !protectedOut.removed.has('auth-pending'),
+        `olaylar: ${protectedOut.events.join(' -> ')}`);
+  check('and no reveal happens before the redirect',
+        protectedOut.events.indexOf('reveal') === -1,
+        protectedOut.events.join(' -> '));
+  // Kalınan sayfada ise örtü MUTLAKA kalkmalı, yoksa kullanıcı boş ekran görür.
+  check('a signed-in user does get the page revealed',
         protectedIn.removed.has('auth-pending'));
 
   // Kurulum artık HTML'de olduğu için DOSYADAN doğrulanıyor.

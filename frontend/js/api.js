@@ -119,8 +119,17 @@ function logout() {
 // (api.js'ten ÖNCE) kuruluyor — yani bir sayfa açık hale gelmek için
 // bunu AÇIKÇA istemek zorunda; varsayılan hâlâ "korumalı".
 authReady.then((user) => {
-  revealPage();
   if (!user && !window.PUBLIC_PAGE) {
+    // ⚠️ ÖRTÜ BURADA KALDIRILMIYOR — bu, FAZ 26C'DE ÖĞRENİLEN DERSİN AYNISI
+    // ve önce yanlış tarafından tekrarlandı: `revealPage()` bu bloktan ÖNCE
+    // çağrılıyordu, yani örtü kalkıyor, sayfa görünür oluyor ve ANCAK SONRA
+    // yönlendirme başlıyordu. `location.replace()` anında geçiş yapmıyor
+    // (Faz 26c'de ölçüldü: ~0.25 sn) ve o boşlukta sayfa tamamen ekranda.
+    // Kullanıcı çakmayı üç kez bildirdi; ikisi bu sıradan kaynaklandı.
+    //
+    // Bu sayfadan gidiyoruz: örtü YERİNDE KALIYOR. `<head>`'deki 3 sn'lik
+    // zaman aşımı yedek olarak duruyor — yönlendirme bir şekilde hiç
+    // olmazsa ziyaretçi boş ekranda kalmıyor.
     // ⚠️ `replace()`, `href =` DEĞİL. Kullanıcı bildirdi: açık bir koleksiyon
     // sayfasından sidebar'daki "Search"e basınca giriş ekranına atılıyor
     // (doğru), ama tarayıcıda GERİ tuşuna basınca `search.html`'e düşüyordu —
@@ -132,6 +141,8 @@ authReady.then((user) => {
     window.location.replace('/index.html');
     return;
   }
+  // Bu sayfada KALIYORUZ: artık gösterilebilir.
+  revealPage();
   const setup = user ? initUserMenu : initSignedOutUI;
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', setup);
