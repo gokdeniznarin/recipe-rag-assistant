@@ -158,10 +158,12 @@ function run(user, publicPage) {
 
   vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(path.join(FRONTEND, 'js', 'api.js'), 'utf8'), sandbox);
+  // `logout()` ayrica cagrilabilsin (401 yolu testi).
+  const callLogout = () => sandbox.logout();
 
   // guard `authReady.then(...)` içinde — mikrogörev kuyruğunun boşalmasını bekle.
   return new Promise((resolve) =>
-    setTimeout(() => resolve({ redirects, shown, hidden, rootClasses, everAdded, removed, events }), 0));
+    setTimeout(() => resolve({ redirects, shown, hidden, rootClasses, everAdded, removed, events, callLogout }), 0));
 }
 
 (async () => {
@@ -252,6 +254,22 @@ function run(user, publicPage) {
   // Kalınan sayfada ise örtü MUTLAKA kalkmalı, yoksa kullanıcı boş ekran görür.
   check('a signed-in user does get the page revealed',
         protectedIn.removed.has('auth-pending'));
+
+  // ── 401 → otomatik çıkış: ÖRTÜ GERİ GELMELİ ───────────
+  //
+  // iPhone'da yaşandı: Firebase oturumu geri yüklüyor (kullanıcı VAR), guard
+  // sayfayı açıyor, sonra ilk API çağrısı 401 alıyor ve buradan çıkışa
+  // gidiliyor — kullanıcı korumalı sayfayı bir an görüyordu. Android'de
+  // görünmüyor çünkü orada token yenileme çalışıyor ve bu yola hiç girilmiyor.
+  // Faz 26c dersinin üçüncü yönlendirme yolundaki hâli.
+  {
+    const r = await run({ email: 'a@b.com' }, undefined);
+    r.callLogout();
+    await new Promise((res) => setTimeout(res, 0));
+    check('signing out re-covers the page before leaving',
+          r.rootClasses.has('auth-pending'),
+          `son olaylar: ${r.events.join(' -> ')}`);
+  }
 
   // Kurulum artık HTML'de olduğu için DOSYADAN doğrulanıyor.
   const PROTECTED = ['search.html', 'pantry.html', 'plan.html', 'shopping.html',

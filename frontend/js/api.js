@@ -100,6 +100,14 @@ function clearSessionScopedData() {
 function logout() {
   const start = performance.now();
   clearSessionScopedData();
+  // ⚠️ ÖRTÜYÜ GERİ KOY. Faz 26c dersinin ÜÇÜNCÜ yönlendirme yolundaki hâli:
+  // gidiyorsak sayfa görünmemeli. iPhone'da yaşandı — Firebase oturumu geri
+  // yüklüyor (kullanıcı VAR), guard sayfayı açıyor, sonra ilk API çağrısı
+  // 401 alıyor (iOS'un depolama kısıtları token yenilemeyi düşürebiliyor,
+  // Faz 10'daki "Cross-Site Tracking" notu) ve buradan çıkışa gidiliyor.
+  // Sonuç: kullanıcı korumalı sayfayı bir an görüyordu. Android'de görünmüyor
+  // çünkü orada token yenileme çalışıyor ve bu yola hiç girilmiyor.
+  document.documentElement.classList.add('auth-pending');
   auth.signOut().then(() => {
     // Çıkış da giriş gibi tamamen istemci tarafında: Firebase yerel oturumu
     // siliyor, sunucumuza istek gitmiyor. Genelde milisaniyeler sürer.
