@@ -10,18 +10,14 @@
  * "9.795 sayfa kamu malı metin" riski burada yok.
  */
 
-const { parseCollectionPath, buildCollectionHead, inject } = require('./_seo');
+const {
+  parseCollectionPath, buildCollectionHead, buildIndexHead, inject,
+} = require('./_seo');
 const { loadTemplate, fetchJson, originOf, sendHtml } = require('./_render');
 
 module.exports = async function handler(req, res) {
   const origin = originOf(req);
   const slug = parseCollectionPath(req.url);
-
-  if (!slug) {
-    res.statusCode = 404;
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.end('<!doctype html><title>Not found</title><p>Collection not found.');
-  }
 
   let template;
   try {
@@ -29,6 +25,24 @@ module.exports = async function handler(req, res) {
   } catch (_) {
     res.statusCode = 500;
     return res.end('Could not load the collection page.');
+  }
+
+  // Slug YOK → `/discover` dizini. Koleksiyon sayfalarının sonundaki
+  // "More collections" çipleri buraya bağlıydı ve burası 404 veriyordu.
+  if (!slug) {
+    const index = await fetchJson('/api/discover');
+    if (!index) {
+      return sendHtml(res, inject(
+        template,
+        '<title>Recipe collections — Recipe Assistant</title>\n  <meta name="robots" content="noindex" />',
+        {}
+      ), false);
+    }
+    return sendHtml(res, inject(
+      template,
+      buildIndexHead(index.collections, origin),
+      { __COLLECTION_INDEX__: index.collections }
+    ), true);
   }
 
   const data = await fetchJson(`/api/discover/${encodeURIComponent(slug)}`);

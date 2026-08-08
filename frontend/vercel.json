@@ -12,6 +12,7 @@
     { "source": "/recipes/:slug", "destination": "/api/recipe" },
     { "source": "/recipes", "destination": "/api/recipe" },
     { "source": "/discover/:slug", "destination": "/api/discover" },
-    { "source": "/discover", "destination": "/api/discover" }
+    { "source": "/discover", "destination": "/api/discover" },
+    { "source": "/sitemap.xml", "destination": "/api/sitemap" }
   ]
 }

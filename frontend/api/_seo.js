@@ -307,6 +307,71 @@ function buildCollectionHead(data, origin, options) {
 }
 
 /**
+ * Koleksiyon DİZİNİ (`/discover`) — bütün koleksiyonların listelendiği sayfa.
+ *
+ * NEDEN VAR: koleksiyon sayfalarının sonundaki "More collections" çipleri
+ * `/discover/{slug}` adreslerine bağlanıyordu ama `/discover`'ın kendisi
+ * 404 veriyordu. İki işi birden yapıyor: ziyaretçi için gezinme merkezi,
+ * arama motorları için de tek bir yerden bütün koleksiyonlara giden iç
+ * bağlantı hub'ı (sitemap'in insan tarafındaki karşılığı).
+ */
+function buildIndexHead(collections, origin) {
+  const url = `${origin}/discover`;
+  const list = Array.isArray(collections) ? collections : [];
+  const description =
+    `${list.length} hand-picked recipe collections — quick dinners, desserts, ` +
+    `vegetarian meals and more.`;
+
+  const tags = [
+    '<title>Recipe Collections — Recipe Assistant</title>',
+    `<meta name="description" content="${escapeHtml(description)}" />`,
+    `<link rel="canonical" href="${escapeHtml(url)}" />`,
+    '<meta property="og:type" content="website" />',
+    '<meta property="og:title" content="Recipe Collections" />',
+    `<meta property="og:description" content="${escapeHtml(description)}" />`,
+    `<meta property="og:url" content="${escapeHtml(url)}" />`,
+  ];
+
+  const itemList = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: 'Recipe Collections',
+    url,
+    numberOfItems: list.length,
+    itemListElement: list.map((c, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: c.title,
+      url: `${origin}/discover/${c.slug}`,
+    })),
+  };
+  tags.push(
+    `<script type="application/ld+json">${
+      JSON.stringify(itemList).replace(/</g, '\\u003c')}</script>`
+  );
+
+  return tags.join('\n  ');
+}
+
+/**
+ * `sitemap.xml` gövdesi.
+ *
+ * ⚠️ TARİF SAYFALARI BİLEREK YOK. Onlar `noindex` ile çıkıyor (9.795 sayfa
+ * kamu malı metni indekse vermek "içerik çiftliği" profili çizip domain
+ * itibarını düşürebilir), ve `noindex` bir sayfayı sitemap'e koymak Google'a
+ * çelişkili sinyal göndermek olurdu: "indeksle" ve "indeksleme" aynı anda.
+ * Sitemap yalnızca indekslenebilir olan şeyi listeliyor — dizin + koleksiyonlar.
+ */
+function buildSitemap(collections, origin) {
+  const list = Array.isArray(collections) ? collections : [];
+  const urls = [`${origin}/discover`, ...list.map((c) => `${origin}/discover/${c.slug}`)];
+  return '<?xml version="1.0" encoding="UTF-8"?>\n'
+    + '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    + urls.map((u) => `  <url><loc>${escapeHtml(u)}</loc></url>`).join('\n')
+    + '\n</urlset>\n';
+}
+
+/**
  * Etiketleri `recipe.html` şablonuna yerleştir.
  *
  * Statik <title> ÖNCE SİLİNİYOR: yoksa sayfada iki başlık kalır ve hangisinin
@@ -367,5 +432,7 @@ module.exports = {
   jsonLd,
   buildHead,
   buildCollectionHead,
+  buildIndexHead,
+  buildSitemap,
   inject,
 };

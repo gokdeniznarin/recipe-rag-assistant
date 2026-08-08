@@ -78,9 +78,49 @@ async function renderIndex() {
   }
 }
 
+/**
+ * `/discover` dizini — bütün koleksiyonlar (Faz 29 adım 7).
+ *
+ * Slug yoksa buraya düşülüyor. Önceden `search.html`'e yönlendiriliyordu,
+ * yani koleksiyon sayfalarının sonundaki "More collections" çipleri
+ * ziyaretçiyi uygulamanın dışına atıyordu.
+ */
+async function renderIndexPage() {
+  const embedded = window.__COLLECTION_INDEX__;
+  const list = embedded
+    || (await (await fetch(`${window.API_BASE}/api/discover`)).json()).collections;
+
+  titleEl.textContent = 'Recipe Collections';
+  descEl.textContent = 'Hand-picked sets of recipes, grouped by what you actually feel like cooking.';
+  countEl.textContent = `${list.length} collections`;
+
+  gridEl.innerHTML = '';
+  list.forEach((c) => {
+    const card = document.createElement('a');
+    card.href = `/discover/${encodeURIComponent(c.slug)}`;
+    card.className = 'recipe-card';
+    card.innerHTML = `
+      <div class="recipe-card-body">
+        <h3 class="recipe-name">${escapeHtml(c.title)}</h3>
+        <p class="recipe-meta">${escapeHtml(c.description)}</p>
+      </div>`;
+    gridEl.appendChild(card);
+  });
+
+  loadingEl.classList.add('hidden');
+  contentEl.classList.remove('hidden');
+}
+
 (async () => {
   if (!slug) {
-    window.location.href = 'search.html';
+    try {
+      await renderIndexPage();
+    } catch (err) {
+      discoverLog.error(`could not load the collection index: ${err.message}`);
+      loadingEl.classList.add('hidden');
+      errorEl.textContent = 'Could not load the collections.';
+      errorEl.classList.remove('hidden');
+    }
     return;
   }
 

@@ -281,6 +281,42 @@ check('embeds the collection payload',
       /__COLLECTION_DATA__ = \{/.test(discoverPage) &&
       /__COLLECTION_SLUG__ = "30-minute-dinners"/.test(discoverPage));
 
+// ── 58–66. Dizin sayfası + sitemap (Faz 29, adım 7) ──────
+const INDEX = [
+  { slug: '30-minute-dinners', title: '30-Minute Dinners', description: 'Fast.' },
+  { slug: 'cookies', title: 'Cookies', description: 'Sweet.' },
+];
+
+const indexHead = seo.buildIndexHead(INDEX, ORIGIN);
+check('the index page has its own title', /<title>Recipe Collections/.test(indexHead));
+check('the index canonical is /discover',
+      /canonical" href="[^"]*\/discover"/.test(indexHead));
+const indexLd = JSON.parse(/ld\+json">([\s\S]*?)<\/script>/.exec(indexHead)[1]);
+check('the index links to every collection',
+      indexLd.numberOfItems === 2 &&
+      indexLd.itemListElement[1].url === `${ORIGIN}/discover/cookies`,
+      JSON.stringify(indexLd.itemListElement));
+
+const sitemap = seo.buildSitemap(INDEX, ORIGIN);
+check('the sitemap is well-formed XML',
+      sitemap.startsWith('<?xml') && sitemap.trimEnd().endsWith('</urlset>'));
+check('it lists the index and every collection',
+      (sitemap.match(/<loc>/g) || []).length === 3 &&
+      sitemap.includes(`${ORIGIN}/discover/cookies`));
+// 🔴 Tarif sayfaları `noindex` ile çıkıyor. Bir `noindex` sayfayı sitemap'e
+// koymak Google'a aynı anda "indeksle" ve "indeksleme" demek olurdu.
+check('recipe pages are NOT in the sitemap', !/\/recipes\//.test(sitemap), sitemap);
+check('an empty collection list still yields valid XML',
+      seo.buildSitemap([], ORIGIN).includes('</urlset>'));
+
+// UTM'li adresler kanonik URL'i KİRLETMEMELİ, yoksa Google her pin varyantını
+// ayrı bir sayfa sanar ve indeks bölünür.
+check('utm parameters never reach the canonical url',
+      !/utm_/.test(rendered) && !/utm_/.test(collHead) && !/utm_/.test(indexHead));
+check('utm parameters do not break path parsing',
+      seo.parseRecipePath('/recipes/25500-x?utm_source=pinterest') === '25500' &&
+      seo.parseCollectionPath('/discover/cookies?utm_source=pinterest') === 'cookies');
+
 console.log(failures === 0
   ? `\nseo meta checks passed (${pass})`
   : `\n${failures} problem(s)`);

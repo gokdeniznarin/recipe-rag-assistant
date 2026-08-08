@@ -1,0 +1,23 @@
+# Recipe Assistant (Faz 29)
+#
+# Hangi sayfaların indekslenip indekslenmeyeceğine `<meta name="robots">`
+# karar veriyor, robots.txt DEĞİL — ve bu ayrım önemli: robots.txt bir sayfayı
+# TARAMAYI engeller, `noindex` ise İNDEKSLEMEYİ. Tarif sayfalarını burada
+# engellersek kazıyıcı `noindex` etiketini hiç göremez, ve daha kötüsü
+# Pinterest de sayfayı okuyamaz — yani pin başlıksız/görselsiz çıkar.
+# O yüzden burada hiçbir şey engellenmiyor.
+
+User-agent: *
+Allow: /
+
+# Kullanıcıya özel sayfaların taranmasının bir anlamı yok: hepsi giriş
+# istiyor, kazıyıcı yalnızca giriş formunu görür.
+Disallow: /pantry.html
+Disallow: /plan.html
+Disallow: /shopping.html
+Disallow: /favorites.html
+Disallow: /collection.html
+Disallow: /account.html
+Disallow: /nutrition.html
+
+Sitemap: https://recipe-rag-assistant.vercel.app/sitemap.xml

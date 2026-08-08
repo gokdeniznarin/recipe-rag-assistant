@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Pin sheet — Recipe Assistant</title>
+<!--
+  PIN GORSELI URETICI (Faz 29, adim 7).
+
+  NASIL KULLANILIR
+    1. `docker compose up -d api` (koleksiyon listesi oradan geliyor)
+    2. Bu dosyayi tarayicida ac (cift tik yeterli, sunucu gerekmiyor)
+    3. Her karta sag tik -> Inspect -> secili dugumde sag tik ->
+       "Capture node screenshot"  =>  tam 1000x1500 PNG
+    Chrome/Edge bu menuyu veriyor; Firefox'ta "Screenshot Node".
+
+  NEDEN ELLE DEGIL URETIM: `scripts/make_icons.py` ile ayni ilke - 14
+  koleksiyon x tasarim revizyonu, elle yapilinca tutarsizlasir. Burada palet
+  ve tipografi UYGULAMANIN KENDISIYLE ayni kaynaktan geliyor.
+
+  NEDEN PILLOW DEGIL: metin agirlikli bir tasarim font dosyasi gerektirir
+  (Playfair Display + Inter repoya girmeliydi). Tarayici o fontlari zaten
+  yukluyor ve cizimi bizden iyi yapiyor.
+
+  🔴 NEDEN FOOD.COM FOTOGRAFI KULLANILMIYOR: veri seti CC0 ama bu, yukleyenin
+  SAHIP OLMADIGI fotograflari kapsamiyor (CC0 deed'inin "Other Information"
+  bolumu zaten bunu soyluyor). Sayfada gosterirken baytlari onlarin CDN'i
+  sunuyor - hotlink, standart web davranisi. Ama kendi board'umuza pin
+  YUKLEMEK kopyalamaktir. Bu yuzden pinler tipografik.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    /* Palet uygulamanin css/style.css'inden birebir. */
+    --olive: #2D3B2D;
+    --cream: #F5F0E8;
+    --accent: #E8824A;
+  }
+  body {
+    margin: 0; padding: 2rem; background: #333;
+    font-family: 'Inter', sans-serif; color: var(--cream);
+  }
+  .sheet { display: flex; flex-wrap: wrap; gap: 2rem; }
+  #status { margin: 0 0 1.5rem; font-size: 0.9rem; }
+
+  /* Pinterest'in formati: dikey 2:3. */
+  .pin {
+    width: 1000px; height: 1500px; flex: 0 0 auto;
+    background: var(--olive); color: var(--cream);
+    display: flex; flex-direction: column;
+    justify-content: space-between;
+    padding: 110px 90px; box-sizing: border-box;
+    position: relative; overflow: hidden;
+  }
+  /* Marka isareti (sidebar'daki ✦ ile ayni astroid), dev ve sonuk. */
+  .pin::after {
+    content: '✦'; position: absolute;
+    right: -110px; bottom: -190px;
+    font-size: 620px; line-height: 1;
+    color: rgba(245, 240, 232, 0.055);
+  }
+  .kicker {
+    font-size: 34px; font-weight: 600; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--accent);
+  }
+  .title {
+    font-family: 'Playfair Display', serif; font-weight: 700;
+    font-size: 132px; line-height: 1.04; margin: 40px 0 34px;
+  }
+  .desc {
+    font-size: 42px; line-height: 1.45; max-width: 24ch;
+    color: rgba(245, 240, 232, 0.82);
+  }
+  .foot { display: flex; align-items: baseline; gap: 22px; }
+  .brand { font-family: 'Playfair Display', serif; font-size: 46px; }
+  .url { font-size: 32px; color: rgba(245, 240, 232, 0.55); }
+  .cap { font-size: 12px; color: #aaa; margin: 6px 0 0; }
+
+  /* Ekran goruntusu alinirken golge/kenar cikmasin. */
+  @media print { body { background: #fff; padding: 0; } }
+</style>
+</head>
+<body>
+  <p id="status">Loading collections…</p>
+  <div id="sheet" class="sheet"></div>
+
+<script>
+const API = 'http://localhost:8080';
+const SITE = 'recipe-rag-assistant.vercel.app';
+
+// Pinterest'te insanlar tarif degil NIYET ariyor; ust satir o niyeti soyluyor.
+const KICKERS = {
+  '30-minute-dinners': 'weeknight',
+  '15-minute-recipes': 'in a hurry',
+  'easy-desserts': 'something sweet',
+  'breakfast-ideas': 'mornings',
+  'chicken-dinners': 'the usual, better',
+  'one-pot-meals': 'one pan',
+  'homemade-bread': 'from scratch',
+  'cookies': 'the cookie jar',
+  'vegetable-sides': 'on the side',
+  'potato-recipes': 'comfort',
+  'lunch-and-snacks': 'midday',
+  'drinks': 'in a glass',
+  'vegetarian-dinners': 'meat-free',
+  'vegan-recipes': 'fully plant-based',
+};
+
+const esc = (s) => { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
+
+(async () => {
+  const status = document.getElementById('status');
+  let collections;
+  try {
+    collections = (await (await fetch(`${API}/api/discover`)).json()).collections;
+  } catch (err) {
+    status.textContent =
+      `Could not reach ${API} — run "docker compose up -d api" first. (${err.message})`;
+    return;
+  }
+
+  status.innerHTML =
+    `${collections.length} pins · right-click a card → Inspect → ` +
+    `right-click the highlighted node → <b>Capture node screenshot</b> (1000×1500)`;
+
+  const sheet = document.getElementById('sheet');
+  collections.forEach((c) => {
+    const wrap = document.createElement('div');
+    // ⚠️ `utm_*` PIN URL'INE ELLE EKLENMIYOR: Pinterest'e pin yuklerken
+    // hedef adresi orada yaziyorsun. Buradaki metin yalnizca gorselde
+    // okunan adres, tiklanabilir bir link degil.
+    wrap.innerHTML = `
+      <div class="pin" data-slug="${esc(c.slug)}">
+        <div>
+          <p class="kicker">${esc(KICKERS[c.slug] || 'recipes')}</p>
+          <h1 class="title">${esc(c.title)}</h1>
+          <p class="desc">${esc(c.description)}</p>
+        </div>
+        <div class="foot">
+          <span class="brand">✦ Recipe Assistant</span>
+          <span class="url">${SITE}/discover/${esc(c.slug)}</span>
+        </div>
+      </div>
+      <p class="cap">${esc(c.slug)}.png &nbsp;·&nbsp; ?utm_source=pinterest&amp;utm_medium=pin&amp;utm_campaign=${esc(c.slug)}</p>`;
+    sheet.appendChild(wrap);
+  });
+})();
+</script>
+</body>
+</html>
