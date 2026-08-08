@@ -7,13 +7,12 @@
   PIN GORSELI URETICI (Faz 29, adim 7).
 
   NASIL KULLANILIR
-    1. `docker compose up -d api` (koleksiyon listesi oradan geliyor)
-    2. Fotograflari `scripts/photos/` klasorune koy: `<slug>.jpg`
+    1. Fotograflari `scripts/photos/` klasorune koy: `<slug>.jpg`
        (orn. `scripts/photos/cookies.jpg`). Fotografi olmayan koleksiyon
        otomatik olarak TIPOGRAFIK tasarima dusuyor - yani hepsini bulmak
        zorunda degilsin, elindekiyle basla.
-    3. Bu dosyayi tarayicida ac
-    4. Her karta sag tik -> Inspect -> secili dugumde sag tik ->
+    2. Bu dosyayi tarayicida ac (cift tik yeterli)
+    3. Her karta sag tik -> Inspect -> secili dugumde sag tik ->
        "Capture node screenshot"  =>  tam 1000x1500 PNG
 
   FOTOGRAFLARI NEREDEN
@@ -109,26 +108,33 @@
   <div id="sheet" class="sheet"></div>
 
 <script>
-const API = 'http://localhost:8080';
 const SITE = 'recipe-rag-assistant.vercel.app';
 
-// Pinterest'te insanlar tarif degil NIYET ariyor; ust satir o niyeti soyluyor.
-const KICKERS = {
-  '30-minute-dinners': 'weeknight',
-  '15-minute-recipes': 'in a hurry',
-  'easy-desserts': 'something sweet',
-  'breakfast-ideas': 'mornings',
-  'chicken-dinners': 'the usual, better',
-  'one-pot-meals': 'one pan',
-  'homemade-bread': 'from scratch',
-  'cookies': 'the cookie jar',
-  'vegetable-sides': 'on the side',
-  'potato-recipes': 'comfort',
-  'lunch-and-snacks': 'midday',
-  'drinks': 'in a glass',
-  'vegetarian-dinners': 'meat-free',
-  'vegan-recipes': 'fully plant-based',
-};
+// ⚠️ LISTE BURAYA GOMULU, API'den CEKILMIYOR. Ilk surum `fetch` ile
+// localhost:8080'e gidiyordu ve BU CALISMIYORDU: dosya cift tikla acildiginda
+// sayfanin origin'i `null` oluyor, CORS istegi blokluyor ve sayfa bos kaliyor.
+// (Test edilmeden "cift tik yeterli" denmisti.) Gomulu liste araci hicbir seye
+// bagimli birakmiyor - docker bile gerekmiyor.
+//
+// `api/discover.py`'nin KOPYASI. Yeni bir koleksiyon eklenirse buraya da
+// eklenmeli; bu bir sanat uretim araci, ayrisma en fazla "o pin uretilmez"
+// demek. (plan.js'teki SLOTS kopyasiyla ayni tercih.)
+const COLLECTIONS = [
+  { slug: '30-minute-dinners', title: '30-Minute Dinners', description: 'Real dinners you can get on the table in half an hour.' },
+  { slug: '15-minute-recipes', title: '15-Minute Recipes', description: 'For the nights when cooking has to be quick.' },
+  { slug: 'easy-desserts', title: 'Easy Desserts', description: 'Sweet things that do not take an afternoon.' },
+  { slug: 'breakfast-ideas', title: 'Breakfast Ideas', description: 'Ways to start the day that are not cereal.' },
+  { slug: 'chicken-dinners', title: 'Chicken Dinners', description: 'The weeknight staple, done a lot of different ways.' },
+  { slug: 'one-pot-meals', title: 'One-Pot Meals', description: 'Everything in one dish, and one dish to wash.' },
+  { slug: 'homemade-bread', title: 'Homemade Bread', description: 'Loaves, quick breads and everything in between.' },
+  { slug: 'cookies', title: 'Cookies', description: 'Drop cookies, bars, and the rest of the jar.' },
+  { slug: 'vegetable-sides', title: 'Vegetable Sides', description: 'The part of the plate that usually gets ignored.' },
+  { slug: 'potato-recipes', title: 'Potato Recipes', description: 'Roasted, mashed, baked and fried.' },
+  { slug: 'lunch-and-snacks', title: 'Lunch & Snacks', description: 'Midday food worth looking forward to.' },
+  { slug: 'drinks', title: 'Drinks', description: 'Hot, cold, and everything you can put in a glass.' },
+  { slug: 'vegetarian-dinners', title: 'Vegetarian Dinners', description: 'Meat-free meals that are actually dinner, not a side salad.' },
+  { slug: 'vegan-recipes', title: 'Vegan Recipes', description: 'No meat, no dairy, no eggs. Nothing that tastes like a compromise.' },
+];
 
 const esc = (s) => { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
 
@@ -151,14 +157,7 @@ function findPhoto(slug) {
 
 (async () => {
   const status = document.getElementById('status');
-  let collections;
-  try {
-    collections = (await (await fetch(`${API}/api/discover`)).json()).collections;
-  } catch (err) {
-    status.textContent =
-      `Could not reach ${API} — run "docker compose up -d api" first. (${err.message})`;
-    return;
-  }
+  const collections = COLLECTIONS;
 
   const sheet = document.getElementById('sheet');
   let withPhoto = 0;
