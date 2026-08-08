@@ -39,6 +39,34 @@
 html.auth-pending body { visibility: hidden; }
 html.auth-pending { background: var(--bg); }
 
+/* Bekleme BOŞ bir sayfa gibi görünmesin. Telefonda `authReady` masaüstünden
+   belirgin biçimde uzun sürüyor (Firebase SDK gstatic'ten iniyor + oturum
+   IndexedDB'den geri yükleniyor; masaüstünde canlıda ~975 ms ölçülmüştü,
+   Faz 13b). O sürede krem bir hiçlik göstermek arıza gibi duruyor.
+
+   Gösterge `html`'in pseudo-elemanı: `body` gizli olduğu için içine
+   konulamaz. */
+html.auth-pending::before {
+  content: '';
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border: 2.5px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: auth-spin 0.7s linear infinite;
+}
+
+@keyframes auth-spin { to { transform: rotate(360deg); } }
+
+/* Hareketi azaltma tercihine saygı: dönmek yerine sabit bir işaret. */
+@media (prefers-reduced-motion: reduce) {
+  html.auth-pending::before { animation: none; border-top-color: var(--accent); }
+}
+
 /* ── Reset ─────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 

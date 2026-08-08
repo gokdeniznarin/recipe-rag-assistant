@@ -262,9 +262,21 @@ function run(user, publicPage) {
     check(`${page} covers itself in <head>, before the stylesheet`,
           head.includes("classList.add('auth-pending')")
           && head.indexOf('auth-pending') < head.indexOf('css/style.css'));
-    // Kendi zaman aşımını taşımalı: api.js hiç yüklenmezse sayfa BOŞ kalırdı.
-    check(`${page} uncovers itself if api.js never loads`,
-          /3000/.test(head.slice(head.indexOf('auth-pending'))));
+    // 🔴 ZAMAN AŞIMI SAYFAYI GÖSTERMEMELİ, GİRİŞ SAYFASINA GİTMELİ.
+    // Telefondaki çakmanın sebebi tam olarak buydu: mobilde `authReady`
+    // 3 sn'yi aşabiliyor (Firebase SDK gstatic'ten iniyor + oturum
+    // IndexedDB'den geri yükleniyor; masaüstünde ~975 ms ölçülmüştü),
+    // zaman aşımı sayfayı açıyor, sonra guard yönlendiriyordu.
+    // Korumalı bir sayfada "göster" hiçbir zaman doğru yedek değil.
+    const timeout = head.slice(head.indexOf('auth-pending'));
+    check(`${page} falls back to the login page, not to showing itself`,
+          /location\.replace/.test(timeout) && !/classList\.remove/.test(timeout),
+          timeout.replace(/\s+/g, ' ').slice(0, 120));
+    // Süre, YAVAŞ AMA ÇALIŞAN bir bağlantıda devreye girmeyecek kadar cömert
+    // olmalı — yoksa telefonda oturumu açık kullanıcıyı sebepsiz kovar.
+    check(`${page} waits long enough for a slow phone`,
+          Number((timeout.match(/,\s*(\d{4,})\s*\)/) || [])[1]) >= 10000,
+          (timeout.match(/,\s*(\d{4,})\s*\)/) || [])[1]);
   }
 
   // 🔴 Açık sayfalar örtüyü HİÇ kurmamalı: veriyi HTML'e gömülü alıyorlar ve

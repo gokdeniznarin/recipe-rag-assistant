@@ -2,17 +2,26 @@
 <html lang="en">
 <head>
   <!-- Faz 29: oturum durumu netlesene kadar sayfayi gizle.
-       ⚠️ BURADA, <head>'DE olmak ZORUNDA. Ilk denemede bunu api.js yapiyordu
-       ama o dosya <body>'nin SONUNDA yukleniyor: tarayici oraya gelene kadar
-       sayfayi COKTAN boyamis oluyor, yani ortu ilk boyamadan SONRA kuruluyor
-       ve kullanici icerigi bir an goruyor (kullanici bildirdi, iki kez).
-       Kendi kendine yeten: zaman asimi da burada, boylece api.js hic
-       yuklenmese bile sayfa 3 sn sonra gorunur oluyor. -->
+       ⚠️ BURADA, <head>'DE olmak ZORUNDA. api.js <body>'nin SONUNDA yukleniyor,
+       yani tarayici oraya gelene kadar sayfayi coktan boyamis oluyor.
+
+       ⚠️ ZAMAN ASIMI SAYFAYI GOSTERMIYOR, GIRIS SAYFASINA GIDIYOR. Ilk surum
+       gosteriyordu ve TELEFONDA cakmanin sebebi tam olarak buydu: mobilde
+       `authReady` 3 sn'yi asabiliyor (Firebase SDK gstatic'ten iniyor +
+       oturum IndexedDB'den geri yukleniyor; masaustunde ~975 ms olculmustu),
+       zaman asimi sayfayi aciyor, sonra guard yonlendiriyordu.
+       Korumali bir sayfada "goster" HICBIR ZAMAN dogru yedek degil: oturum
+       netlesmediyse dogru varis noktasi giris sayfasidir. Sure de cok daha
+       comert (12 sn) - yavas ama CALISAN bir baglantida hic devreye girmiyor. -->
   <script>
     (function () {
       var r = document.documentElement;
       r.classList.add('auth-pending');
-      setTimeout(function () { r.classList.remove('auth-pending'); }, 3000);
+      setTimeout(function () {
+        if (r.classList.contains('auth-pending')) {
+          window.location.replace('/index.html');
+        }
+      }, 12000);
     })();
   </script>
   <meta charset="UTF-8" />
