@@ -74,7 +74,6 @@ const PRECACHE = [
   '/js/recipe.js',
   '/js/discover.js',
   '/js/intent.js',
-  '/js/authtrace.js',
   '/js/search.js',
   '/js/shopping.js',
   '/js/stores.js',
