@@ -89,3 +89,10 @@ jobs:
       # başka bir sayfaya sızması hiçbir şeyi kırmaz, sadece o sayfayı açar.
       - name: Auth guard (public vs protected pages)
         run: node scripts/test_auth_guard.js
+
+      # Kaydolduktan sonra geldiği tarife dönüş. İki ayrı risk: saklanan yol
+      # doğrudan window.location'a gidiyor (açık yönlendirme), ve sessionStorage
+      # sekmeye özel ama kullanıcıya özel değil (aynı sekmede bir sonraki
+      # kullanıcı öncekinin niyetini devralabilir — Faz 20'de yaşandı).
+      - name: Post-sign-in return intent
+        run: node scripts/test_intent.js

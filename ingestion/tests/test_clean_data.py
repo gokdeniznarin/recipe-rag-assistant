@@ -147,19 +147,104 @@ class TestDietTagsNuts:
     def test_nut_in_category(self):
         assert "nut_free" not in extract_diet_tags(["sugar", "butter"], "Peanut Butter", "Fudge")
 
-    @pytest.mark.xfail(
-        reason="BİLİNEN HATA: nut kontrolü tarif adına bakmıyor (clean_data.py:121). "
-               "Ada bakan güvenlik ağı yalnızca et için kurulmuş (satır 77-80); "
-               "nuts, dairy ve gluten yalnızca malzeme + kategoriye bakıyor. "
-               "validate_tags.py de aynı kör noktayı paylaşıyor (satır 48-51 "
-               "sadece RecipeCategory'ye bakıyor), o yüzden 0 çelişki raporluyor.",
-        strict=True,
-    )
     def test_nut_in_name_only_should_not_be_nut_free(self):
-        # Gerçek örnekler (canlı aramada görüldü): "Pine Nut and Almond Cookies"
-        # ve "wheat free peanut butter cookies" nut_free: True etiketli.
+        """Faz 7'de fark edilen, Faz 15b'de kök sebebi bulunan, FAZ 29'DA
+        DÜZELTİLEN hata. Uzun süre `xfail(strict=True)` olarak duruyordu.
+
+        Kök sebep: ada bakan güvenlik ağı yalnızca ET için kurulmuştu;
+        nuts/dairy/gluten sadece malzeme + kategoriye bakıyordu. Malzeme
+        listesi ["flour","sugar"] olan bir tarif, adı açıkça "Almond" dese
+        bile fıstıksız sayılıyordu."""
         tags = extract_diet_tags(["flour", "sugar"], "Cookie", "Pine Nut and Almond Cookies")
         assert "nut_free" not in tags
+
+    def test_the_other_half_of_the_same_bug(self):
+        """İkinci canlı örnek (Faz 7): "wheat free peanut butter cookies"."""
+        tags = extract_diet_tags(["flour", "sugar"], "Dessert", "wheat free peanut butter cookies")
+        assert "nut_free" not in tags
+
+
+class TestWordBoundaryMatching:
+    """Faz 29 — eşleştirme DÜZ ALT-DİZİ'den TAM KELİME'ye geçti.
+
+    Her test gerçek veri setinde ÖLÇÜLEN bir vakayı sabitliyor. Düz alt-dizi
+    aramasına dönülürse hepsi kırılır.
+    """
+
+    def test_graham_crackers_are_not_meat(self):
+        """🔴 En pahalı tuzak: `ham` et listesine eklenecekti ve düz alt-dizi
+        aramasında **graham** kelimesine takılıyordu — 9.795 tarifte 101 kez,
+        yani 101 tatlı "et içeriyor" sayılacaktı. Düzeltmekten daha kötü."""
+        tags = extract_diet_tags(["graham cracker", "sugar", "lemon"], "Pie", "5 Minute Lemon Pie")
+        assert "vegetarian" in tags
+
+    def test_champagne_and_bechamel_are_not_ham_either(self):
+        for ingredient in ["champagne", "bechamel sauce", "chambord"]:
+            tags = extract_diet_tags([ingredient, "sugar"], "Dessert", "Something Sweet")
+            assert "vegetarian" in tags, ingredient
+
+    def test_beefsteak_tomatoes_are_a_tomato(self):
+        """Ölçümde çıktı: `Calzones of Tomato, Mozzarella and Basil` etli
+        sayılıyordu, çünkü "beef" **beefsteak tomatoes** içinde eşleşiyordu."""
+        tags = extract_diet_tags(["beefsteak tomatoes", "olive oil"], "Vegetable", "Tomato Salad")
+        assert "vegetarian" in tags
+
+    def test_aceitunas_does_not_contain_tuna(self):
+        """`Marinated Olives - Aceitunas Aliñadas` pescatarian etiketliydi:
+        "tuna" kelimesi ace-TUNA-s içinde eşleşiyordu."""
+        tags = extract_diet_tags(["olives", "olive oil"], "Peppers", "Marinated Olives - Aceitunas Aliñadas")
+        assert "vegan" in tags
+        assert "pescatarian" not in tags
+
+    def test_crabapple_is_not_a_crab(self):
+        tags = extract_diet_tags(["crabapple", "sugar"], "Jam", "Crabapple Jam")
+        assert "pescatarian" not in tags
+        assert "vegetarian" in tags
+
+    def test_goat_cheese_contains_no_oats(self):
+        """"oat" kelimesi **goat** içinde eşleşiyordu, yani keçi peynirli her
+        tarif "gluten içeriyor" sayılıyordu."""
+        tags = extract_diet_tags(["goat cheese", "tomato"], "Cheese", "Goat Cheese Salad")
+        assert "gluten_free" in tags
+
+    def test_compound_words_still_count_as_meat(self):
+        """⚠️ Kelime sınırının BEDELİ: `\\bmeats?\\b` artık "meatball" içinde
+        eşleşmiyor. Ölçümde yakalandı (`Meatball Casserole` vejetaryene
+        düşmüştü), bileşik hâller listeye ayrıca yazıldı."""
+        for name in ["Meatball Casserole", "Classic Meatloaf", "Fried Catfish Nuggets"]:
+            tags = extract_diet_tags(["onion", "salt"], "Dinner", name)
+            assert "vegetarian" not in tags, name
+
+    def test_a_plant_based_signal_still_wins(self):
+        """"Tofu Meatloaf" gerçekten vejetaryen — `meatloaf` et listesine
+        girince taklit ürün sinyali (`tofu`) korumaya alındı."""
+        tags = extract_diet_tags(["tofu", "onion"], "Vegetable", "Tofu Meatloaf")
+        assert "vegetarian" in tags
+
+
+class TestExpandedMeatList:
+    """Faz 29 — ölçüldü: 228 tarif vejetaryen etiketliyken içinde et vardı."""
+
+    @pytest.mark.parametrize("meat", [
+        "ham", "sausage", "prosciutto", "pancetta", "salami",
+        "veal", "duck", "venison", "chorizo", "pepperoni",
+    ])
+    def test_missing_meats_are_now_caught(self, meat):
+        assert "vegetarian" not in extract_diet_tags([meat, "onion"], "Dinner", "Some Dish")
+
+    def test_the_recipe_that_started_it(self):
+        """`Cheesy Asparagus And Ham` (id 25500) — adında AÇIKÇA ham geçiyor
+        ve yine de vejetaryen etiketliydi."""
+        tags = extract_diet_tags(
+            ["butter", "flour", "milk", "cheddar", "asparagus", "ham"],
+            "Ham", "Cheesy Asparagus And Ham")
+        assert "vegetarian" not in tags
+
+    @pytest.mark.parametrize("seafood", ["clam", "prawn", "scallop", "mussel", "oyster"])
+    def test_expanded_seafood_is_caught(self, seafood):
+        tags = extract_diet_tags([seafood, "garlic"], "Seafood", "Some Dish")
+        assert "vegetarian" not in tags
+        assert "pescatarian" in tags
 
 
 class TestBuildDescription:

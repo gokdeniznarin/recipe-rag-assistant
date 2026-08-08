@@ -67,8 +67,43 @@ def parse_duration_to_minutes(iso_duration):
     
     return total_minutes if total_minutes > 0 else None
 
+def parse_servings(value):
+    """
+    `RecipeServings` → int (bilinmiyorsa 0).
+
+    Veri setinde ~%36'sı boş, ayrıca "4.0" gibi ondalıklı geliyor. Uçuk
+    değerler eleniyor: veri setinde 1'den küçük ve 100'den büyük porsiyon
+    sayıları veri hatası (porsiyon başına bölme yapılırsa saçma sayı üretir).
+    0 dönmek "bilinmiyor" demek — TAHMİN ÜRETİLMİYOR, çünkü uydurulmuş bir
+    porsiyon sayısı, bugün yayınlamadığımız besin değerlerini yanlış bir
+    güvenle yayınlanabilir gösterirdi.
+    """
+    try:
+        n = int(float(value))
+    except (TypeError, ValueError):
+        return 0
+    return n if 1 <= n <= 100 else 0
+
+
+def has_word(text, words):
+    """
+    `words`'ten herhangi biri `text` içinde TAM KELİME olarak geçiyor mu?
+
+    ⚠️ DÜZ ALT-DİZİ ARAMASI KULLANILAMAZ ve bunun bedeli ölçüldü (Faz 29):
+    `"ham" in text` kontrolü 9.795 tarifte **graham** (101 kez — graham
+    cracker'lı tatlılar), champagne (11), chambord (9), bechamel (3) ve
+    bahama (3) kelimelerine takılıyordu. Yani "ham"i et listesine düz
+    eklemek, 101 tatlıyı "et içeriyor" saymak demekti — düzeltmeye
+    çalıştığımızdan daha kötü bir hata.
+
+    Çoğul hâller de eşleşiyor (`\\bhams?\\b`): veri setinde hem "sausage"
+    hem "sausages" geçiyor.
+    """
+    return any(re.search(r"\b" + re.escape(w) + r"s?\b", text) for w in words)
+
+
 def extract_diet_tags(ingredients_list, category="", name=""):
-    """Malzeme ve kategori üzerinden diyet etiketi çıkarır"""
+    """Malzeme, kategori VE tarif adı üzerinden diyet etiketi çıkarır"""
     tags = []
     ingredients_text = " ".join(ingredients_list).lower()
     category_lower = str(category).lower()
@@ -78,39 +113,83 @@ def extract_diet_tags(ingredients_list, category="", name=""):
 
     # Tarif adında "vegan/vegetarian/plant-based" gibi bir işaret var mı?
     # Varsa adındaki et kelimeleri bitki bazlı taklit üründür (örn. "Vegan Chicken Nuggets")
+    # `tofu` Faz 29'da eklendi: aşağıda `meatloaf`/`meatball` et listesine
+    # girince "Tofu Meatloaf" yanlışlıkla etli sayılıyordu. Taklit ürünlerin
+    # en yaygın işareti bu.
+    # ⚠️ `veggie` FAZ 29'DA ÇIKARILDI. Bu liste "addaki et kelimesi taklit
+    # üründür" demek için var (örn. "Vegan Chicken Nuggets"), ama `veggie`
+    # o iddiayı taşımıyor — çoğunlukla sadece "sebzeli" demek. Ölçüldü:
+    # adında hem "veggie" hem et geçen 9 tarif var ve 3'ü bu yüzden
+    # vejetaryen sayılıyordu (`Sausage and Veggie Skillet Supper`,
+    # `Quinoa With Veggies and Grilled Chicken Breast`, `Veggie Chicken Wraps`).
+    # Gerçek taklit ürünler ("Veggie Burger") adlarında zaten et kelimesi
+    # taşımıyor, yani çıkarmanın ölçülen bir bedeli yok.
     plant_based_signals = ["vegan", "vegetarian", "plant-based", "plant based",
-                           "meatless", "meat-free", "veggie"]
+                           "meatless", "meat-free", "tofu"]
     is_plant_based_by_name = any(sig in name_lower for sig in plant_based_signals)
     
     # --- Gluten-free ---
+    # ⚠️ Kelime sınırlı eşleştirmeye geçildi (Faz 29), ve bu bir DÜZELTME:
+    # düz alt-dizi aramasında "oat" kelimesi **"goat"** içinde eşleşiyordu,
+    # yani keçi peyniri kullanan her tarif "gluten içeriyor" sayılıyordu.
+    # Karşılığında "oatmeal"/"rolled oats" gibi bileşik hâllerin listeye
+    # AÇIKÇA yazılması gerekiyor — kelime sınırı onları da eliyor.
     gluten_words = ["flour", "wheat", "bread", "pasta", "barley", "rye",
-                    "spaghetti", "macaroni", "noodle", "roll", "dough", "biscuit",
-                    "cracker", "tortilla", "bun", "bagel", "cereal", "oat", "couscous",
-                    "breadcrumb", "crouton", "pretzel", "pastry", "pita", "pizza"]
+                    "spaghetti", "macaroni", "noodle", "roll", "rolled oats",
+                    "dough", "biscuit", "cracker", "tortilla", "bun", "bagel",
+                    "cereal", "oat", "oatmeal", "couscous", "breadcrumb",
+                    "bread crumb", "crouton", "pretzel", "pastry", "pita",
+                    "pizza", "semolina", "farro", "bulgur", "seitan", "orzo",
+                    "penne", "linguine", "fettuccine", "lasagna", "ravioli"]
     gluten_categories = ["bread", "pasta", "pizza", "pie", "cookie", "cake", "pastry"]
     is_labeled_gf = "gluten" in category_lower and "free" in category_lower
-    
-    has_gluten = (any(word in ingredients_text for word in gluten_words)
-                  or any(c in category_lower for c in gluten_categories)) and not is_labeled_gf
+
+    has_gluten = (has_word(ingredients_text, gluten_words)
+                  or any(c in category_lower for c in gluten_categories)
+                  or has_word(name_lower, gluten_words)) and not is_labeled_gf
     if not has_gluten:
         tags.append("gluten_free")
     
     # --- Et / deniz ürünü ---
-    land_meat = ["chicken", "beef", "pork", "meat", "bacon", "turkey", "lamb"]
-    seafood = ["fish", "shrimp", "salmon", "tuna", "cod", "crab", "lobster", "anchovy"]
-    meat_categories = ["chicken", "beef", "pork", "poultry", "meat", "lamb", "turkey"]
-    seafood_categories = ["fish", "seafood", "salmon", "tuna"]
-    
-    # Tarif adında et kelimesi var mı? (sadece bitki bazlı sinyal YOKSA sayılır)
-    name_has_land_meat = (not is_plant_based_by_name
-                          and any(word in name_lower for word in land_meat))
-    name_has_seafood = (not is_plant_based_by_name
-                        and any(word in name_lower for word in seafood))
+    #
+    # 🔴 BU LİSTE FAZ 29'DA GENİŞLETİLDİ. Öncesinde yalnızca
+    # ["chicken","beef","pork","meat","bacon","turkey","lamb"] vardı ve
+    # ölçüldü ki **228 tarif** vejetaryen etiketliyken içinde et geçiyordu:
+    # ham 123, sausage 68, prosciutto 13, pancetta 7, veal/duck 10,
+    # salami/venison 7. Adında açıkça "Ham" geçen tarif bile vejetaryen
+    # sayılıyordu (`Cheesy Asparagus And Ham`, id 25500).
+    #
+    # `hamburger` AYRI bir girdi: kelime sınırı yüzünden `\bhams?\b` onu
+    # yakalamıyor (46 tarifte geçiyor ve hepsi gerçekten et).
+    land_meat = [
+        "chicken", "beef", "pork", "meat", "bacon", "turkey", "lamb",
+        "ham", "hamburger", "sausage", "kielbasa", "prosciutto", "pancetta", "salami",
+        "pepperoni", "veal", "duck", "venison", "chorizo", "bratwurst",
+        "sirloin", "brisket", "ribeye", "pastrami", "mutton", "goose",
+        # ⚠️ BİLEŞİK HÂLLER AYRI YAZILMAK ZORUNDA. Kelime sınırına geçince
+        # `\bmeats?\b` artık "meatball"/"meatloaf" içinde eşleşmiyor ve ölçüm
+        # bunu yakaladı: `Meatball Casserole` vejetaryen sayılmaya başlamıştı.
+        # (Düz alt-dizi aramasının tesadüfen doğru yaptığı tek şey buydu.)
+        "meatball", "meatloaf",
+    ]
+    seafood = ["fish", "shrimp", "salmon", "tuna", "cod", "crab", "lobster",
+               "anchovy", "sardine", "scallop", "mussel", "clam", "oyster",
+               "halibut", "tilapia", "trout", "prawn", "calamari", "squid",
+               # Aynı sebep: `\bfishs?\b` "catfish"i yakalamıyor ve
+               # `Crispy Fried Catfish Nuggets` vejetaryene düşmüştü.
+               "catfish", "swordfish", "monkfish", "shellfish", "whitefish"]
+    meat_categories = ["chicken", "beef", "pork", "poultry", "meat", "lamb", "turkey",
+                       "veal", "duck", "ham"]
+    seafood_categories = ["fish", "seafood", "salmon", "tuna", "crab", "lobster"]
 
-    has_land_meat = (any(word in ingredients_text for word in land_meat)
+    # Tarif adında et kelimesi var mı? (sadece bitki bazlı sinyal YOKSA sayılır)
+    name_has_land_meat = not is_plant_based_by_name and has_word(name_lower, land_meat)
+    name_has_seafood = not is_plant_based_by_name and has_word(name_lower, seafood)
+
+    has_land_meat = (has_word(ingredients_text, land_meat)
                       or any(c in category_lower for c in meat_categories)
                       or name_has_land_meat)
-    has_seafood = (any(word in ingredients_text for word in seafood)
+    has_seafood = (has_word(ingredients_text, seafood)
                    or any(c in category_lower for c in seafood_categories)
                    or name_has_seafood)
     
@@ -125,9 +204,10 @@ def extract_diet_tags(ingredients_list, category="", name=""):
                    "gouda", "provolone", "cottage", "custard", "ghee", "buttermilk",
                    "mascarpone"]
     dairy_categories = ["cheese", "cream", "custard", "milk"]
-    
-    has_dairy = (any(word in ingredients_text for word in dairy_words)
-                 or any(c in category_lower for c in dairy_categories))
+
+    has_dairy = (has_word(ingredients_text, dairy_words)
+                 or any(c in category_lower for c in dairy_categories)
+                 or has_word(name_lower, dairy_words))
     if not has_dairy:
         tags.append("dairy_free")
     
@@ -141,17 +221,30 @@ def extract_diet_tags(ingredients_list, category="", name=""):
         tags.append("vegan")
     
     # --- Nut-free ---
+    #
+    # 🔴 KÖK SEBEP FAZ 15B'DE BULUNDU, FAZ 29'DA DÜZELTİLDİ. Ete bakan
+    # güvenlik ağı tarif ADINI da kontrol ediyordu; nut/dairy/gluten için
+    # o ağ HİÇ YOKTU. Sonuç: `Pine Nut and Almond Cookies` — malzeme listesi
+    # sadece ["flour","sugar"] olduğu için `nut_free: True` etiketleniyordu,
+    # oysa ad açıkça söylüyor. Aynı açık `wheat free peanut butter cookies`'te
+    # de vardı.
+    #
+    # ⚠️ Genel bir "nut" kelimesi EKLENEMEZ: coconut, nutmeg, butternut ve
+    # doughnut'a takılırdı. Liste bilerek belirli fındık adlarından oluşuyor;
+    # `pine nut` iki kelimelik bir ifade olarak güvenle eklenebiliyor.
     nut_words = ["almond", "walnut", "pecan", "cashew", "peanut", "hazelnut",
-                 "pistachio", "macadamia"]
+                 "pistachio", "macadamia", "pine nut", "praline", "nutella",
+                 "marzipan", "brazil nut", "hickory nut"]
     nut_categories = ["almond", "peanut", "cashew", "walnut", "pecan", "hazelnut",
-                      "pistachio", "macadamia"]
-    
-    has_nuts = (any(word in ingredients_text for word in nut_words)
-                or any(c in category_lower for c in nut_categories))
+                      "pistachio", "macadamia", "nut"]
+
+    has_nuts = (has_word(ingredients_text, nut_words)
+                or any(c in category_lower for c in nut_categories)
+                or has_word(name_lower, nut_words))
     if not has_nuts:
         tags.append("nut_free")
 
-    return tags    
+    return tags
 
 def build_description(row):
     """Embedding için zengin açıklama metni oluşturur"""
@@ -203,6 +296,14 @@ def main():
     df_sample["cook_time_min"] = df_sample["CookTime"].apply(parse_duration_to_minutes)
     df_sample["prep_time_min"] = df_sample["PrepTime"].apply(parse_duration_to_minutes)
     df_sample["total_time_min"] = df_sample["TotalTime"].apply(parse_duration_to_minutes)
+    # Faz 29: porsiyon sayısı. NEDEN GEREKLİ — besin değerlerinin tabanı
+    # belirsizdi: 9.795 tarifte kalori medyanı 309 kcal ama %6.9'u 1000'in,
+    # %1.1'i 3000'in üstünde, en yükseği 38.662. Yani bazıları porsiyon
+    # başına, bazıları tarifin tamamı ve ayırt edecek veri yoktu. Bu kolon
+    # veri setinde ~%64 dolu; dolu olduğu yerde porsiyon başına değer
+    # hesaplanabiliyor. (Dolu olmadığında `servings` 0 kalıyor ve tüketen
+    # taraf "bilinmiyor" olarak davranmak zorunda — uydurmuyoruz.)
+    df_sample["servings"] = df_sample["RecipeServings"].apply(parse_servings)
     df_sample["diet_tags"] = df_sample.apply(
             lambda row: extract_diet_tags(row["ingredients_clean"], row["RecipeCategory"], row["name_clean"]),
             axis=1

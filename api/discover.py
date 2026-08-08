@@ -16,14 +16,21 @@ kabul edilemezdi.
 arama olsaydı sonuçlar model/veri değişiminde kayardı, oysa bir pin aylarca
 dolaşıyor ve indiği sayfanın kararlı olması gerekiyor.
 
-🔴 DİYET ETİKETLİ KOLEKSİYON YOK — ve bu geçici bir eksik değil, ölçüme
-dayanan bir karar. Etiketlerimiz kural bazlı tahmin ve iki hatası ölçüldü:
-`vegetarian` 228 tarifte yanlış (içinde ham/sausage/prosciutto var —
-`clean_data.py`'deki `land_meat` listesi eksik) ve `nut_free` Faz 15b'den beri
-bilinen bir açık taşıyor. "Vegetarian Dinners" diye pinlenen bir listeye
-jambonlu tarif koymak, kazanılacak trafikten çok daha pahalıya mal olur.
-Etiketler düzeltilip yeniden ingestion yapılınca (adım A) buraya diyet bazlı
-koleksiyonlar eklemek tek sözlük girdisi kadar iş.
+⚖️ DİYET ETİKETLERİNDE ÇİZİLEN SINIR — ve bu ikiye ayrılıyor:
+
+  **TERCİH** (vegetarian, vegan, pescatarian) → koleksiyon KURULABİLİR.
+  Adım A'da düzeltildi ve ölçüldü: içinde et geçen "vejetaryen" tarif sayısı
+  **228 → 0**, fıstık içeren "nut_free" tarif sayısı **0**. Yanlış bir etiket
+  burada can sıkar, zarar vermez.
+
+  **ALERJEN** (gluten_free, dairy_free, nut_free) → koleksiyon KURULMAZ.
+  Ölçüm iyileşti ama etiketler hâlâ KURAL BAZLI TAHMİN, ve buradaki hatanın
+  sonucu kategorik olarak farklı: çölyak hastası ya da fıstık alerjisi olan
+  biri için yanlış bir "Nut-Free Desserts" listesi sağlık riski. Uygulamanın
+  içinde bu etiketlerin yanında "otomatik tahmin" uyarısı var; Pinterest'te
+  pinlenen bir koleksiyon başlığında o uyarıyı basacak yer yok.
+
+Aynı ayrım `_seo.js`'te de var: `suitableForDiet` hiçbir koşulda yayınlanmıyor.
 """
 
 # Her koleksiyon: ChromaDB metadata filtresi + sunum metni.
@@ -96,6 +103,24 @@ COLLECTIONS = {
         "title": "Drinks",
         "description": "Hot, cold, and everything you can put in a glass.",
         "where": {"category": {"$eq": "Beverages"}},
+    },
+    # Adım A'dan SONRA eklendi. Pinterest'te en çok aranan iki başlık ve
+    # düzeltmeden önce kurulamazlardı: 228 tarif etli olduğu hâlde
+    # vejetaryen etiketliydi.
+    "vegetarian-dinners": {
+        "title": "Vegetarian Dinners",
+        "description": "Meat-free meals that are actually dinner, not a side salad.",
+        "where": {
+            "$and": [
+                {"vegetarian": {"$eq": True}},
+                {"category": {"$in": ["One Dish Meal", "Vegetable", "Potato", "Lunch/Snacks"]}},
+            ]
+        },
+    },
+    "vegan-recipes": {
+        "title": "Vegan Recipes",
+        "description": "No meat, no dairy, no eggs — and nothing that tastes like a compromise.",
+        "where": {"vegan": {"$eq": True}},
     },
 }
 

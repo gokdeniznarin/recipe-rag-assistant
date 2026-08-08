@@ -87,6 +87,11 @@ async function getToken() {
 function clearSessionScopedData() {
   try {
     sessionStorage.removeItem('search_state_v1');
+    // Faz 29: bekleyen "kaydolduktan sonra şu tarife dön" niyeti de gidiyor.
+    // Kalsaydı, aynı sekmede giriş yapan BİR SONRAKİ kullanıcı öncekinin
+    // baktığı tarife atılır ve o tarif onun favorilerine eklenirdi.
+    sessionStorage.removeItem('return_path_v1');
+    sessionStorage.removeItem('pending_favorite_v1');
   } catch {
     // Depolama erişilemiyorsa zaten yazılmamıştır.
   }
@@ -323,6 +328,12 @@ function showVerifyBannerIfNeeded() {
 }
 
 function initUserMenu() {
+  // Giriş yapmamış ziyaretçiye özel bloklar (kayıt davetleri) gizleniyor.
+  // Markup'ta zaten `hidden` ile başlıyorlar, ama buna GÜVENİLMİYOR: yeni bir
+  // davet eklerken `hidden` yazmayı unutmak, o daveti giriş yapmış kullanıcıya
+  // da göstermek demek ve hiçbir şey kırılmadığı için sessizce öyle kalır.
+  document.querySelectorAll('[data-auth="out"]').forEach((el) => el.classList.add('hidden'));
+
   // Sign out butonu
   const logoutBtn = document.getElementById('logout-btn');
   if (logoutBtn) logoutBtn.addEventListener('click', logout);

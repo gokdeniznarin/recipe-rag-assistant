@@ -173,7 +173,28 @@ function run(user, publicPage) {
         declared.length === ALLOWED.length && ALLOWED.every((p) => declared.includes(p)),
         `beklenen [${ALLOWED}] · bulunan [${declared}]`);
 
-  // ── 7. İşaret api.js'ten ÖNCE kurulmalı ────────────────
+  // ── 7–10. Kayıt davetleri (Faz 29, adım 5) ─────────────
+  // İki yönde de sessiz: davet giriş yapmış kullanıcıya görünürse rahatsız
+  // edici ve saçma; giriş yapmamışa görünmezse büyüme kanalının tamamı
+  // sessizce çalışmaz — sayfa yine kusursuz görünür.
+  check('the signed-out visitor is shown the sign-up prompts',
+        publicOut.shown.has('out'));
+  check('a signed-in user is never shown them',
+        publicIn.hidden.has('out'),
+        'initUserMenu [data-auth="out"] bloklarını gizlemeli');
+
+  // Markup'ta da `hidden` ile başlamalılar: JS çalışana kadar geçen sürede
+  // (authReady canlıda ~975 ms) davet giriş yapmış kullanıcının ekranında
+  // çakardı.
+  for (const page of ['recipe.html', 'discover.html']) {
+    const html = fs.readFileSync(path.join(FRONTEND, page), 'utf8');
+    const blocks = html.match(/<[^>]*data-auth="out"[^>]*>/g) || [];
+    check(`${page} starts its sign-up prompts hidden`,
+          blocks.length > 0 && blocks.every((b) => /\bhidden\b/.test(b)),
+          blocks.filter((b) => !/\bhidden\b/.test(b)).join(' | ') || 'blok yok');
+  }
+
+  // ── 11. İşaret api.js'ten ÖNCE kurulmalı ───────────────
   // Sonra kurulursa guard onu göremez ve ziyaretçi yine kovulur — üstelik
   // sayfa hatasız göründüğü için sessizce.
   for (const page of ALLOWED) {

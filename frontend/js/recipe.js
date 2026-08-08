@@ -28,6 +28,8 @@ const descEl       = document.getElementById('recipe-description');
 const instructionsEl = document.getElementById('recipe-instructions');
 const ingredientsEl  = document.getElementById('recipe-ingredients');
 const favoriteBtn  = document.getElementById('favorite-btn');
+const favoriteLabel = document.getElementById('favorite-label');
+const pinBtn       = document.getElementById('pin-btn');
 
 const addCollectionBtn = document.getElementById('add-collection-btn');
 const collectionPicker = document.getElementById('collection-picker');
@@ -73,6 +75,8 @@ function renderRecipe(recipe) {
   } else {
     hero.classList.add('hidden');
   }
+
+  updatePinLink(recipe);
 
   // Diyet tag'leri
   const tagOrder = ['vegan', 'vegetarian', 'pescatarian', 'gluten_free', 'dairy_free', 'nut_free'];
@@ -174,11 +178,53 @@ function updateFavoriteUI() {
     favoriteBtn.classList.add('is-favorited');
     favoriteBtn.querySelector('.heart').textContent = '♥';
     favoriteBtn.setAttribute('aria-label', 'Remove from favorites');
+    if (favoriteLabel) favoriteLabel.textContent = 'Saved';
   } else {
     favoriteBtn.classList.remove('is-favorited');
     favoriteBtn.querySelector('.heart').textContent = '♡';
-    favoriteBtn.setAttribute('aria-label', 'Add to favorites');
+    favoriteBtn.setAttribute('aria-label', 'Save recipe');
+    // Yalın bir ♡, Pinterest'ten ilk kez gelen biri için süs gibi okunuyor.
+    // Etiket ne işe yaradığını söylüyor — tıklanmayan buton dönüştürmez.
+    if (favoriteLabel) favoriteLabel.textContent = 'Save recipe';
   }
+}
+
+/**
+ * 📌 Pin linki (Faz 29).
+ *
+ * Pinterest'e giden düz bir link — SDK yok, API anahtarı yok, giriş yok.
+ * Ziyaretçi kendi panosuna kaydediyor, takipçileri görüyor, bize yeni
+ * ziyaretçi geliyor. Döngüyü kapatan parça bu.
+ *
+ * Giriş yapmış kullanıcıda da DURUYOR: ilk bakışta gereksiz görünüyor ama
+ * tersi doğru — uygulamayı gerçekten beğenmiş insanlar en iyi pinleyiciler.
+ *
+ * Adres için önce sayfadaki kanonik link okunuyor (SSR onu basıyor). Yoksa
+ * `/recipes/{id}` kuruluyor: slug KİMLİK DEĞİL, yol ayrıştırıcı yalnızca
+ * baştaki rakamları okuyor, dolayısıyla slug'sız adres de çalışıyor. Böylece
+ * slug üretme mantığı istemciye ikinci kez yazılmıyor.
+ */
+function updatePinLink(recipe) {
+  if (!pinBtn) return;
+
+  if (!recipe.image_url) {
+    // Görselsiz pin Pinterest'te oluşturulamıyor; bozuk bir buton
+    // göstermektense hiç göstermemek doğru.
+    pinBtn.classList.add('hidden');
+    return;
+  }
+
+  const canonical = document.querySelector('link[rel="canonical"]');
+  const pageUrl = canonical
+    ? canonical.href
+    : `${window.location.origin}/recipes/${encodeURIComponent(recipeId)}`;
+
+  const params = new URLSearchParams({
+    url: pageUrl,
+    media: recipe.image_url,
+    description: recipe.name,
+  });
+  pinBtn.href = `https://www.pinterest.com/pin/create/button/?${params}`;
 }
 
 async function checkIfFavorited() {
@@ -203,14 +249,18 @@ async function checkIfFavorited() {
  * dokunuyor — orası Faz 26c'de tek yönlendirme noktasına indirgenmişti,
  * 67 testle sarılı, dikkat isteyen bir yer.
  */
-function requiresSignIn() {
+function requiresSignIn(favoriteId) {
   if (auth.currentUser) return false;
+  // Niyeti not al: kayıttan sonra bu tarife dönülecek ve (♡'ye basıldıysa)
+  // tarif otomatik favorilenecek. Kullanıcıyı "hadi şimdi tekrar tıkla"
+  // konumuna düşürmek klasik bir sızıntı — niyetini zaten söylemişti.
+  saveReturnIntent(favoriteId);
   window.location.href = 'index.html';
   return true;
 }
 
 favoriteBtn.addEventListener('click', async () => {
-  if (requiresSignIn()) return;
+  if (requiresSignIn(recipeId)) return;
   favoriteBtn.disabled = true;
 
   try {
@@ -481,5 +531,32 @@ async function refreshAuthDependentUI() {
     return;                       // oturum durumu okunamadı: sayfa yine çalışsın
   }
   if (!auth.currentUser) return;  // giriş yok → korumalı uçlara hiç gidilmiyor
+
+  await completePendingFavorite();
   await checkIfFavorited();
+}
+
+/**
+ * Kayıttan önce ♡'ye basılmıştı — şimdi tamamla (Faz 29).
+ *
+ * ⚠️ Niyet bu tarife AİT Mİ diye kontrol ediliyor. Bayat bir kayıt (kullanıcı
+ * A tarifinde ♡'ye bastı, vazgeçti, sonra B tarifine gidip kaydoldu) yanlış
+ * tarifi favorilere eklerdi — kullanıcının hiç istemediği bir yazma işlemi.
+ *
+ * Zaten favorideyse backend `ValueError` fırlatıyor; burada yutuluyor çünkü
+ * istenen son durum zaten sağlanmış (hesap silmedeki idempotentlik fikri).
+ */
+async function completePendingFavorite() {
+  const pending = takePendingFavorite();
+  if (!pending || String(pending) !== String(recipeId)) return;
+
+  try {
+    await apiRequest('/api/favorites/add', {
+      method: 'POST',
+      body: JSON.stringify({ recipe_id: recipeId }),
+    });
+  } catch (err) {
+    // Sessiz: tarif sayfası açılmaya devam etmeli. Kalp durumu birazdan
+    // `checkIfFavorited()` ile sunucudan okunuyor, yani ekranda yalan yok.
+  }
 }

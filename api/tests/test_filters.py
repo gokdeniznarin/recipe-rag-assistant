@@ -118,6 +118,52 @@ class TestNutritionConstraints:
         assert {"fat_content": {"$lte": 10}} in conditions
 
 
+# ── Protein (Faz 29) ──────────────────────────────────────
+# 🔴 GÖRÜNÜR BİR HATAYI KAPATIYOR: "high protein meal" araması "Low Protein"
+# KATEGORİSİNDEKİ tarifleri döndürüyordu. Sebep embedding'lerin karşıt anlam
+# duyarsızlığı — gömme metni "Category: Low Protein" içeriyor ve sorguyla
+# paylaştığı baskın sinyal "protein" kelimesi. Kart "Low Protein" derken
+# sorgunun "high protein" demesi zayıf sıralama değil, açık bir çelişki.
+
+class TestProteinFilter:
+    def test_high_protein_sets_a_floor(self):
+        conditions = extract_filters("high protein meal")["$and"]
+        assert {"protein_content": {"$gte": 20}} in conditions
+
+    def test_high_protein_excludes_the_contradicting_category(self):
+        """Sayısal eşik tek başına yetmiyor: kullanıcı kartta "Low Protein"
+        yazısını görüyor ve bu, sayı ne olursa olsun çelişki gibi okunuyor."""
+        conditions = extract_filters("high protein meal")["$and"]
+        assert {"category": {"$ne": "Low Protein"}} in conditions
+
+    def test_low_protein_is_the_mirror_image(self):
+        conditions = extract_filters("low protein dinner")["$and"]
+        assert {"protein_content": {"$lte": 10}} in conditions
+        assert {"category": {"$ne": "High Protein"}} in conditions
+
+    def test_hyphenated_forms_work(self):
+        assert extract_filters("high-protein snack") is not None
+        assert extract_filters("low-protein snack") is not None
+
+    def test_the_two_are_mutually_exclusive(self):
+        """Aynı sorguda ikisi birden çıkarsa filtre kendi kendiyle çelişir ve
+        ChromaDB hiçbir sonuç döndüremez."""
+        conditions = extract_filters("high protein and low protein")["$and"]
+        floors = [c for c in conditions if "protein_content" in c]
+        assert len(floors) == 1
+
+    def test_plain_protein_adds_no_constraint(self):
+        """"protein" tek başına bir yön belirtmiyor — filtre uydurmak,
+        kullanıcının istemediği tarifleri elemek olurdu."""
+        assert extract_filters("protein shake") is None
+
+    def test_it_combines_with_other_filters(self):
+        conditions = extract_filters("quick high protein gluten free meal")["$and"]
+        assert {"gluten_free": True} in conditions
+        assert {"total_time_min": {"$lte": 30}} in conditions
+        assert {"protein_content": {"$gte": 20}} in conditions
+
+
 # ── Bilinen sınırlar ──────────────────────────────────────
 # Bunlar hata değil, kabul edilmiş sınırlar. Teste yazılmalarının sebebi:
 # filters.py ileride geliştirilirse bu testlerin KASTEN kırılması gerekiyor —

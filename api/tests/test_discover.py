@@ -41,15 +41,27 @@ class TestDefinitions:
         for slug in discover.COLLECTIONS:
             assert re.fullmatch(r"[a-z0-9-]+", slug), slug
 
-    def test_no_collection_is_built_on_a_diet_tag(self):
-        """🔴 Ölçülmüş veri hatası var: 228 tarif `vegetarian` işaretli ama
-        içinde ham/sausage/prosciutto geçiyor (`clean_data.py`'deki
-        `land_meat` listesi eksik). Etiketler düzeltilene kadar bunların
-        üzerine herkese açık bir koleksiyon kurulamaz."""
-        diet_fields = {"gluten_free", "dairy_free", "nut_free",
-                       "vegetarian", "pescatarian", "vegan"}
+    def test_no_collection_is_built_on_an_allergen_tag(self):
+        """⚖️ ALERJEN etiketleri üzerine herkese açık koleksiyon KURULMAZ.
+
+        Adım A ölçümü iyileştirdi (etli "vejetaryen" 228 → 0) ama etiketler
+        hâlâ kural bazlı TAHMİN. Buradaki hatanın sonucu tercih etiketlerinden
+        kategorik olarak farklı: çölyak hastası ya da fıstık alerjisi olan biri
+        için yanlış bir "Nut-Free Desserts" listesi sağlık riski. Uygulamanın
+        içinde bu etiketlerin yanında "otomatik tahmin" uyarısı var; pinlenen
+        bir koleksiyon başlığında o uyarıyı basacak yer YOK.
+
+        Aynı ayrım `_seo.js`'te de uygulanıyor (`suitableForDiet` hiç yazılmıyor)."""
+        allergen_fields = {"gluten_free", "dairy_free", "nut_free"}
         for slug, entry in discover.COLLECTIONS.items():
-            assert not (diet_fields & set(repr(entry["where"]).split("'"))), slug
+            assert not (allergen_fields & set(repr(entry["where"]).split("'"))), slug
+
+    def test_preference_collections_exist(self):
+        """Tercih bazlı koleksiyonlar (vegetarian/vegan) Pinterest'te en çok
+        aranan başlıklar ve adım A'dan ÖNCE kurulamıyorlardı. Bu test onların
+        sessizce düşmesini engelliyor."""
+        assert "vegetarian-dinners" in discover.COLLECTIONS
+        assert "vegan-recipes" in discover.COLLECTIONS
 
     def test_unknown_slug_returns_none(self):
         assert discover.get_definition("nope") is None

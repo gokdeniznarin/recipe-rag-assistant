@@ -65,6 +65,14 @@ for start in range(0, total, batch_size):
             "fiber_content": float(row["FiberContent"]),
             "sugar_content": float(row["SugarContent"]),
             "protein_content": float(row["ProteinContent"]),
+            # Porsiyon sayısı (Faz 29). 0 = BİLİNMİYOR (veri setinde ~%36'sı
+            # boş). Yukarıdaki besin değerlerinin tabanı belirsizdi — 9.795
+            # tarifte kalori medyanı 309 kcal ama en yükseği 38.662, yani bir
+            # kısmı porsiyon başına, bir kısmı tarifin tamamı. Bu alan dolu
+            # olduğunda porsiyona bölmek mümkün; boş olduğunda tüketen taraf
+            # "bilinmiyor" olarak davranmak ZORUNDA — 0'ı 1 saymak, tarifin
+            # tamamını tek porsiyon ilan etmek olurdu.
+            "servings": int(row.get("servings", 0) or 0),
             "gluten_free": "gluten_free" in row["diet_tags"],
             "dairy_free": "dairy_free" in row["diet_tags"],
             "nut_free": "nut_free" in row["diet_tags"],

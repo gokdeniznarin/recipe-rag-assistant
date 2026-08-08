@@ -33,7 +33,7 @@ const check = (name, cond, extra) => {
  * auth.js'i taze bir sahte ortamda çalıştırır.
  * `authReady`'nin nasıl sonuçlanacağını çağıran belirliyor.
  */
-function run(authReady, storageOpt, search, popupResult) {
+function run(authReady, storageOpt, search, popupResult, returnPath) {
   const classes = new Set(['auth-page', 'auth-checking']);
   const timers = [];
   const intervals = [];
@@ -141,7 +141,28 @@ function run(authReady, storageOpt, search, popupResult) {
       navigator: {},
     },
   };
+  // Faz 29: `returnPath` verilirse gerçek `intent.js` de bu bağlama yükleniyor.
+  // Sebep: auth.js'te `typeof takeReturnPath === 'function'` koruması var, yani
+  // intent.js yüklenmemiş bir bağlamda yeni yol HİÇ çalışmaz ve testler
+  // "search.html'e gitti" diyerek yeşil kalır — özelliğin bozuk olduğunu
+  // göremezler. Gerçek dosyayı yükleyerek o boşluk kapanıyor.
+  const sessionStore = new Map();
+  if (returnPath !== undefined) {
+    sessionStore.set('return_path_v1', JSON.stringify({ value: returnPath, at: NOW }));
+  }
+  ctx.sessionStorage = {
+    getItem: (k) => (sessionStore.has(k) ? sessionStore.get(k) : null),
+    setItem: (k, v) => sessionStore.set(k, v),
+    removeItem: (k) => sessionStore.delete(k),
+  };
+
   vm.createContext(ctx);
+  if (returnPath !== undefined) {
+    vm.runInContext(
+      fs.readFileSync(path.join(__dirname, '..', 'frontend', 'js', 'intent.js'), 'utf8'),
+      ctx, { filename: 'intent.js' }
+    );
+  }
   vm.runInContext(SRC, ctx, { filename: 'auth.js' });
 
   return {
@@ -167,6 +188,8 @@ function run(authReady, storageOpt, search, popupResult) {
     cancelVisible: () => !!elements['signin-cancel'] && !elements['signin-cancel'].classes.has('hidden'),
     clickCancel: () => elements['signin-cancel'].handlers.click(),
     redirectedTo: () => ctx.window.location.href,
+    /** Niyet tüketildi mi (yönlendirme başarısız olsa bile kalmamalı). */
+    intentLeft: () => sessionStore.has('return_path_v1'),
     timers,
     clearedCount: () => cleared,
   };
@@ -451,6 +474,31 @@ function run(authReady, storageOpt, search, popupResult) {
     await new Promise((res) => setImmediate(res));
   } catch (e) { crashed = true; }
   check('no debug param -> page behaves normally', !crashed && !r.formHidden());
+
+  // ── Faz 29: kayıttan sonra geldiği tarife dönüş ────────
+  // ⚠️ Bu bloktaki testler `goToApp()`'e dokunuyor — Faz 26c'de tek
+  // yönlendirme noktasına BİLEREK indirgenmişti, 6 turluk hata ayıklamanın
+  // sonucu. Yukarıdaki 67 testin hepsi hâlâ geçmeli; bunlar sadece
+  // varsayılanın DIŞINDAKİ yolu ekliyor.
+  r = run(Promise.resolve({ email: 'a@b.com' }), undefined, '', undefined, '/recipes/25500-x');
+  await new Promise((res) => setImmediate(res));
+  check('return intent -> lands on the recipe, not search.html',
+        r.redirectedTo() === '/recipes/25500-x', r.redirectedTo());
+  // Tek kullanımlık: kalsaydı kullanıcı bir SONRAKİ girişinde de sebepsiz
+  // aynı tarife atılırdı.
+  check('the intent is consumed on the way out', !r.intentLeft());
+
+  // Varsayılan davranış korunuyor: niyet yoksa yine search.html.
+  r = run(Promise.resolve({ email: 'a@b.com' }), undefined, '', undefined, undefined);
+  await new Promise((res) => setImmediate(res));
+  check('no intent -> still search.html', r.redirectedTo() === 'search.html', r.redirectedTo());
+
+  // 🔴 Açık yönlendirme: depoya kurcalanmış bir dış adres konsa bile
+  // kullanıcı DIŞARI çıkarılmamalı.
+  r = run(Promise.resolve({ email: 'a@b.com' }), undefined, '', undefined, '//evil.com');
+  await new Promise((res) => setImmediate(res));
+  check('a hostile stored path never redirects off-site',
+        r.redirectedTo() === 'search.html', r.redirectedTo());
 
   console.log(failures === 0
     ? `\nauth gate checks passed (${pass})`

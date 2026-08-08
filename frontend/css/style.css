@@ -813,16 +813,24 @@ body.signing-in .signin-overlay {
 /* ── Favori butonu ─────────────────────────────────────── */
 .favorite-btn {
   flex-shrink: 0;
-  width: 48px;
+  /* Faz 29: artık etiketli, yani sabit 48px'lik daire değil hap biçiminde.
+     Dar ekranda etiket gizleniyor ve buton yine daireye dönüyor (aşağıdaki
+     media query). */
   height: 48px;
+  padding: 0 1.1rem;
+  gap: 0.45rem;
   background: var(--surface);
   border: 1.5px solid var(--border);
-  border-radius: 50%;
+  border-radius: 999px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
+}
+
+@media (max-width: 520px) {
+  .favorite-btn { width: 48px; padding: 0; }
 }
 
 .favorite-btn:hover {
@@ -2360,6 +2368,10 @@ body.auth-page .auth-container {
 
 /* Tarif detayı kapak görseli */
 .recipe-hero {
+  /* Faz 29: .pin-btn bunun köşesine konumlanıyor. `relative` olmadan
+     buton en yakın konumlanmış ataya göre yerleşir, yani sayfanın
+     tepesine kaçar. */
+  position: relative;
   margin-bottom: 1.75rem;
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -2750,6 +2762,95 @@ body.auth-page .auth-container {
   color: rgba(245, 240, 232, 0.6);
   font-size: 0.74rem;
   line-height: 1.45;
+}
+
+/* ── Dönüşüm noktaları (Faz 29) ────────────────────────── */
+
+/* 📌 Pin — görselin köşesinde, Pinterest'te alışılmış yer. Bilerek İKİNCİL
+   (sessiz ama bulunabilir): asıl hedef kayıt, pin ise "kaydolmayacaksan bari
+   bu" seçeneği. ♡ ile yan yana DEĞİL — ikisi farklı işler yapıyor. */
+.pin-btn {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.7rem;
+  padding: 0.35rem 0.7rem;
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  backdrop-filter: blur(4px);
+  transition: all 0.15s;
+}
+
+.pin-btn:hover { background: #fff; transform: translateY(-1px); }
+
+/* Kalp artık etiketli: yalın bir ♡, ilk kez gelen ziyaretçi için süs gibi
+   okunuyordu. Birincil eylem olduğu için belirgin. */
+.favorite-label { font-size: 0.85rem; font-weight: 600; }
+
+@media (max-width: 520px) {
+  /* Dar ekranda başlıkla yarışmasın — ikon tek başına yeterince tanıdık. */
+  .favorite-label { display: none; }
+}
+
+/* ① Malzeme listesinin yanı — sayfadaki en güçlü nokta. Ziyaretçi zaten
+   "bunların hangisi bende var?" diye düşünüyor; kayıt, o sorunun cevabının
+   yan ürünü olarak sunuluyor. */
+.inline-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 1.1rem;
+  padding: 1rem 1.15rem;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+.inline-cta-text {
+  flex: 1 1 20rem;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.inline-cta-text strong { display: block; color: var(--text); }
+
+/* ④ Sayfa sonu — buraya kadar inen kişi tarifi okumuş, ilgisi yüksek.
+   Ürünün tamamını anlatabileceğimiz tek yer. */
+.page-cta {
+  margin-top: 2.5rem;
+  padding: 2rem 1.5rem;
+  background: var(--olive);
+  border-radius: var(--radius-md);
+  color: var(--cream);
+  text-align: center;
+}
+
+.page-cta h2 {
+  margin: 0 0 0.7rem;
+  font-family: 'Playfair Display', serif;
+  font-size: 1.45rem;
+}
+
+.page-cta p {
+  max-width: 48ch;
+  margin: 0 auto 1.3rem;
+  color: rgba(245, 240, 232, 0.82);
+  font-size: 0.93rem;
+  line-height: 1.6;
+}
+
+.page-cta-note {
+  margin: 0.9rem auto 0 !important;
+  color: rgba(245, 240, 232, 0.55) !important;
+  font-size: 0.76rem !important;
 }
 
 /* ── Koleksiyon iniş sayfaları (Faz 29) ────────────────── */

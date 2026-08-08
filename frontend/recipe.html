@@ -93,14 +93,25 @@
            kutuyu tamamen gizliyor — sayfa eskisi gibi görünür. -->
       <figure id="recipe-hero" class="recipe-hero hidden">
         <img id="recipe-hero-img" src="" alt="" />
+        <!-- 📌 Pin: gorselin kosesinde, Pinterest'te alisilmis yer.
+             ♡ ile YAN YANA DEGIL - ikisi tamamen farkli isler yapiyor ve
+             yan yana konsalar "hangisi neydi" sorusu dogar.
+             Giris ISTEMIYOR: kaydolmayacak ziyaretci de pinleyebilmeli,
+             cunku o pin bize yeni ziyaretci getiriyor. Donguyu kapatan parca bu. -->
+        <a id="pin-btn" class="pin-btn" target="_blank" rel="noopener"
+           href="#" title="Save this recipe to Pinterest">📌 Pin</a>
       </figure>
 
       <header class="recipe-header">
         <p id="recipe-category" class="recipe-category"></p>
         <div class="recipe-title-row">
           <h1 id="recipe-title" class="recipe-title"></h1>
-          <button id="favorite-btn" class="favorite-btn" aria-label="Add to favorites">
+          <!-- Birincil eylem. Giris yapmamis ziyaretcide GIZLENMIYOR:
+               gizli buton kimseyi donusturmez, tiklanan buton donusturur -
+               tiklayan kisi o an ne istedigini kendisi soylemis oluyor. -->
+          <button id="favorite-btn" class="favorite-btn" aria-label="Save recipe">
             <span class="heart">♡</span>
+            <span id="favorite-label" class="favorite-label">Save recipe</span>
           </button>
         </div>
         <div id="recipe-tags" class="recipe-tags-detail"></div>
@@ -164,6 +175,20 @@
       <section class="recipe-section">
         <h2 class="section-title">Ingredients</h2>
         <ul id="recipe-ingredients" class="ingredients-list"></ul>
+
+        <!-- ① SAYFADAKI EN GUCLU DONUSUM NOKTASI.
+             Ziyaretci tam bu anda "bunlarin hangisi bende var, markete
+             gitmem gerekecek mi?" diye dusunuyor. Ona "kaydol" demiyoruz -
+             kafasindaki sorunun cevabini teklif ediyoruz; kayit, cevabin
+             yan urunu oluyor. -->
+        <aside class="inline-cta hidden" data-auth="out">
+          <p class="inline-cta-text">
+            <strong>Which of these do you already have?</strong>
+            Add your kitchen once and this page will show you what is missing —
+            and put the rest on a shopping list.
+          </p>
+          <a href="index.html" class="btn-accent btn-sm">Set up my pantry</a>
+        </aside>
       </section>
 
       <section class="recipe-section">
@@ -171,11 +196,28 @@
         <ol id="recipe-instructions" class="instructions-list"></ol>
       </section>
 
-      <!-- Öneriler. Tarif sayfası bugüne kadar ÇIKMAZ SOKAKTI: okuyup geri
-           dönmekten başka yol yoktu. Kartlar arama sonuçlarıyla aynı bileşen. -->
+      <!-- ③ Öneriler. Tarif sayfası bugüne kadar ÇIKMAZ SOKAKTI: okuyup geri
+           dönmekten başka yol yoktu. Kartlar arama sonuçlarıyla aynı bileşen.
+           NOT: bu bir DÖNÜŞÜM noktası DEĞİL, bir TUTMA aracı — burada kayıt
+           istenmiyor. İki işi var: ziyaretçi sitede kaldıkça ① ve ④'e tekrar
+           denk geliyor, ve Pinterest uzun kalma süresini kalite işareti sayıp
+           pini daha çok kişiye gösteriyor. Maliyeti ~6 ms (Faz 25). -->
       <section id="similar-section" class="recipe-section hidden">
         <h2 class="section-title">Similar recipes</h2>
         <div id="similar-list" class="recipe-list"></div>
+      </section>
+
+      <!-- ④ Sayfa sonu. Buraya kadar inen kişi tarifin tamamını okumuş
+           demektir, yani ilgisi yüksek — ürünün tamamını anlatabileceğimiz
+           tek yer burası. Yukarıda uzun anlatım yapılamaz, kimse okumaz. -->
+      <section class="page-cta hidden" data-auth="out">
+        <h2>This is the part a recipe site cannot do</h2>
+        <p>
+          Tell the app what is in your kitchen, plan the week, and let it work out
+          what you actually need to buy. The recipes stay free either way.
+        </p>
+        <a href="index.html" class="btn-primary">Create a free account</a>
+        <p class="page-cta-note">Free · no card · your data is yours to delete</p>
       </section>
     </article>
 
@@ -220,6 +262,7 @@
        trafiğinin indiği yer). İşaret api.js'ten ÖNCE kurulmalı — guard orada
        çalışıyor. Varsayılan hâlâ "korumalı"; açık olmak açıkça istenmeli. -->
   <script>window.PUBLIC_PAGE = true;</script>
+  <script src="js/intent.js"></script>
   <script src="js/api.js"></script>
   <script src="js/recipe.js"></script>
   <script src="js/pwa.js"></script>

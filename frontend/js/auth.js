@@ -228,7 +228,20 @@ function goToApp() {
   // açtığında hero+tanıtım içeriği yönlendirme boyunca görünüyordu (canlıda
   // ~975 ms, Faz 13b'de ölçülen `authReady` beklemesi).
   showLeavingScreen();
-  window.location.href = 'search.html';
+
+  // Faz 29: ziyaretçi bir tarifte ♡'ye basıp buraya gönderildiyse, kayıttan
+  // sonra ARAMA SAYFASINA değil geldiği tarife dönüyor. Bağlamı kaybetmek
+  // dönüşümü kaybetmek demek — kullanıcı ne istediğini zaten söylemişti.
+  //
+  // ⚠️ `takeReturnPath()` yolu okurken SİLİYOR: yönlendirme başarısız olsa
+  // bile ortada kalmamalı, yoksa bir sonraki girişte sebepsiz eski bir tarife
+  // atılır. Açık yönlendirme koruması orada (`isSafeReturnPath`).
+  //
+  // `typeof` kontrolü: `intent.js` yüklenmemiş bir sayfada bu dosya yine
+  // çalışmalı — giriş akışının tamamı buna bağlı ve bir `ReferenceError`
+  // burada "kimse giriş yapamıyor" demek.
+  const returnPath = typeof takeReturnPath === 'function' ? takeReturnPath() : null;
+  window.location.href = returnPath || 'search.html';
 }
 
 // ⚠️ SÜREKLİ DİNLEYİCİ — bu sayfanın en kritik parçası.

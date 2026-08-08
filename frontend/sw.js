@@ -64,6 +64,7 @@ const PRECACHE = [
   '/js/pwa.js',
   '/js/recipe.js',
   '/js/discover.js',
+  '/js/intent.js',
   '/js/search.js',
   '/js/shopping.js',
   '/js/stores.js',
