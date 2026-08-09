@@ -4,6 +4,7 @@ import os
 from pydantic import BaseModel, Field
 import chromadb
 from filters import extract_filters
+from exclusions import extract_exclusions, filter_excluded
 from validation import validate_query
 from llm import (
     generate_answer,
@@ -142,6 +143,18 @@ def _cards_from_query(results: dict) -> list[dict]:
     ]
 
 
+# İstenenden kaç kat fazla aday çekileceği — sonuçları ELEDİĞİMİZ ya da YENİDEN
+# SIRALADIĞIMIZ her yerde gerekiyor, çünkü yalnızca n_results kadar çekmek
+# elimizdeki 5'i karıştırmaktan ibaret kalır: semantik olarak 7. sırada olan ama
+# aradığımız kritere uyan bir tarif hiç görünmez. ChromaDB'ye 20 aday sormak 5
+# sormakla neredeyse aynı maliyette (mesafe hesabı zaten tüm koleksiyon üzerinde
+# yapılıyor, değişen yalnızca kaç tanesinin döndürüldüğü).
+# İki kullanıcısı var: dolaptan arama (eşleşmeye göre sıralama) ve metin
+# aramasındaki malzeme dışlaması (bkz. exclusions.py).
+CANDIDATE_MULTIPLIER = 4
+MAX_CANDIDATES = 50
+
+
 # HEAD bilerek listede: FastAPI, düz Starlette'in aksine bir GET rotasına HEAD'i
 # OTOMATİK EKLEMİYOR, dolayısıyla bu uç HEAD'e 405 dönüyordu. Bu endpoint aynı
 # zamanda uptime izlemesinin hedefi (kimlik doğrulaması yok, veritabanına
@@ -197,20 +210,41 @@ def search_recipes(request: SearchRequest, user_email: str = Depends(get_current
             "error": "This doesn't look like a food search. Try naming a dish or its ingredients.",
         }
 
-    # 1. Kullanıcı sorgusundan filtre çıkar
+    # 1. Kullanıcı sorgusundan filtre çıkar. ORİJİNAL sorgu üzerinden — aşağıdaki
+    #    temizlenmiş metin değil, yoksa "quick pasta without mushrooms"ta süre
+    #    filtresi kaybolabilirdi.
     with timed_block("extract_filters"):
         where_filter = extract_filters(request.query)
+
+    # 1.5 Olumsuzlama ("pasta without mushrooms"). Embedding bunu GÖRMÜYOR —
+    #     ölçüldü: "without X" sorgularının sonuçlarının 23/30'unda X vardı,
+    #     yani kelimenin hiçbir etkisi yoktu (bkz. exclusions.py). İki adım:
+    #     dışlanan malzeme sorgu metninden çıkarılıyor (embedding o yöne
+    #     çekilmesin) ve aday havuzu malzeme metadata'sına göre eleniyor.
+    excluded, search_text = extract_exclusions(request.query)
+
+    #     Eleme yapılacaksa fazladan aday çekiliyor, yoksa elemenin ardından
+    #     n_results'tan az sonuç kalırdı. Dışlama yoksa davranış birebir eski hâli.
+    candidate_count = request.n_results
+    if excluded:
+        candidate_count = min(request.n_results * CANDIDATE_MULTIPLIER, MAX_CANDIDATES)
+        log.info("Excluding %s (search text: %r)", excluded, search_text[:100])
 
     # 2. ChromaDB'de semantic + metadata arama yap
     #    (embedding üretimi de bu çağrının içinde — query_texts veriyoruz)
     with timed_block("chromadb query"):
         results = collection.query(
-            query_texts=[request.query],
-            n_results=request.n_results,
+            query_texts=[search_text],
+            n_results=candidate_count,
             where=where_filter
         )
 
     recipes = _cards_from_query(results)
+
+    if excluded:
+        before = len(recipes)
+        recipes = filter_excluded(recipes, excluded)[:request.n_results]
+        log.info("Exclusion filter kept %s of %s candidates", len(recipes), before)
 
     # Sonuçsuz arama hata değil ama sessizce geçilmemeli: filtre çıkarımı fazla
     # daraltmış olabilir, log'da sarı bir satır olarak görünsün.
@@ -224,6 +258,10 @@ def search_recipes(request: SearchRequest, user_email: str = Depends(get_current
     return {
         "query": request.query,
         "applied_filters": where_filter,
+        # Ne çıkarıldığı kullanıcıya SÖYLENİYOR: sonuç sayısı sessizce azalabildiği
+        # için (aday havuzunun tamamı elenebilir) neyin olduğunu göstermeyen bir
+        # arayüz "arama bozuldu" gibi okunur.
+        "excluded_ingredients": excluded,
         "results": recipes,
     }
 
@@ -969,13 +1007,8 @@ class PantrySearchRequest(BaseModel):
     n_results: int = Field(5, ge=1, le=20)
 
 
-# Eşleşmeye göre yeniden sıralayabilmek için istenenden kaç kat fazla aday
-# çekileceği. 4 seçildi: 5 sonuç için 20 aday, ChromaDB'ye maliyeti ihmal
-# edilebilir ama semantik sırada geride kalmış yüksek eşleşmeli tarifleri
-# yakalamaya yetiyor. MAX_CANDIDATES üst sınır (n_results=20 istenirse 80
-# değil 50 aday çekilir).
-CANDIDATE_MULTIPLIER = 4
-MAX_CANDIDATES = 50
+# CANDIDATE_MULTIPLIER / MAX_CANDIDATES dosyanın başında tanımlı — metin
+# aramasındaki malzeme dışlaması da aynı over-fetch'i kullanıyor.
 
 
 @app.post("/api/recipes/from-pantry")

@@ -13,6 +13,7 @@ const llmBox         = document.getElementById('llm-box');
 const llmSkeleton    = document.getElementById('llm-skeleton');
 const recipeList     = document.getElementById('recipe-list');
 const resultsCount   = document.getElementById('results-count');
+const excludedNote   = document.getElementById('excluded-note');
 const searchError    = document.getElementById('search-error');
 
 // Kamera elemanları
@@ -217,6 +218,17 @@ const renderResults = Logger.timed(function (data) {
   llmBox.classList.add('hidden');   // önceki aramanın yorumu kalmasın
   recipeList.innerHTML = '';
   resultsCount.textContent = `${data.results.length} matches`;
+
+  // Dışlanan malzemeler ("pasta without mushrooms" → mushrooms). Backend bu
+  // alanı yalnızca metin aramasında dolduruyor; diğer modlarda sessizce boş.
+  // Her aramada SIFIRLANIYOR — yoksa bir önceki aramanın notu üstte kalırdı.
+  const excluded = data.excluded_ingredients || [];
+  if (excluded.length) {
+    excludedNote.textContent = `Leaving out: ${excluded.join(', ')}`;
+    excludedNote.classList.remove('hidden');
+  } else {
+    excludedNote.classList.add('hidden');
+  }
 
   data.results.forEach(recipe => {
     const card = document.createElement('a');

@@ -9,10 +9,28 @@ def extract_filters(query_text: str) -> dict:
     conditions = []
 
     # --- Diyet etiketleri ---
+    #
+    # OLUMSUZ İFADELER ("without gluten", "no nuts") BİLEREK BURADA, exclusions.py'de
+    # DEĞİL: bu üç alerjen için küratörlü boolean etiketlerimiz var ve onlar malzeme
+    # metnindeki alt-dizi aramasından daha güvenilir (etiketler ada, kategoriye ve
+    # malzemeye birlikte bakıyor). exclusions.py bu dört terimi bu yüzden atlıyor —
+    # iki farklı kural aynı sorguya uygulanırsa sonuç gereksiz daralır.
     diet_keywords = {
-        "gluten_free": ["gluten free", "gluten-free", "glutenfree"],
-        "dairy_free": ["dairy free", "dairy-free", "lactose free", "lactose-free"],
-        "nut_free": ["nut free", "nut-free"],
+        "gluten_free": [
+            "gluten free", "gluten-free", "glutenfree",
+            "without gluten", "no gluten",
+        ],
+        "dairy_free": [
+            "dairy free", "dairy-free", "lactose free", "lactose-free",
+            "without dairy", "no dairy", "without lactose", "no lactose",
+        ],
+        # ⚠️ TEKİL biçim ("without nut") BİLEREK YOK: bu kontrol alt-dizi araması
+        # yapıyor ve "without nutmeg" ifadesi "without nut" içeriyor — muskatsız
+        # bir kek isteyen kullanıcıya fıstıksız filtresi uygulanırdı.
+        "nut_free": [
+            "nut free", "nut-free",
+            "without nuts", "no nuts",
+        ],
         "vegetarian": ["vegetarian"],
         "pescatarian": ["pescatarian"],
         "vegan": ["vegan"],

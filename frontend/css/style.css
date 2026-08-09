@@ -704,6 +704,17 @@ body.signing-in .signin-overlay {
   color: var(--text-muted);
 }
 
+/* "Leaving out: mushrooms" — sorgudan çıkarılan malzemeler.
+   UYARI DEĞİL BİLGİ olduğu için --error değil --text-muted (aynı gerekçe:
+   besin değeri sayfasındaki porsiyon notu, Faz 21). */
+.excluded-note {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0 0 0.75rem;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--accent);
+}
+
 /* ═══════════════════════════════════════════════════════ */
 /*  RECIPE CARDS                                           */
 /* ═══════════════════════════════════════════════════════ */

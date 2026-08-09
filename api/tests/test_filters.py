@@ -169,12 +169,34 @@ class TestProteinFilter:
 # filters.py ileride geliştirilirse bu testlerin KASTEN kırılması gerekiyor —
 # yani sınırın nerede olduğu kodda görünür kalıyor.
 
-class TestKnownLimitations:
-    def test_negation_is_not_understood(self):
-        # "no nuts" mantıken nut_free demek, ama kural bazlı çıkarım
-        # olumsuzlama anlamıyor. "nut free" yazılmalı.
-        assert extract_filters("no nuts please") is None
+class TestNegatedDietPhrasings:
+    """Bu sınıf eskiden TestKnownLimitations altındaydı ve `extract_filters("no
+    nuts please") is None` diye YAZILMIŞTI — yani olumsuzlamanın anlaşılmaması
+    kabul edilmiş bir sınırdı. Sınır kapandığı için test tersine çevrildi.
 
+    Alerjen olumsuzlamaları BURADA ele alınıyor, exclusions.py'de değil: bu üç
+    etiket küratörlü (ada + kategoriye + malzemeye birlikte bakıyorlar), malzeme
+    metnindeki alt-dizi aramasından güvenilir."""
+
+    @pytest.mark.parametrize("query,expected", [
+        ("no nuts please", {"nut_free": True}),
+        ("cookies without nuts", {"nut_free": True}),
+        ("pasta without gluten", {"gluten_free": True}),
+        ("dessert no gluten", {"gluten_free": True}),
+        ("cake without dairy", {"dairy_free": True}),
+        ("smoothie no lactose", {"dairy_free": True}),
+    ])
+    def test_negated_phrasings_map_to_the_diet_tag(self, query, expected):
+        assert extract_filters(query) == expected
+
+    def test_nutmeg_is_not_read_as_a_nut(self):
+        """🔴 Kontrol alt-dizi araması yapıyor ve "without nutmeg" ifadesi
+        "without nut" İÇERİYOR. Tekil biçim bu yüzden anahtar listesinde yok —
+        muskatsız kek isteyen kullanıcıya fıstıksız filtresi uygulanamaz."""
+        assert extract_filters("cake without nutmeg") is None
+
+
+class TestKnownLimitations:
     def test_hour_based_duration_is_not_parsed(self):
         # Regex sadece dakika yakalıyor (minutes?|mins?) — "2 hours" kaçıyor.
         assert extract_filters("something in 2 hours") is None
