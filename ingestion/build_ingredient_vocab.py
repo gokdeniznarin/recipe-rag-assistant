@@ -85,17 +85,46 @@ def build_vocab(ingredient_texts) -> list[str]:
     return sorted(vocab)
 
 
+def build_descriptors(ingredient_texts) -> list[str]:
+    """MALZEME metinlerinde geçen `-less` kelimeleri.
+
+    NEDEN: `exclusions.py` "eggless cake" ifadesini bir dışlama olarak okuyor.
+    Ama bazı `-less` kelimeleri dışlama isteği DEĞİL, bir malzemenin adının
+    parçası: "boneless skinless chicken breast" yazan kullanıcı kemik ve deri
+    dışlamak istemiyor, tavuğun cinsini tarif ediyor.
+
+    AYIRT EDİCİ KURAL VERİDEN: bir `-less` kelimesi malzeme listelerinde
+    geçiyorsa malzeme tarifidir; yalnızca tarif ADLARINDA geçiyorsa dışlama
+    iddiasıdır. Ölçüldü (9.795 tarif):
+        malzemede : boneless 456 · skinless 346 · seedless 42   ← istisna
+        yalnız adda: crustless · flourless · eggless · meatless ·
+                     beefless · creamless · sugarless · cheeseless
+    Yani liste tahminle değil sayımla çıkıyor ve yeniden ingestion'da
+    kendiliğinden güncelleniyor.
+    """
+    found = Counter()
+    for raw in ingredient_texts:
+        for m in re.finditer(r"\b([a-z]{3,})less\b", (raw or "").lower()):
+            found[m.group(0)] += 1
+    return sorted(found)
+
+
 def main():
     client = chromadb.PersistentClient(path=str(CHROMA_PATH))
     collection = client.get_collection("recipes")
     got = collection.get(include=["metadatas"])
 
     texts = [md.get("ingredients", "") for md in got["metadatas"]]
-    vocab = build_vocab(texts)
+    payload = {
+        "words": build_vocab(texts),
+        "descriptors": build_descriptors(texts),
+    }
 
-    OUT_PATH.write_text(json.dumps(vocab), encoding="utf-8")
-    print(f"recipes: {len(got['ids'])}")
-    print(f"vocab:   {len(vocab)} words -> {OUT_PATH} ({OUT_PATH.stat().st_size} bytes)")
+    OUT_PATH.write_text(json.dumps(payload), encoding="utf-8")
+    print(f"recipes:     {len(got['ids'])}")
+    print(f"words:       {len(payload['words'])}")
+    print(f"descriptors: {payload['descriptors']}")
+    print(f"-> {OUT_PATH} ({OUT_PATH.stat().st_size} bytes)")
 
 
 if __name__ == "__main__":

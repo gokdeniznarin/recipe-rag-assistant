@@ -98,27 +98,39 @@ _NOT_EXCLUDABLE = {
 
 # `filters.py`'nin küratörlü diyet etiketleriyle ele aldığı terimler (yukarıdaki
 # docstring'e bak). Burada dışlama olarak İKİNCİ KEZ uygulanmıyorlar.
-_DIET_HANDLED = {"gluten", "dairy", "lactose", "nut"}
+#
+# `meat` bunların arasında çünkü o bir malzeme adı DEĞİL, bir kategori: ölçüldü,
+# "meatless lasagna" sonuçlarının malzemesinde literal "meat" geçmiyor —
+# `ground beef`, `italian sausage` geçiyor. Kelime bazlı dışlama 5 sonucun 4'ünü
+# elemekte başarısızdı; kategoriyi kapsayan tek şey vejetaryen etiketi.
+_DIET_HANDLED = {"gluten", "dairy", "lactose", "nut", "meat"}
 
 
-def _load_vocab() -> set[str]:
-    """Malzeme sözlüğü — hangi kelimenin gerçekten bir malzeme olduğu.
+def _load_vocab() -> tuple[set[str], set[str]]:
+    """(malzeme sözlüğü, malzeme tarifi olan `-less` kelimeleri).
 
-    ⚠️ FAIL-SAFE: dosya yoksa BOŞ küme dönüyor, yani hiçbir dışlama tanınmıyor ve
-    arama Faz 29 öncesindeki gibi çalışmaya devam ediyor. Alternatif — sözlüksüz
-    "trigger'dan sonraki her kelimeyi malzeme say" — "no bake cookies"i
-    "cookies, bake'siz" diye okur ve düzeltmeye çalıştığımızdan daha kötü bir
-    hata üretirdi.
+    İkisi de `ingestion/build_ingredient_vocab.py` tarafından AYNI korpus
+    taramasından üretiliyor, o yüzden aynı dosyada duruyorlar — ayrı tutulsalar
+    yeniden ingestion'da biri güncellenip diğeri unutulabilirdi.
+
+    ⚠️ FAIL-SAFE: dosya okunamazsa BOŞ küme dönüyor, yani hiçbir dışlama
+    tanınmıyor ve arama bu özellik eklenmeden önceki gibi çalışmaya devam ediyor.
+    Alternatif — sözlüksüz "trigger'dan sonraki her kelimeyi malzeme say" —
+    "no bake cookies"i "cookies, bake'siz" diye okur ve düzeltmeye
+    çalıştığımızdan daha kötü bir hata üretirdi.
     """
+    def clean(seq):
+        return {w.strip().lower() for w in seq if w and w.strip()}
+
     try:
-        words = json.loads(VOCAB_PATH.read_text(encoding="utf-8"))
-        return {w.strip().lower() for w in words if w and w.strip()}
-    except (OSError, ValueError) as e:
+        data = json.loads(VOCAB_PATH.read_text(encoding="utf-8"))
+        return clean(data["words"]), clean(data["descriptors"])
+    except (OSError, ValueError, KeyError, TypeError) as e:
         log.warning("Ingredient vocabulary unavailable (%s) - query exclusions disabled", e)
-        return set()
+        return set(), set()
 
 
-VOCAB = _load_vocab()
+VOCAB, DESCRIPTORS = _load_vocab()
 
 
 def _variants(term: str) -> set[str]:
@@ -160,8 +172,14 @@ def _is_ingredient(word: str) -> bool:
 
 
 _WORD_RE = re.compile(r"[A-Za-z']+")
-# "sugar-free", "egg free" — olumsuzlamanın son ek biçimi.
-_FREE_SUFFIX_RE = re.compile(r"\b([A-Za-z]+)[-\s]free\b", re.I)
+
+# Olumsuzlamanın son ek biçimleri. Tetikleyici listesi bunları yakalayamıyor
+# çünkü ortada ayrı bir kelime yok — olumsuzlama kelimenin İÇİNDE.
+_FREE_SUFFIX_RE = re.compile(r"\b([A-Za-z]+)[-\s]free\b", re.I)   # "sugar-free", "egg free"
+# {3,} bilinçli: "unless" (un+less) ve "bless" (b+less) bu sınırın altında kalıp
+# hiç eşleşmiyor. "endless"/"useless" ise eşleşiyor ama gövdeleri ("end", "use")
+# malzeme sözlüğünde olmadığı için dışlanmıyorlar — ikinci koruma.
+_LESS_SUFFIX_RE = re.compile(r"\b([A-Za-z]{3,})less\b", re.I)     # "eggless", "meatless"
 
 
 def _trigger_length(words: list[str], i: int) -> int:
@@ -250,15 +268,34 @@ def extract_exclusions(query: str) -> tuple[list[str], str]:
                 continue
         i += 1
 
-    # Son ek biçimi: "sugar-free cake". Yalnızca kelimenin kendisi çıkarılıyor,
-    # "free" duruyor — cümleyi daha fazla bozmanın kazancı yok.
+    # Son ek biçimi 1: "sugar-free cake" → tüm ifade çıkarılıyor ("free" dahil),
+    # yoksa embed metni "free cake" gibi anlamsız bir kalıntı taşıyordu.
     for m in _FREE_SUFFIX_RE.finditer(query):
         if len(terms) >= MAX_EXCLUSIONS:
             break
         word = m.group(1).lower()
         if _is_ingredient(word) and word not in terms:
             terms.append(word)
-            cut_spans.append((m.start(1), m.end(1)))
+            cut_spans.append((m.start(), m.end()))
+
+    # Son ek biçimi 2: "eggless cake", "meatless lasagna".
+    #
+    # ⚠️ HER `-less` DIŞLAMA DEĞİL: "boneless skinless chicken breast" yazan
+    # kullanıcı kemik ve deri dışlamak istemiyor, tavuğun cinsini tarif ediyor.
+    # İstisna listesi TAHMİN DEĞİL, aynı korpustan sayılıyor: bir `-less`
+    # kelimesi malzeme metinlerinde geçiyorsa malzeme tarifidir (boneless 456,
+    # skinless 346, seedless 42), yalnızca tarif adlarında geçiyorsa dışlama
+    # iddiasıdır (eggless, flourless, meatless, crustless...).
+    for m in _LESS_SUFFIX_RE.finditer(query):
+        if len(terms) >= MAX_EXCLUSIONS:
+            break
+        whole = m.group(0).lower()
+        if whole in DESCRIPTORS:
+            continue
+        stem = m.group(1).lower()
+        if _is_ingredient(stem) and stem not in terms:
+            terms.append(stem)
+            cut_spans.append((m.start(), m.end()))
 
     if not terms:
         return [], query

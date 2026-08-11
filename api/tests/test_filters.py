@@ -189,6 +189,23 @@ class TestNegatedDietPhrasings:
     def test_negated_phrasings_map_to_the_diet_tag(self, query, expected):
         assert extract_filters(query) == expected
 
+    @pytest.mark.parametrize("query", [
+        "meatless lasagna", "meat free chili", "meat-free monday",
+        "lasagna without meat", "pasta no meat",
+    ])
+    def test_meat_negation_maps_to_vegetarian(self, query):
+        """"meat" bir kategori; malzeme metninde literal olarak geçmediği için
+        kelime bazlı dışlama işe yaramıyor (ölçüldü: `ground beef`,
+        `italian sausage`). Kategoriyi kapsayan tek şey vejetaryen etiketi."""
+        assert extract_filters(query) == {"vegetarian": True}
+
+    def test_meatballs_are_not_read_as_meat_negation(self):
+        """🔴 "no meatballs" ifadesi "no meat" İÇERİYOR. Alt-dizi araması
+        kullanılsaydı köftesiz bir tarif isteyen kullanıcıya vejetaryen
+        filtresi uygulanırdı — nutmeg tuzağının aynı ailesi."""
+        assert extract_filters("spaghetti no meatballs") is None
+        assert extract_filters("pasta without meatballs") is None
+
     def test_nutmeg_is_not_read_as_a_nut(self):
         """🔴 Kontrol alt-dizi araması yapıyor ve "without nutmeg" ifadesi
         "without nut" İÇERİYOR. Tekil biçim bu yüzden anahtar listesinde yok —

@@ -40,6 +40,22 @@ def extract_filters(query_text: str) -> dict:
         if any(kw in query_lower for kw in keywords):
             conditions.append({tag: True})
 
+    # "meatless lasagna" / "no meat" → vegetarian.
+    #
+    # BU NEDEN exclusions.py'DE DEĞİL: orası bir malzeme ADINI metinde arıyor,
+    # oysa "meat" bir KATEGORİ. Ölçüldü — "meatless lasagna" sorgusunda dönen
+    # tariflerin malzemesinde literal "meat" kelimesi geçmiyor, `ground beef` ve
+    # `italian sausage` geçiyor; kelime bazlı dışlama 5 sonucun 4'ünü elemekte
+    # başarısızdı. Kategoriyi kapsayan tek şey vejetaryen etiketi.
+    #
+    # ⚠️ REGEX, ALT-DİZİ DEĞİL: "no meat" düz alt-dizi olarak arandığında
+    # "no meatballs" ifadesinin İÇİNDE eşleşiyor ve köftesiz bir tarif isteyen
+    # kullanıcıya vejetaryen filtresi uygulanırdı. `\b` bunu engelliyor —
+    # `nutmeg`/`without nut` tuzağının aynı ailesi.
+    if re.search(r"\b(?:meatless|meat[-\s]free|(?:without|no)\s+meat)\b", query_lower):
+        if {"vegetarian": True} not in conditions:
+            conditions.append({"vegetarian": True})
+
     # --- Süre kısıtı ---
     time_match = re.search(r'(\d+)\s*(?:minutes?|mins?)', query_lower)
     if time_match:

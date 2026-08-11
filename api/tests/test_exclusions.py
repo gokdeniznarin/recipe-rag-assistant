@@ -9,6 +9,7 @@ import json
 import pytest
 
 from exclusions import (
+    DESCRIPTORS,
     VOCAB_PATH,
     MAX_EXCLUSIONS,
     excluded_terms_in_recipe,
@@ -119,7 +120,7 @@ class TestExtractExclusions:
         assert terms == ["mushrooms"]
         assert "quick" in text
 
-    # ── Son ek biçimi: "sugar-free" ──
+    # ── Son ek biçimi 1: "sugar-free" ──
 
     @pytest.mark.parametrize("query,term", [
         ("sugar free cake", "sugar"),
@@ -128,6 +129,56 @@ class TestExtractExclusions:
     ])
     def test_free_suffix(self, query, term):
         assert extract_exclusions(query)[0] == [term]
+
+    def test_free_suffix_removes_the_whole_phrase(self):
+        """İlk sürüm yalnızca malzemeyi siliyordu ve embed metni "free cake"
+        gibi anlamsız bir kalıntı taşıyordu."""
+        _, text = extract_exclusions("egg free cake")
+        assert text == "cake"
+
+    # ── Son ek biçimi 2: "-less" ──
+
+    @pytest.mark.parametrize("query,term,expected_text", [
+        ("eggless cake", "egg", "cake"),
+        ("sugarless cookies", "sugar", "cookies"),
+        ("flourless chocolate cake", "flour", "chocolate cake"),
+        ("crustless quiche", "crust", "quiche"),
+    ])
+    def test_less_suffix(self, query, term, expected_text):
+        terms, text = extract_exclusions(query)
+        assert terms == [term]
+        assert text == expected_text
+
+    def test_meatless_is_left_to_the_vegetarian_tag(self):
+        """"meat" bir malzeme adı değil, bir KATEGORİ. Ölçüldü: "meatless
+        lasagna" sonuçlarının malzemesinde literal "meat" geçmiyor, `ground
+        beef` ve `italian sausage` geçiyor — kelime bazlı dışlama 5 sonucun
+        4'ünü elemekte başarısızdı. filters.py bunu vejetaryen etiketine
+        çeviriyor."""
+        assert extract_exclusions("meatless lasagna") == ([], "meatless lasagna")
+
+    @pytest.mark.parametrize("query", [
+        "boneless skinless chicken breast",
+        "seedless grape salad",
+    ])
+    def test_ingredient_descriptors_are_not_exclusions(self, query):
+        """🔴 "boneless skinless chicken breast" yazan kullanıcı kemik ve deri
+        DIŞLAMAK istemiyor, tavuğun cinsini tarif ediyor. İstisna listesi
+        tahminle değil korpustan sayılıyor: bu üç kelime malzeme metinlerinde
+        geçiyor (boneless 456, skinless 346, seedless 42), diğer `-less`
+        kelimeleri yalnızca tarif adlarında."""
+        assert extract_exclusions(query) == ([], query)
+
+    @pytest.mark.parametrize("query", [
+        "endless summer punch",
+        "useless leftovers",
+        "unless you like it hot",
+        "bless this mess casserole",
+    ])
+    def test_ordinary_less_words_are_not_exclusions(self, query):
+        """İki koruma birden: "unless"/"bless" {3,} sınırının altında kalıp hiç
+        eşleşmiyor, "endless"/"useless" eşleşiyor ama gövdeleri sözlükte yok."""
+        assert extract_exclusions(query) == ([], query)
 
     def test_fat_free_is_not_an_ingredient_exclusion(self):
         """"fat free milk" bir MALZEME adı. Dışlama sayılsaydı "fat" içeren
@@ -231,8 +282,13 @@ class TestFilterExcluded:
 # ══════════ Katman 1.5 — sözlüğün bütünlüğü ══════════
 
 @pytest.fixture(scope="module")
-def vocab():
-    return set(json.loads(VOCAB_PATH.read_text(encoding="utf-8")))
+def payload():
+    return json.loads(VOCAB_PATH.read_text(encoding="utf-8"))
+
+
+@pytest.fixture(scope="module")
+def vocab(payload):
+    return set(payload["words"])
 
 
 class TestVocabulary:
@@ -259,6 +315,18 @@ class TestVocabulary:
         """Bunlar sözlüğe girerse "no bake cookies" bozulur — test_exclusions'ın
         yukarıdaki yemek-adı testleriyle aynı korumanın veri tarafı."""
         assert word not in vocab
+
+    def test_descriptors_are_present_and_loaded(self, payload):
+        """Malzeme tarifi olan `-less` kelimeleri. Boş kalırsa "boneless
+        skinless chicken breast" sorgusu kemik ve deri dışlamaya başlar."""
+        assert set(payload["descriptors"]) == {"boneless", "skinless", "seedless"}
+        assert DESCRIPTORS == set(payload["descriptors"])
+
+    def test_no_exclusion_word_leaked_into_descriptors(self, payload):
+        """Ters yön: gerçek dışlama iddiaları istisna listesine düşmemeli,
+        yoksa "eggless cake" sessizce çalışmaz hâle gelir."""
+        for w in ("eggless", "flourless", "meatless", "sugarless", "crustless"):
+            assert w not in payload["descriptors"]
 
 
 class TestNoDriftFromPantryMatcher:
