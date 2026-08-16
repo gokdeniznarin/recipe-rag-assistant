@@ -66,6 +66,7 @@ const PRECACHE = [
   '/js/config.js',
   '/js/favorites.js',
   '/js/firebase.js',
+  '/js/install.js',
   '/js/logger.js',
   '/js/nutrition.js',
   '/js/pantry.js',

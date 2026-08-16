@@ -3087,6 +3087,49 @@ body.auth-page .auth-container {
   color: rgba(245, 240, 232, 0.95);
 }
 
+/* ── "Install app" (PWA kurulumu) ───────────────────────── */
+
+/* İkisi de `hidden` doğuyor ve yalnızca js/install.js gösteriyor: hangisinin
+   anlamlı olduğunu ancak tarayıcı söyleyebiliyor (Chrome'da buton, iOS'ta
+   yönerge, masaüstü Firefox'ta hiçbiri). Varsayılan olarak görünür olsalardı
+   kurulum imkânı olmayan tarayıcıda çalışmayan bir buton dururdu.
+
+   Turuncu ama DOLU DEĞİL: "Sign out"tan ayrılsın diye renkli, ama kenar
+   çubuğundaki asıl işlerin (gezinme) önüne geçmesin diye sadece çerçeve. */
+.side-install {
+  width: 100%;
+  margin-bottom: 0.5rem;
+  padding: 0.45rem;
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.side-install:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* iOS yönergesi — buton değil METİN, çünkü orada basılacak bir şey yok:
+   kurulumu tarayıcının kendi Paylaş menüsünden kullanıcı yapıyor. */
+.side-install-hint {
+  margin-bottom: 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: rgba(245, 240, 232, 0.55);
+}
+
+.side-install-hint strong {
+  color: rgba(245, 240, 232, 0.85);
+  font-weight: 600;
+}
+
 .account-card {
   background: var(--surface);
   border: 1px solid var(--border);
