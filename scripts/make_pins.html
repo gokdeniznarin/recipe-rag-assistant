@@ -15,6 +15,12 @@
     3. Her karta sag tik -> Inspect -> secili dugumde sag tik ->
        "Capture node screenshot"  =>  tam 1000x1500 PNG
 
+  MARKA ISARETI
+    Pindeki ikon ve arkadaki susleme `frontend/icons/` altindaki GERCEK
+    dosyalardan geliyor (kopyalanmiyor). Yani ikon bir daha degisirse
+    - once `python scripts/make_icons.py` calistirilir -
+    bu arac otomatik olarak yeni sekli basar; pinleri yeniden yakalamak yeter.
+
   FOTOGRAFLARI NEREDEN
     Unsplash (unsplash.com) ve Pexels (pexels.com) - ikisi de TICARI
     kullanima acik, atif zorunlu degil. "pasta", "cookies", "breakfast"
@@ -71,13 +77,27 @@
 
   /* ── Fotografsiz (tipografik) varyant ────────────────── */
   .pin--text { justify-content: space-between; padding: 110px 90px; }
-  .pin--text .content { padding: 0; }
-  .pin--text::after {
-    content: '✦'; position: absolute;
-    right: -110px; bottom: -190px;
-    font-size: 620px; line-height: 1;
-    color: rgba(245, 240, 232, 0.055);
+  /* `.pin`in TEK cocugu `.content` (susleme `absolute`, akista degil), yani
+     `.pin`deki space-between hicbir sey yapmiyordu: baslik da alt blok da uste
+     yigiliyor, pinin alt yarisi bos kaliyordu. Ayirma isi buraya tasindi. */
+  .pin--text .content {
+    padding: 0; flex: 1;
+    display: flex; flex-direction: column; justify-content: space-between;
   }
+
+  /* Sussleme = MARKA ISARETININ KENDISI, `frontend/icons/olive-branch.svg`
+     dosyasindan. Sekil buraya KOPYALANMIYOR: o dosyayi scripts/olive_branch.py
+     uretiyor ve tek kaynak orasi; kopyalasaydik ikon bir daha degistiginde
+     pinler sessizce eski sekilde kalirdi (tam da su an duzeltilen durum).
+     Dosya turuncu ciziyor, biz krem istiyoruz -> brightness(0) her pikseli
+     siyaha indiriyor, invert(1) beyaza ceviriyor; saydamlik korunuyor. */
+  .ornament {
+    position: absolute; right: -230px; bottom: -300px;
+    width: 1020px; height: 1020px;
+    filter: brightness(0) invert(1);
+    opacity: 0.085;
+  }
+  .pin:not(.pin--text) .ornament { display: none; }   /* fotografta sus gurultu olur */
 
   .kicker {
     font-size: 34px; font-weight: 600; letter-spacing: 0.22em;
@@ -92,14 +112,29 @@
     font-size: 42px; line-height: 1.45; max-width: 24ch;
     color: rgba(245, 240, 232, 0.9);
   }
+  /* Marka ve adres YAN YANA DEGIL alt alta: uzun slug'larda ("vegetarian-
+     dinners") adres 940 px istiyor, oysa yazi alani 820 px - yan yana
+     dizilince ikisi de sarip birbirine giriyordu. */
   .foot {
-    display: flex; align-items: baseline; gap: 22px;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 16px;
     margin-top: 46px; position: relative;
   }
   .pin--text .foot { margin-top: 0; }
-  .brand { font-family: 'Playfair Display', serif; font-size: 46px; }
-  .url { font-size: 32px; color: rgba(245, 240, 232, 0.62); }
+  .brand {
+    display: flex; align-items: center; gap: 22px; white-space: nowrap;
+    font-family: 'Playfair Display', serif; font-size: 46px;
+  }
+  /* Uygulamanin GERCEK ikonu (beyaz zemin uzerinde zeytin dali). Cizgi
+     surumu burada KULLANILAMAZDI: olive_branch.py'nin notu net, ~28 px'te
+     sekil okunmuyor - kucuk bir marka isaretine dolu surum gerekiyor. */
+  .brand-icon {
+    width: 78px; height: 78px; border-radius: 19px;
+    box-shadow: 0 2px 14px rgba(0,0,0,0.3);
+  }
+  .url { font-size: 30px; color: rgba(245, 240, 232, 0.62); }
   .cap { font-size: 12px; color: #aaa; margin: 6px 0 0; max-width: 1000px; word-break: break-all; }
+  /* Tek pin modunda sayfa = pinin kendisi; altyazi kadraja girmemeli. */
+  body.single .cap { display: none; }
   .cap b { color: #7ec87e; }
 </style>
 </head>
@@ -184,14 +219,32 @@ function findPhoto(slug) {
     status.textContent = 'HATA: ' + e.message;
     status.style.color = '#ff8080';
   });
-  const collections = COLLECTIONS;
+  // TEK PIN MODU: `make_pins.html?pin=cookies` yalnizca o pini, sayfayi tam
+  // dolduracak sekilde cizer. Sebebi otomatik yakalama: bu adresi headless
+  // Chrome'a `--window-size=1000,1500` ile verince tam olcude bir PNG cikiyor,
+  // yani 14 pin icin 14 kez DevTools acip "Capture node screenshot" tiklamak
+  // gerekmiyor. Elle yakalama yolu aynen duruyor - bu onun yerine gecmiyor.
+  const only = new URLSearchParams(location.search).get('pin');
+  const collections = only ? COLLECTIONS.filter((c) => c.slug === only) : COLLECTIONS;
+  if (only) {
+    document.body.classList.add('single');
+    document.body.style.padding = '0';
+    status.style.display = 'none';
+    if (!collections.length) {
+      status.style.display = '';
+      status.textContent = 'Boyle bir slug yok: ' + only;
+      status.style.color = '#ff8080';
+      return;
+    }
+  }
 
   const sheet = document.getElementById('sheet');
   let withPhoto = 0;
+  const missing = [];
 
   for (const c of collections) {
     const photo = await findPhoto(c.slug);
-    if (photo) withPhoto++;
+    if (photo) withPhoto++; else missing.push(c.slug);
 
     const wrap = document.createElement('div');
     // ⚠️ `utm_*` PIN URL'INE ELLE EKLENMIYOR: hedef adresi Pinterest'e
@@ -200,6 +253,7 @@ function findPhoto(slug) {
     wrap.innerHTML = `
       <div class="pin ${photo ? '' : 'pin--text'}" data-slug="${esc(c.slug)}">
         ${photo ? `<img class="pin-photo" src="${esc(photo)}" alt=""><div class="scrim"></div>` : ''}
+        <img class="ornament" src="../frontend/icons/olive-branch.svg" alt="" onerror="this.remove()">
         <div class="content">
           <div>
             <p class="kicker">${esc(KICKERS[c.slug] || 'recipes')}</p>
@@ -207,7 +261,12 @@ function findPhoto(slug) {
             <p class="desc">${esc(c.description)}</p>
           </div>
           <div class="foot">
-            <span class="brand">✦ Recipe Assistant</span>
+            <span class="brand">
+              <!-- Yuklenemezse KIRIK IKON basmaktansa yalniz metin kalsin:
+                   yayinlanan bir pinde kirik gorsel isareti geri alinamaz. -->
+              <img class="brand-icon" src="../frontend/icons/icon-192.png" alt="" onerror="this.remove()">
+              Recipe Assistant
+            </span>
             <span class="url">${SITE}/discover/${esc(c.slug)}</span>
           </div>
         </div>
@@ -218,8 +277,11 @@ function findPhoto(slug) {
   }
 
   status.innerHTML =
-    `${collections.length} pins · <b>${withPhoto} with a photo</b>, ${collections.length - withPhoto} typographic<br>` +
-    `Drop images into <b>scripts/photos/&lt;slug&gt;.jpg</b> to swap a card to the photo layout.<br>` +
+    `${collections.length} pins · <b>${withPhoto} with a photo</b>, ${missing.length} typographic<br>` +
+    (missing.length
+      ? `No photo yet (typographic layout): <b>${esc(missing.join(' · '))}</b><br>` +
+        `Drop images into <b>scripts/photos/&lt;slug&gt;.jpg</b> to swap any of them to the photo layout.<br>`
+      : `Every collection has a photo.<br>`) +
     `Right-click a card → Inspect → right-click the highlighted node → <b>Capture node screenshot</b> (1000×1500)`;
 })();
 </script>

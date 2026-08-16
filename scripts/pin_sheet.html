@@ -1,0 +1,451 @@
+<title>Pinterest Pin Föyü</title>
+<style>
+  /* Palet uygulamanın kendi tasarım sisteminden: olive #2D3B2D, cream #F5F0E8,
+     accent #E8824A. Turuncu krem üzerinde küçük metin için yeterli kontrast
+     vermiyor (~2.5:1), o yüzden metin turuncusu koyulaştırıldı; parlak hâli
+     yalnızca dolgu/işaret olarak kullanılıyor. */
+  :root {
+    --ground:      #F5F0E8;
+    --surface:     #FFFDFA;
+    --surface-alt: #EFE9DC;
+    --ink:         #1E271E;
+    --muted:       #6B7568;
+    --rule:        #DFD7C7;
+    --rule-strong: #C9BFAA;
+    --accent:      #A85118;
+    --accent-brt:  #E8824A;
+    --chip-photo-bg: #E4EADF;
+    --chip-photo-fg: #3B5738;
+    --chip-type-bg:  #EFE3D4;
+    --chip-type-fg:  #8A5620;
+    --shadow: 0 1px 2px rgba(45,59,45,0.06), 0 8px 24px -16px rgba(45,59,45,0.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #1D251D;
+      --surface:     #2A362A;
+      --surface-alt: #232E23;
+      --ink:         #F0EBE1;
+      --muted:       #9EA89A;
+      --rule:        #3B4A3B;
+      --rule-strong: #4C5F4C;
+      --accent:      #F0954F;
+      --accent-brt:  #E8824A;
+      --chip-photo-bg: #32432F;
+      --chip-photo-fg: #B9D3B3;
+      --chip-type-bg:  #3E3327;
+      --chip-type-fg:  #E7B482;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -16px rgba(0,0,0,0.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:      #1D251D;
+    --surface:     #2A362A;
+    --surface-alt: #232E23;
+    --ink:         #F0EBE1;
+    --muted:       #9EA89A;
+    --rule:        #3B4A3B;
+    --rule-strong: #4C5F4C;
+    --accent:      #F0954F;
+    --accent-brt:  #E8824A;
+    --chip-photo-bg: #32432F;
+    --chip-photo-fg: #B9D3B3;
+    --chip-type-bg:  #3E3327;
+    --chip-type-fg:  #E7B482;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -16px rgba(0,0,0,0.7);
+  }
+
+  /* Playfair/Inter CDN'den yüklenemiyor (artifact CSP'si dış hostu kesiyor) ve
+     sessizce başka bir fonta düşmesindense yerel karşılıkları seçildi. */
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 56px 24px 96px;
+    display: flex;
+    flex-direction: column;
+    gap: 56px;
+  }
+
+  h1, h2, h3, .serif {
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+    font-weight: 600;
+    text-wrap: balance;
+  }
+
+  /* ── Başlık ─────────────────────────────────────────── */
+  header { display: flex; flex-direction: column; gap: 18px; }
+  .eyebrow {
+    font-size: 12px; font-weight: 600; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--accent); margin: 0;
+  }
+  h1 { font-size: clamp(34px, 5vw, 46px); line-height: 1.1; margin: 0; }
+  .lede { margin: 0; max-width: 62ch; color: var(--muted); font-size: 17px; }
+  .counts { display: flex; flex-wrap: wrap; gap: 10px; }
+  .count {
+    display: flex; align-items: baseline; gap: 8px;
+    background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 8px; padding: 8px 14px;
+  }
+  .count b { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .count span { font-size: 13px; color: var(--muted); }
+
+  section { display: flex; flex-direction: column; gap: 22px; }
+  h2 { font-size: 25px; margin: 0; }
+  .section-note { margin: -10px 0 0; color: var(--muted); font-size: 15px; max-width: 66ch; }
+
+  /* ── Adımlar: numaralandırma GERÇEK bir sıra, süs değil ── */
+  ol.steps {
+    list-style: none; margin: 0; padding: 0;
+    display: grid; gap: 2px;
+    background: var(--rule); border: 1px solid var(--rule);
+    border-radius: 12px; overflow: hidden;
+  }
+  ol.steps li {
+    background: var(--surface);
+    display: grid; grid-template-columns: 40px 1fr; gap: 16px;
+    padding: 16px 20px; align-items: start;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+    font-size: 13px; font-weight: 700; letter-spacing: 0.04em;
+    color: var(--accent);
+    border: 1px solid var(--rule-strong); border-radius: 999px;
+    width: 30px; height: 30px;
+    display: flex; align-items: center; justify-content: center;
+    margin-top: 1px;
+  }
+  /* YALNIZCA adımın başlığı blok. Düz `.steps b` yazmak, paragrafların
+     içindeki vurgu <b>'lerini de satır başına atıyordu. */
+  .steps li > div > b { display: block; font-weight: 600; }
+  .steps p { margin: 3px 0 0; color: var(--muted); font-size: 15px; }
+  kbd {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12.5px; background: var(--surface-alt);
+    border: 1px solid var(--rule); border-radius: 5px;
+    padding: 1px 6px; color: var(--ink);
+  }
+
+  /* ── Uyarı kutusu ───────────────────────────────────── */
+  .notes {
+    border-left: 3px solid var(--accent-brt);
+    background: var(--surface); border-radius: 0 10px 10px 0;
+    padding: 18px 22px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .notes p { margin: 0; font-size: 15px; }
+  .notes strong { color: var(--accent); }
+
+  /* ── Board haritası ─────────────────────────────────── */
+  .boards { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+  .board {
+    background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 10px; padding: 14px 16px;
+  }
+  .board b { font-family: Georgia, serif; font-size: 17px; display: block; }
+  .board span { font-size: 13.5px; color: var(--muted); }
+
+  /* ── Pin kartları ───────────────────────────────────── */
+  .pins { display: grid; gap: 16px; }
+  .pin {
+    background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 14px; padding: 20px 22px 18px;
+    display: flex; flex-direction: column; gap: 14px;
+    box-shadow: var(--shadow);
+  }
+  .pin-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .pin-head h3 { font-size: 22px; margin: 0; flex: 1 1 auto; }
+  .chip {
+    font-size: 11.5px; font-weight: 600; letter-spacing: 0.07em;
+    text-transform: uppercase; border-radius: 999px; padding: 4px 11px;
+    white-space: nowrap;
+  }
+  .chip.photo { background: var(--chip-photo-bg); color: var(--chip-photo-fg); }
+  .chip.type  { background: var(--chip-type-bg);  color: var(--chip-type-fg); }
+  .file {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12.5px; color: var(--muted); white-space: nowrap;
+  }
+
+  .fields { display: flex; flex-direction: column; gap: 10px; }
+  .field { display: grid; grid-template-columns: 92px 1fr; gap: 14px; align-items: start; }
+  .flabel {
+    font-size: 11.5px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--muted); padding-top: 9px;
+  }
+  .val {
+    margin: 0; background: var(--surface-alt);
+    border: 1px solid var(--rule); border-radius: 8px;
+    padding: 8px 12px; cursor: pointer; position: relative;
+    transition: border-color 0.15s ease, background 0.15s ease;
+    overflow-wrap: anywhere;
+  }
+  .val:hover, .val:focus-visible { border-color: var(--accent-brt); }
+  .val:focus-visible { outline: 2px solid var(--accent-brt); outline-offset: 2px; }
+  .val.mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px; line-height: 1.5;
+  }
+  .val.copied { background: var(--chip-photo-bg); border-color: var(--chip-photo-fg); }
+  .flash {
+    position: absolute; right: 8px; top: -11px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+    background: var(--ink); color: var(--ground);
+    border-radius: 999px; padding: 2px 9px;
+    opacity: 0; transform: translateY(3px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    pointer-events: none;
+  }
+  .flash.on { opacity: 1; transform: translateY(0); }
+
+  footer {
+    border-top: 1px solid var(--rule); padding-top: 22px;
+    color: var(--muted); font-size: 14px;
+  }
+  footer p { margin: 0 0 8px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+  @media (max-width: 620px) {
+    .field { grid-template-columns: 1fr; gap: 5px; }
+    .flabel { padding-top: 0; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">Recipe Assistant · Discover koleksiyonları</p>
+    <h1>Pinterest pin föyü</h1>
+    <p class="lede">
+      14 koleksiyonun her biri için yüklenecek görsel, yapıştırılacak başlık,
+      açıklama ve UTM'li hedef adres. Değerlerin üstüne tıklayınca kopyalanıyor.
+    </p>
+    <div class="counts">
+      <div class="count"><b>14</b><span>pin</span></div>
+      <div class="count"><b>5</b><span>fotoğraflı</span></div>
+      <div class="count"><b>9</b><span>tipografik</span></div>
+      <div class="count"><b>24</b><span>tarif / koleksiyon</span></div>
+    </div>
+  </header>
+
+  <section>
+    <h2>Bir pini yayınlama sırası</h2>
+    <ol class="steps">
+      <li><span class="num">1</span><div>
+        <b>Görseli yakala</b>
+        <p><kbd>scripts/make_pins.html</kbd> dosyasını çift tıkla → ilgili karta sağ tık →
+           <b>Inspect</b> → vurgulu düğüme sağ tık → <b>Capture node screenshot</b>. Çıkan PNG tam 1000×1500.</p>
+      </div></li>
+      <li><span class="num">2</span><div>
+        <b>pinterest.com → Create → Create Pin</b>
+        <p>İşletme hesabındayken üst soldaki <b>Create</b> menüsünden.</p>
+      </div></li>
+      <li><span class="num">3</span><div>
+        <b>PNG'yi sürükle</b>
+        <p>Yükleme alanına bırak. 2:3 dikey olduğu için Pinterest kırpmıyor.</p>
+      </div></li>
+      <li><span class="num">4</span><div>
+        <b>Title → aşağıdaki başlık</b>
+        <p>Kartlardaki <b>Başlık</b> alanı.</p>
+      </div></li>
+      <li><span class="num">5</span><div>
+        <b>Description → aşağıdaki açıklama</b>
+        <p>İlk cümle akışta görünen kısım; tarif sayısı ve "hesap gerekmiyor" ifadesi tıklamayı taşıyan yer.</p>
+      </div></li>
+      <li><span class="num">6</span><div>
+        <b>Destination link → UTM'li adres</b>
+        <p>Kartlardaki <b>Hedef adres</b>. UTM'siz yapıştırırsan Pinterest'ten gelen trafiği ayırt edemezsin.</p>
+      </div></li>
+      <li><span class="num">7</span><div>
+        <b>Board seç → Publish</b>
+        <p>Board eşleşmesi aşağıdaki haritada. Alt text alanı boş bırakılabilir; doldurursan görseldeki başlığın aynısı yeter.</p>
+      </div></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Yayınlarken dikkat</h2>
+    <div class="notes">
+      <p><strong>Cookies pini zaten canlı, ama eski işaretle.</strong> Pinterest yayınlanmış bir
+         pinin görselini değiştirmeye izin vermiyor — başlık, açıklama, link ve board düzenlenebiliyor,
+         görsel düzenlenemiyor. Yeni simgeli hâli için eskisini silip yeniden yüklemen gerekiyor.
+         18 gösterim ve 6 tıklama kaybı; bu aşamada önemsiz.</p>
+      <p><strong>14'ünü aynı anda atma.</strong> Yeni bir hesabın tek oturumda yığın yüklemesi
+         spam sinyali sayılabiliyor. Günde 2–3 pin, birkaç güne yayarak daha güvenli — ayrıca
+         hangi başlığın tuttuğunu ölçebilirsin.</p>
+      <p><strong>Fotoğraflı pinler tipografik olanları geçiyor.</strong> 9 tipografik pinden
+         herhangi birine <kbd>scripts/photos/&lt;slug&gt;.jpg</kbd> koyarsan üretici otomatik
+         fotoğraflı düzene geçiyor. Kaynak: Unsplash / Pexels — dikey fotoğraf seç.
+         Food.com fotoğrafları kullanılamaz.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Board haritası</h2>
+    <p class="section-note">14 pini tek board'a doldurmak yerine altı konu board'u: Pinterest
+       board konusunu sinyal olarak kullanıyor, karışık board her pini zayıflatıyor.</p>
+    <div class="boards" id="boards"></div>
+  </section>
+
+  <section>
+    <h2>Pinler</h2>
+    <p class="section-note">Sıra <kbd>api/discover.py</kbd> ile aynı — föyü yukarıdan aşağı
+       takip edersen üretici sayfasındaki kart sırasıyla birebir örtüşüyor.</p>
+    <div class="pins" id="pins"></div>
+  </section>
+
+  <footer>
+    <p>Görseller <kbd>scripts/make_pins.html</kbd> ile üretiliyor; marka işareti
+       <kbd>frontend/icons/</kbd> altındaki gerçek dosyalardan geliyor, ikon değişirse pinler
+       yeniden yakalanmalı.</p>
+    <p>Tarif sayıları canlı API'den okundu (<kbd>/api/discover/&lt;slug&gt;</kbd>), koleksiyon
+       başına 24.</p>
+  </footer>
+
+</div>
+
+<script>
+  const SITE = 'https://recipe-rag-assistant.vercel.app';
+  const COUNT = 24;
+  const TAIL = 'Browse ' + COUNT + ' recipes with photos, full ingredient lists and ' +
+               'step-by-step instructions — free, no account needed.';
+
+  // slug, başlık, açıklama: api/discover.py'nin birebir karşılığı.
+  // photo: scripts/photos/ altında fotoğrafı olan koleksiyonlar.
+  const PINS = [
+    ['30-minute-dinners', '30-Minute Dinners', 'Real dinners you can get on the table in half an hour.', true,  'Weeknight Dinners'],
+    ['15-minute-recipes', '15-Minute Recipes', 'For the nights when cooking has to be quick.', false, 'Weeknight Dinners'],
+    ['easy-desserts',     'Easy Desserts',     'Sweet things that do not take an afternoon.', true,  'Desserts & Baking'],
+    ['breakfast-ideas',   'Breakfast Ideas',   'Ways to start the day that are not cereal.', true,  'Breakfast & Lunch'],
+    ['chicken-dinners',   'Chicken Dinners',   'The weeknight staple, done a lot of different ways.', false, 'Weeknight Dinners'],
+    ['one-pot-meals',     'One-Pot Meals',     'Everything in one dish, and one dish to wash.', false, 'Weeknight Dinners'],
+    ['homemade-bread',    'Homemade Bread',    'Loaves, quick breads and everything in between.', true,  'Desserts & Baking'],
+    ['cookies',           'Cookies',           'Drop cookies, bars, and the rest of the jar.', true,  'Desserts & Baking'],
+    ['vegetable-sides',   'Vegetable Sides',   'The part of the plate that usually gets ignored.', false, 'Vegetables & Sides'],
+    ['potato-recipes',    'Potato Recipes',    'Roasted, mashed, baked and fried.', false, 'Vegetables & Sides'],
+    ['lunch-and-snacks',  'Lunch & Snacks',    'Midday food worth looking forward to.', false, 'Breakfast & Lunch'],
+    ['drinks',            'Drinks',            'Hot, cold, and everything you can put in a glass.', false, 'Drinks'],
+    ['vegetarian-dinners','Vegetarian Dinners','Meat-free meals that are actually dinner, not a side salad.', false, 'Plant-Based'],
+    ['vegan-recipes',     'Vegan Recipes',     'No meat, no dairy, no eggs — and nothing that tastes like a compromise.', false, 'Plant-Based'],
+  ];
+
+  const url = (slug) =>
+    `${SITE}/discover/${slug}?utm_source=pinterest&utm_medium=pin&utm_campaign=${slug}`;
+
+  /* Kopyalama iki yollu: pano izni verilirse gerçekten kopyalanıyor, verilmezse
+     metin SEÇİLİYOR ve kullanıcıya Ctrl+C deniyor. Sessizce hiçbir şey yapmayan
+     bir buton, olmayan bir butondan kötüdür. */
+  function bindCopy(el) {
+    el.tabIndex = 0;
+    el.setAttribute('role', 'button');
+    const flash = document.createElement('span');
+    flash.className = 'flash';
+    el.appendChild(flash);
+
+    const say = (text) => {
+      flash.textContent = text;
+      flash.classList.add('on');
+      el.classList.add('copied');
+      clearTimeout(el._t);
+      el._t = setTimeout(() => {
+        flash.classList.remove('on');
+        el.classList.remove('copied');
+      }, 1400);
+    };
+
+    const run = () => {
+      const value = el.dataset.value;
+      const select = () => {
+        const r = document.createRange();
+        r.selectNodeContents(el.firstChild);
+        const s = window.getSelection();
+        s.removeAllRanges();
+        s.addRange(r);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(value)
+          .then(() => say('kopyalandı'))
+          .catch(() => { select(); say('seçildi · Ctrl+C'); });
+      } else {
+        select();
+        say('seçildi · Ctrl+C');
+      }
+    };
+
+    el.addEventListener('click', run);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); run(); }
+    });
+  }
+
+  function field(label, value, mono) {
+    const wrap = document.createElement('div');
+    wrap.className = 'field';
+    const l = document.createElement('div');
+    l.className = 'flabel';
+    l.textContent = label;
+    const v = document.createElement('p');
+    v.className = 'val' + (mono ? ' mono' : '');
+    v.dataset.value = value;
+    v.appendChild(document.createTextNode(value));
+    bindCopy(v);
+    wrap.append(l, v);
+    return wrap;
+  }
+
+  const pins = document.getElementById('pins');
+  for (const [slug, title, desc, photo] of PINS) {
+    const card = document.createElement('article');
+    card.className = 'pin';
+
+    const head = document.createElement('div');
+    head.className = 'pin-head';
+    const h = document.createElement('h3');
+    h.textContent = title;
+    const chip = document.createElement('span');
+    chip.className = 'chip ' + (photo ? 'photo' : 'type');
+    chip.textContent = photo ? 'fotoğraflı' : 'tipografik';
+    const file = document.createElement('span');
+    file.className = 'file';
+    file.textContent = slug + '.png';
+    head.append(h, chip, file);
+
+    const fields = document.createElement('div');
+    fields.className = 'fields';
+    fields.append(
+      field('Başlık', title, false),
+      field('Açıklama', desc + ' ' + TAIL, false),
+      field('Hedef adres', url(slug), true),
+    );
+
+    card.append(head, fields);
+    pins.appendChild(card);
+  }
+
+  const grouped = new Map();
+  for (const [, title, , , board] of PINS) {
+    if (!grouped.has(board)) grouped.set(board, []);
+    grouped.get(board).push(title);
+  }
+  const boards = document.getElementById('boards');
+  for (const [name, titles] of grouped) {
+    const el = document.createElement('div');
+    el.className = 'board';
+    const b = document.createElement('b');
+    b.textContent = name;
+    const s = document.createElement('span');
+    s.textContent = titles.join(' · ');
+    el.append(b, s);
+    boards.appendChild(el);
+  }
+</script>
