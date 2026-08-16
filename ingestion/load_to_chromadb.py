@@ -73,6 +73,21 @@ for start in range(0, total, batch_size):
             # "bilinmiyor" olarak davranmak ZORUNDA — 0'ı 1 saymak, tarifin
             # tamamını tek porsiyon ilan etmek olurdu.
             "servings": int(row.get("servings", 0) or 0),
+            # ── Puan ve yorum sayısı (2026-08-17) ──────────────────────
+            # Veri setinde baştan beri vardı ama HİÇ yüklenmemişti, ve bunun
+            # bedeli ölçüldü: herkese açık koleksiyon sayfaları "eşleşen ilk
+            # 24 tarif"i gösteriyordu — yani rastgele. Vegan sayfasının
+            # tepesinde 5 dakikalık bir jicama çubuğu vardı, oysa aynı havuzda
+            # **247 yorumlu 5.0 puanlı** `Baja Black Beans, Corn and Rice`
+            # duruyordu. Sıralamayı buna çevirmek, sayfayı "rastgele 24"ten
+            # "en beğenilen 24"e taşıyor.
+            #
+            # 0.0 = PUANLANMAMIŞ (veri setinin %17'si). `rating` tek başına
+            # sıralama ölçütü OLAMAZ: tek yorumlu bir 5.0, 247 yorumlu bir
+            # 4.8'i yener. Ağırlıklandırma tüketen tarafta (`discover.py`)
+            # yapılıyor — ham veri burada, politika orada.
+            "rating": float(row["AggregatedRating"]) if pd.notna(row.get("AggregatedRating")) else 0.0,
+            "review_count": int(row["ReviewCount"]) if pd.notna(row.get("ReviewCount")) else 0,
             "gluten_free": "gluten_free" in row["diet_tags"],
             "dairy_free": "dairy_free" in row["diet_tags"],
             "nut_free": "nut_free" in row["diet_tags"],

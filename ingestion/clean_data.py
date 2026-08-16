@@ -1,6 +1,7 @@
 import pandas as pd
 import re
 import html
+import unicodedata
 
 # ============ CLEANING FUNCTIONS ============
 
@@ -85,6 +86,19 @@ def parse_servings(value):
     return n if 1 <= n <= 100 else 0
 
 
+def fold_accents(text):
+    """Küçük harfe indirir ve aksanları düşürür: `Carñitas` -> `carnitas`.
+
+    NFD ayrıştırması harfi ve birleşen işareti ayırıyor; `Mn` (nonspacing mark)
+    kategorisindekileri atınca geriye ASCII taban harf kalıyor. Diyet
+    etiketlemesindeki bütün metin karşılaştırmaları buradan geçmeli.
+    """
+    return "".join(
+        c for c in unicodedata.normalize("NFD", str(text).lower())
+        if unicodedata.category(c) != "Mn"
+    )
+
+
 def has_word(text, words):
     """
     `words`'ten herhangi biri `text` içinde TAM KELİME olarak geçiyor mu?
@@ -105,11 +119,13 @@ def has_word(text, words):
 def extract_diet_tags(ingredients_list, category="", name=""):
     """Malzeme, kategori VE tarif adı üzerinden diyet etiketi çıkarır"""
     tags = []
-    ingredients_text = " ".join(ingredients_list).lower()
-    category_lower = str(category).lower()
-
-
-    name_lower = str(name).lower()
+    # ⚠️ AKSAN KATLAMA ŞART. `Crockpot Carñitas` **ñ** ile yazılmış ve
+    # `\bcarnitas?\b` onu bulamıyor — tarif domuz eti içerdiği hâlde vegan
+    # etiketliydi. Bu, kelime listesinden BAĞIMSIZ bir eksiklik: liste ne
+    # kadar uzarsa uzasın, aksanlı yazım hepsini atlatır.
+    ingredients_text = fold_accents(" ".join(ingredients_list))
+    category_lower = fold_accents(category)
+    name_lower = fold_accents(name)
 
     # Tarif adında "vegan/vegetarian/plant-based" gibi bir işaret var mı?
     # Varsa adındaki et kelimeleri bitki bazlı taklit üründür (örn. "Vegan Chicken Nuggets")
@@ -125,7 +141,15 @@ def extract_diet_tags(ingredients_list, category="", name=""):
     # Gerçek taklit ürünler ("Veggie Burger") adlarında zaten et kelimesi
     # taşımıyor, yani çıkarmanın ölçülen bir bedeli yok.
     plant_based_signals = ["vegan", "vegetarian", "plant-based", "plant based",
-                           "meatless", "meat-free", "tofu"]
+                           "meatless", "meat-free", "tofu",
+                           # 2026-08-17: `steak` et listesine girdi ve ölçümde
+                           # TEK bir yanlış pozitif üretti — sebzeden yapılan
+                           # "steak"ler. Kelimeyi listeden çıkarmak 42 gerçek
+                           # biftekli tarifi vejetaryen bırakırdı; onun yerine
+                           # bu bir avuç ifade taklit ürün sayılıyor.
+                           "cabbage steak", "cauliflower steak",
+                           "eggplant steak", "portobello steak",
+                           "portabella steak", "mushroom steak"]
     is_plant_based_by_name = any(sig in name_lower for sig in plant_based_signals)
     
     # --- Gluten-free ---
@@ -171,22 +195,107 @@ def extract_diet_tags(ingredients_list, category="", name=""):
         # bunu yakaladı: `Meatball Casserole` vejetaryen sayılmaya başlamıştı.
         # (Düz alt-dizi aramasının tesadüfen doğru yaptığı tek şey buydu.)
         "meatball", "meatloaf",
+        # ── 2026-08-17'de eklenenler ────────────────────────────────
+        # Hepsi gerçek veride ölçüldü; hiçbiri tahminle eklenmedi. Bunlar
+        # herkese açık "Vegan Recipes" sayfasında görünüyordu.
+        "liver",      # 9 eşleşme; `Liver Bread`in malzemesi düpedüz `liver`.
+                      # `\blivers?\b` "liverwurst"a TAKILMIYOR (sonrasında
+                      # kelime sınırı yok) — ayrıca yazmaya gerek kalmadı.
+        "carnitas",   # 9; `Crockpot Carñitas` ÑILE yazılmış → aksan katlama şart
+        "brat",       # 2 (`Beer Brats`, `BBQ Brats 'n Beer`). `bratwurst`
+                      # listede vardı ama kısaltması yoktu.
+        "bologna",    # 2; `\bbolognas?\b` "bolognese"e takılmıyor
+        "quail", "pheasant", "spam", "gizzard", "oxtail",   # 1-2'şer, hepsi gerçek
+        # ⚠️ `steak` EN BÜYÜK EKLEME (148 eşleşme) ve hafızada "dikkat" notu
+        # vardı. Ölçüldü: adında geçen 115 tarifin yalnızca **1'i** etsiz
+        # (`Garlic Rubbed Roasted Cabbage Steaks`) — o da aşağıdaki bitkisel
+        # sinyalle korunuyor. Geri kalan "şüpheli"ler ya gerçek et (Salisbury
+        # Steak, Cube Steak — adında "mushroom" geçtiği için şüpheli görünmüştü)
+        # ya da balık (swordfish/tuna steak, onların da etiketlenmesi DOĞRU).
+        # Eklemezsek 42 vejetaryen etiketli tarifte gerçek biftek kalıyor.
+        "steak",
+        # `\bsteaks?\b` BİLEŞİK HÂLLERİ yakalamıyor (aynı `meatball` dersi):
+        # `Philly Cheesesteak Sandwiches` ve `Grilled Philly Cheesesteak
+        # Tacos` vejetaryen etiketliydi.
+        "cheesesteak",
+        # Adı eti söylüyor ama malzeme listesi yazmıyor — hepsi vejetaryen
+        # etiketliydi ve malzemesinde yalnızca garnitür var:
+        #   `Melissa's Crock Pot Pot Roast` -> patates, soğan, biber, tuz
+        #   `Chuck Roast`                   -> havuç, patates, kereviz, su
+        #   `Marinated Filet Mignon`        -> zeytinyağı, sarımsak
+        # ⚠️ ÇIPLAK `roast` EKLENEMEZ: adında geçen 75 tarifin çoğu patates
+        # ve havuç (`Crispy Roast Potatoes`, `Roast Carrots With a Twist`).
+        # Yalnızca et kesimiyle birleşen hâlleri güvenli.
+        "pot roast", "chuck roast", "rump roast", "beef roast", "filet mignon",
+        # 4 eşleşme, 3'ü gerçekten kıymalı. Dördüncüsü `Unsloppy Joes (Easy
+        # VEGETARIAN Sloppy Joes)` ve adındaki "vegetarian" onu zaten koruyor.
+        "sloppy joe",
     ]
+    # ⚠️ SADECE MALZEMEDE aranan et kelimeleri. Ada bakan ağa konulamazlar
+    # çünkü ad içinde başka bir şey demek olabiliyorlar.
+    land_meat_ingredient_only = [
+        "rabbit",     # 3 eşleşme, 1'i `Frijole Rabbit (Mexican Rarebit)` —
+                      # peynirli bir yemek, "rarebit"in bozulmuş yazımı.
+                      # Malzemede geçen 2 tarifte gerçekten tavşan var.
+    ]
+    # ⚠️ SADECE ADDA aranan, üstelik bir ŞART listesi olan et kelimeleri.
+    # Veri setinin malzeme alanı ana proteini sık sık hiç yazmıyor (hot dog'da
+    # sosis yok), o yüzden ad tek savunma — ama adda geçmesi de yetmiyor:
+    # 12 eşleşmenin 3'ü SOSİS DEĞİL SOS/EKMEK (`All-In-One Hot Dog Mustard`,
+    # `Hot Dog Sauce`, `Whole Wheat Burger/Hot Dog Buns`). Faz 29'daki
+    # "Mincemeat (Suet-FREE)" dersinin aynısı: kelime var, madde yok.
+    # ⚠️ `dog` ÇIPLAK HÂLİYLE gerekiyor: `Kansas City Dogs` adında "hot dog"
+    # ifadesi GEÇMİYOR, yalnızca "Dogs" var — ve o tarif vegan etiketliydi.
+    land_meat_name_only = ["hot dog", "dog"]
+    # Aşağıdaki liste YALNIZCA yukarıdaki şartlı kelimeler için geçerli, yani
+    # `dog` eşleştiğinde devreye giriyor. Bu yüzden liberal olabiliyor:
+    # "pie" burada Shepherd's Pie'ı etkilemiyor, çünkü onda `dog` yok.
+    # Tamamı gerçek veriden okundu — adında `dog` geçen 24 tarifin tümü
+    # gözden geçirildi, aşağıdakiler sosis DEĞİL:
+    #   Hot Dog Mustard / Hot Dog Sauce / Hot Dog Buns   -> sos, ekmek
+    #   Whoopie Pies (Or Devil Dogs)                     -> PASTA
+    #   Butterscotch Caramel Salty Dogs                  -> KOKTEYL
+    #   Dog Cookies / Good Doggie Dog Bones              -> KÖPEK MAMASI
+    not_actually_meat = ["mustard", "sauce", "bun", "relish", "seasoning", "spice",
+                         "devil", "whoopie", "pie", "cookie", "biscuit", "bone",
+                         "salty", "doggie", "caramel"]
+
     seafood = ["fish", "shrimp", "salmon", "tuna", "cod", "crab", "lobster",
                "anchovy", "sardine", "scallop", "mussel", "clam", "oyster",
                "halibut", "tilapia", "trout", "prawn", "calamari", "squid",
                # Aynı sebep: `\bfishs?\b` "catfish"i yakalamıyor ve
                # `Crispy Fried Catfish Nuggets` vejetaryene düşmüştü.
-               "catfish", "swordfish", "monkfish", "shellfish", "whitefish"]
+               "catfish", "swordfish", "monkfish", "shellfish", "whitefish",
+               # ── 2026-08-17: hafızadaki "seafood listesi eksik" notu.
+               # Hepsi ölçüldü, hepsi gerçek balık, yanlış pozitif yok.
+               "sole", "flounder", "mackerel", "haddock", "herring",
+               "octopus", "bass", "perch", "snapper",
+               # `plaice` bir yassı balık; `talapia` ise TİLAPYANIN VERİ
+               # SETİNDEKİ YANLIŞ YAZIMI (`Seasoned Talapia Fillets`) —
+               # doğru yazımı listede olduğu hâlde kaçıyordu. Kural bazlı
+               # etiketlemenin sınırı burada çıplak görünüyor: yazım hatası
+               # kelime listesini tamamen atlatıyor.
+               "plaice", "talapia"]
     meat_categories = ["chicken", "beef", "pork", "poultry", "meat", "lamb", "turkey",
                        "veal", "duck", "ham"]
     seafood_categories = ["fish", "seafood", "salmon", "tuna", "crab", "lobster"]
 
+    # `hot dog` gibi ad-şartlı kelimeler: adda geçmeli AMA yanında onu bir
+    # soğuk yemeğe değil sosa/ekmeğe çeviren bir kelime OLMAMALI.
+    name_has_conditional_meat = (
+        not is_plant_based_by_name
+        and has_word(name_lower, land_meat_name_only)
+        and not any(w in name_lower for w in not_actually_meat)
+    )
+
     # Tarif adında et kelimesi var mı? (sadece bitki bazlı sinyal YOKSA sayılır)
-    name_has_land_meat = not is_plant_based_by_name and has_word(name_lower, land_meat)
+    name_has_land_meat = not is_plant_based_by_name and (
+        has_word(name_lower, land_meat) or name_has_conditional_meat
+    )
     name_has_seafood = not is_plant_based_by_name and has_word(name_lower, seafood)
 
     has_land_meat = (has_word(ingredients_text, land_meat)
+                      or has_word(ingredients_text, land_meat_ingredient_only)
                       or any(c in category_lower for c in meat_categories)
                       or name_has_land_meat)
     has_seafood = (has_word(ingredients_text, seafood)
@@ -212,11 +321,34 @@ def extract_diet_tags(ingredients_list, category="", name=""):
         tags.append("dairy_free")
     
     # --- Vegan (vejetaryen + süt yok + yumurta/bal yok) ---
+    #
+    # 🔴 BURADA ÜÇ AYRI HATA VARDI, üçü de 2026-08-17'de ölçüldü. İkisi vegan
+    # havuzunu HAKSIZ YERE DARALTIYORDU — yani "vegan sayfasında iyi tarif
+    # çıkmıyor" şikayetinin doğrudan sebebi:
+    #
+    # 1. `any(word in ingredients_text ...)` KELİME SINIRSIZDI → **`eggplant`
+    #    "yumurta" sayılıyordu.** 51 tarif gerçekte yumurtasız olduğu hâlde
+    #    vegan olamıyordu; ölçüm bunu kesinleştirdi: 1.762 vegan tarifin
+    #    HİÇBİRİNDE patlıcan yok (0). Baba ganuş, sarımsak soslu patlıcan,
+    #    nar ekşili patlıcan — hepsi dışarıdaydı.
+    # 2. Aynı sebeple `honeydew` (kavun) "bal" sayılıyordu (2 tarif).
+    # 3. Kategori kontrolü de alt-dizi olduğu için **`"Egg Free"` kategorisi
+    #    "yumurta içeriyor" demek oluyordu** — tam tersi.
+    #
+    # Ayrıca ada bakan güvenlik ağı yumurta için HİÇ YOKTU: `Sauteed Crookneck
+    # Squash and Egg Noodles` malzemesinde eriştesi yazmadığı için vegandı.
+    # (Faz 15b'de `nut_free` için bulunan kök sebebin aynısı, dördüncü kez.)
     egg_honey = ["egg", "honey"]
-    egg_categories = ["egg", "custard", "meringue"]
-    has_egg_honey = (any(word in ingredients_text for word in egg_honey)
-                     or any(c in category_lower for c in egg_categories))
-    
+    egg_name_words = ["egg noodle", "egg white", "egg yolk"]
+    # Kategori artık TAM eşleşme: `in` yerine `==`. "Egg Free" böylece dışarıda
+    # kalıyor, "Egg Free" adı zaten yumurtasızlığın kendisi.
+    egg_categories = {"egg", "eggs", "custard", "meringue"}
+
+    has_egg_honey = (has_word(ingredients_text, egg_honey)
+                     or category_lower.strip() in egg_categories
+                     or (not is_plant_based_by_name
+                         and has_word(name_lower, egg_name_words)))
+
     if "vegetarian" in tags and not has_dairy and not has_egg_honey:
         tags.append("vegan")
     
