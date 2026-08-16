@@ -121,6 +121,14 @@ def _recipe_card(recipe_id: str, meta: dict, doc: str) -> dict:
         # Faz 20: tarif fotoğrafı. Eski kayıtlarda alan olmayabileceği için
         # .get ile okunuyor; frontend boş/bozuk URL'de metin kartına düşüyor.
         "image_url": meta.get("image_url", ""),
+        # Puan ve yorum sayısı. Koleksiyon sayfalarının sıralaması buna
+        # dayanıyor (`discover.sort_key`), o yüzden karttan DÜŞÜRÜLEMEZ —
+        # düşerse sıralama sessizce "hepsi eşit"e döner ve sayfa yeniden
+        # rastgele sıralanır. `.get` ile okunuyor: yeniden yüklenmemiş bir
+        # veritabanında alan yok, o durumda sıralama sadece eski hâline
+        # döner, patlamaz.
+        "rating": meta.get("rating", 0.0),
+        "review_count": meta.get("review_count", 0),
         "diet_tags": {
             "gluten_free": meta["gluten_free"],
             "dairy_free": meta["dairy_free"],
@@ -603,9 +611,13 @@ def get_discover_collection(slug: str, request: Request):
         return {"error": "Collection not found"}
 
     with timed_block("chromadb get (discover)"):
+        # Kara liste ÇEKTİKTEN SONRA uygulanıyor (ChromaDB `where` metadata
+        # süzüyor, ID'ye göre dışlama yapamıyor), o yüzden liste boyu kadar
+        # fazla isteniyor — yoksa elenen her tarif sayfada bir eksik kart
+        # bırakırdı ve 24'lük ızgara delik görünürdü.
         results = collection.get(
             where=definition["where"],
-            limit=discover.PAGE_SIZE,
+            limit=discover.PAGE_SIZE + len(discover.EXCLUDED_IDS),
             include=["metadatas", "documents"],
         )
 
@@ -614,8 +626,10 @@ def get_discover_collection(slug: str, request: Request):
         for rid, meta, doc in zip(
             results["ids"], results["metadatas"], results["documents"]
         )
+        if rid not in discover.EXCLUDED_IDS
     ]
     cards.sort(key=discover.sort_key)
+    cards = cards[: discover.PAGE_SIZE]
 
     return {
         "slug": slug,

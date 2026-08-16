@@ -63,6 +63,28 @@ class TestDefinitions:
         assert "vegetarian-dinners" in discover.COLLECTIONS
         assert "vegan-recipes" in discover.COLLECTIONS
 
+    def test_vegan_collection_narrows_by_category_not_just_the_diet_tag(self):
+        """🔴 Diyet etiketi TEK BAŞINA bir iniş sayfası kuramaz.
+
+        Ölçüldü (2026-08-17): filtresiz hâlde 1.762 vegan tarifin ilk 24'ü ne
+        gelirse o basılıyordu ve sayfanın tepesinde İKİ KOKTEYL, bir salsa, bir
+        ekşi maya başlatıcısı vardı — Pinterest'ten "vegan yemek" için gelen
+        ziyaretçinin indiği sayfa buydu. Kardeşi `vegetarian-dinners`'ta filtre
+        baştan vardı, burada unutulmuştu.
+
+        Bunu geri almak HİÇBİR ŞEYİ kırmaz: uç yine 200 döner, kartlar yine
+        vegandır, yalnızca sayfa içecek ve sosla dolar. O yüzden teste bağlı."""
+        for slug in ("vegan-recipes", "vegetarian-dinners"):
+            where = repr(discover.COLLECTIONS[slug]["where"])
+            assert "category" in where, f"{slug}: kategori filtresi kayıp"
+
+    def test_the_exclusion_list_holds_string_ids(self):
+        """Bugün BOŞ — 2026-08-17 yeniden ingestion'ı kök sebebi kapattı, o
+        yüzden yamaya gerek kalmadı. Mekanizma yerinde duruyor; buradaki tek
+        şart, ileride yeniden doldurulursa **metin** ID yazılması: ChromaDB
+        ID'leri metin döner, `int` yazmak sessizce hiçbir şeyi elemez."""
+        assert all(isinstance(i, str) for i in discover.EXCLUDED_IDS)
+
     def test_unknown_slug_returns_none(self):
         assert discover.get_definition("nope") is None
 
@@ -71,14 +93,60 @@ class TestDefinitions:
         assert len(listed) == len(discover.COLLECTIONS)
         assert {c["slug"] for c in listed} == set(discover.COLLECTIONS)
 
-    def test_sort_puts_quick_recipes_first(self):
-        """Sıra keyfi bırakılamaz: ChromaDB `get` ekleme sırasında döndürüyor,
-        yani liste her yeniden ingestion'da değişirdi. Bir pin aylarca
-        dolaşıyor, indiği sayfanın kararlı olması gerekiyor."""
+    def test_a_lone_five_star_never_outranks_a_well_reviewed_favourite(self):
+        """🔴 HAM PUANLA SIRALAMAK bu testi düşürür — ve tam da yapılacak hata o.
+
+        Veri setinde tek yorumlu bir sürü 5.0 var. `Baja Black Beans, Corn and
+        Rice` ise **247 yorumla** 5.0 tutuyor. Ham puan ikisini eşit sayar ve
+        sıralama ada kalır; bir iniş sayfasında sosyal kanıt tam da en çok
+        gereken şeydir."""
+        lonely = {"name": "Untested", "rating": 5.0, "review_count": 1}
+        proven = {"name": "Baja Black Beans", "rating": 5.0, "review_count": 247}
+        assert discover.quality_score(proven) > discover.quality_score(lonely)
+
+    def test_unrated_recipes_are_not_treated_as_zero_star(self):
+        """Puanlanmamış (veri setinin ~%17'si) ile KÖTÜ aynı şey değil —
+        ama iyi ve çok yorumlanmışın da önüne geçmemeli."""
+        unrated = {"name": "New", "rating": 0.0, "review_count": 0}
+        weak = {"name": "Meh", "rating": 2.0, "review_count": 40}
+        strong = {"name": "Loved", "rating": 4.9, "review_count": 120}
+        assert discover.quality_score(unrated) > discover.quality_score(weak)
+        assert discover.quality_score(strong) > discover.quality_score(unrated)
+
+    def test_sort_leads_with_quality_not_with_the_shortest_recipe(self):
+        """⚠️ SIRA SÜREDEN PUANA ÇEVRİLDİ. Süreye göre artan sıralamak, en
+        kısa tarifi başa koyuyordu — ve en kısa şey her zaman en az 'yemek'
+        olan şey (5 dakikalık jicama çubuğu), oysa aynı havuzda 247 yorumlu
+        bir fasulyeli pilav vardı."""
         cards = [
-            {"name": "Slow", "total_time_min": 90},
-            {"name": "Fast", "total_time_min": 10},
-            {"name": "Unknown", "total_time_min": None},
+            {"name": "Snack", "total_time_min": 5, "rating": 4.0, "review_count": 2},
+            {"name": "Beloved Dinner", "total_time_min": 45, "rating": 5.0, "review_count": 247},
+        ]
+        assert [c["name"] for c in sorted(cards, key=discover.sort_key)][0] == "Beloved Dinner"
+
+    def test_sort_is_still_fully_deterministic(self):
+        """Bir pin aylarca dolaşıyor; indiği sayfa her yüklemede aynı olmalı.
+        Puana geçmek bu şartı KALDIRMIYOR — eşitlikte süre, sonra ad kırıyor."""
+        cards = [
+            {"name": "B", "total_time_min": 30, "rating": 4.5, "review_count": 10},
+            {"name": "A", "total_time_min": 30, "rating": 4.5, "review_count": 10},
+        ]
+        assert [c["name"] for c in sorted(cards, key=discover.sort_key)] == ["A", "B"]
+
+    def test_sort_survives_a_database_without_ratings(self):
+        """Alanları olmayan (yeniden yüklenmemiş) bir veritabanında sıralama
+        çökmemeli, yalnızca ayrım gücünü kaybetmeli."""
+        cards = [{"name": "B", "total_time_min": 30}, {"name": "A", "total_time_min": 10}]
+        assert [c["name"] for c in sorted(cards, key=discover.sort_key)] == ["A", "B"]
+
+    def test_equal_quality_falls_back_to_the_quicker_recipe(self):
+        """Puan ayırt etmediğinde eski ölçüt (süre) hâlâ karar veriyor, ve
+        süresi BİLİNMEYEN tarif sona düşüyor — `None`u 0 saymak onu en başa
+        koyardı."""
+        cards = [
+            {"name": "Slow", "total_time_min": 90, "rating": 4.5, "review_count": 10},
+            {"name": "Fast", "total_time_min": 10, "rating": 4.5, "review_count": 10},
+            {"name": "Unknown", "total_time_min": None, "rating": 4.5, "review_count": 10},
         ]
         assert [c["name"] for c in sorted(cards, key=discover.sort_key)] == \
                ["Fast", "Slow", "Unknown"]
@@ -109,7 +177,10 @@ class TestEndpoints:
         client.get("/api/discover/15-minute-recipes")
         kwargs = collection.get.call_args.kwargs
         assert kwargs["where"] == discover.COLLECTIONS["15-minute-recipes"]["where"]
-        assert kwargs["limit"] == discover.PAGE_SIZE
+        # Kara liste çekildikten SONRA uygulandığı için limitte pay olmak
+        # zorunda; `PAGE_SIZE`'a düşürülürse elenen her tarif sayfada bir
+        # eksik kart bırakır ve ızgara delik görünür.
+        assert kwargs["limit"] == discover.PAGE_SIZE + len(discover.EXCLUDED_IDS)
 
     def test_an_unknown_slug_never_touches_chromadb(self, client, collection):
         """Uydurma slug'larla gelen trafik veritabanına hiç ulaşmamalı —
@@ -131,6 +202,40 @@ class TestEndpoints:
         headers = {"X-Forwarded-For": "9.2.2.2"}
         client.get("/api/discover", headers=headers)
         assert client.get("/api/discover", headers=headers).status_code == 429
+
+    def _many(self, collection, ids):
+        """Sahte koleksiyonu birden çok tarif döndürecek hâle getirir."""
+        meta = collection.get.return_value["metadatas"][0]
+        collection.get.return_value = {
+            "documents": ["doc"] * len(ids),
+            "metadatas": [dict(meta) for _ in ids],
+            "ids": list(ids),
+        }
+
+    def test_an_excluded_id_never_reaches_a_public_collection(
+        self, client, collection, monkeypatch
+    ):
+        """Eleme MEKANİZMASI çalışıyor mu — listenin bugünkü içeriğinden
+        bağımsız olarak. Liste bugün boş ama `main.py`'deki `if rid not in ...`
+        koşulu düşerse bu bir daha fark edilmez; kural yeniden gerektiğinde
+        sessizce hiçbir şey yapmayan bir yamayla karşılaşılır."""
+        monkeypatch.setattr(discover, "EXCLUDED_IDS", frozenset({"30810", "441404"}))
+        self._many(collection, ["17450", "30810", "441404", "999"])
+        ids = [c["id"] for c in client.get("/api/discover/vegan-recipes").json()["recipes"]]
+        assert ids == ["17450", "999"]
+
+    def test_the_page_is_not_left_short_by_exclusions(
+        self, client, collection, monkeypatch
+    ):
+        """Eleme sonrası sayfa yine PAGE_SIZE kart göstermeli.
+
+        ChromaDB'den fazladan çekilmesinin tek sebebi bu; fazlalık trim
+        edilmezse sayfa bu kez PAGE_SIZE'ı AŞAR."""
+        monkeypatch.setattr(discover, "EXCLUDED_IDS", frozenset({"30810"}))
+        extra = discover.PAGE_SIZE + 1
+        self._many(collection, ["30810"] + [str(9000 + i) for i in range(extra)])
+        cards = client.get("/api/discover/vegan-recipes").json()["recipes"]
+        assert len(cards) == discover.PAGE_SIZE
 
     def test_cards_carry_what_the_page_renders(self, client, collection):
         card = client.get("/api/discover/cookies").json()["recipes"][0]

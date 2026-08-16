@@ -120,9 +120,38 @@ COLLECTIONS = {
     "vegan-recipes": {
         "title": "Vegan Recipes",
         "description": "No meat, no dairy, no eggs — and nothing that tastes like a compromise.",
-        "where": {"vegan": {"$eq": True}},
+        # ⚠️ KATEGORİ FİLTRESİ OPSİYONEL DEĞİL — kardeşi `vegetarian-dinners`'ta
+        # baştan vardı, burada unutulmuştu ve sonucu ölçüldü (2026-08-17):
+        # filtresiz hâlde 1.762 vegan tarifin ilk 24'ü ne gelirse o basılıyordu,
+        # yani sayfanın tepesinde İKİ KOKTEYL, bir salsa ve bir ekşi maya
+        # başlatıcısı vardı. Pinterest'ten "vegan yemek" için gelen ziyaretçiye
+        # koşulan sayfa buydu. Filtreyle liste gerçek yemeğe dönüyor (marul
+        # dürümü, portobello sandviç, tofu meatloaf, barbekü mercimek).
+        # Yan kazanç: `Liver Bread` (kategorisi `< 30 Mins`) kendiliğinden düştü.
+        # ⚠️ `Vegetable`/`Potato`/`Lunch/Snacks` BİLEREK YOK — ölçüldü: o üç
+        # kategori garnitür ve meze ağırlıklı (`Vegetable` tek başına 194
+        # tarif) ve sayfayı jicama çubuğu, lahana salatası, turşu salatalığa
+        # çeviriyordu. Vejetaryen sayfasında aynı kategoriler kalabiliyor
+        # çünkü orada havuz çok daha geniş; vegan havuzu dar olduğu için
+        # garnitürler oranı ele geçiriyor.
+        "where": {
+            "$and": [
+                {"vegan": {"$eq": True}},
+                {"category": {"$in": ["One Dish Meal", "Beans", "Black Beans", "Rice",
+                                      "Curries", "Stew", "Chowders", "Lentil",
+                                      "Soy/Tofu", "Grains", "Pasta Shells"]}},
+            ]
+        },
     },
 }
+
+# Yanlış etiketlenmiş tarifler için 2026-08-17'de GEÇİCİ bir kara liste vardı
+# (Liver Bread, Crockpot Carñitas, Kansas City Dogs, Hot Dog Bake, Octopus).
+# Aynı gün yapılan yeniden ingestion kök sebebi kapattı — `clean_data.py`'deki
+# et/deniz ürünü/yumurta kelime listeleri genişletildi ve aksan katlama eklendi
+# — böylece beşi de kaynağında düzeldi ve liste kaldırıldı. Boş bırakılıyor
+# çünkü `main.py` limiti buna göre hesaplıyor; ileride yine gerekirse yeri hazır.
+EXCLUDED_IDS = frozenset()
 
 # Bir sayfada gösterilecek tarif sayısı. 24 bilinçli: Pinterest'ten gelen
 # ziyaretçi taramak için geliyor, ama sayfayı sonsuz uzatmak hem yükleme
@@ -143,15 +172,50 @@ def list_definitions() -> list[dict]:
     ]
 
 
+# Ağırlıklı puanın "önceki gözlem" ağırlığı. 5 yorum = veri setinin genel
+# ortalaması kadar kanıt sayılıyor.
+RATING_PRIOR_COUNT = 5
+# Veri setinin genel puan ortalaması (9.795 tarifte ölçüldü: 4.73). Puanı
+# olmayan ya da az yorumlu tarifler buraya çekiliyor.
+RATING_PRIOR_MEAN = 4.73
+
+
+def quality_score(card: dict) -> float:
+    """Ağırlıklı puan — IMDB'nin klasik formülü.
+
+        (v / (v+m)) * R  +  (m / (v+m)) * C
+
+    ⚠️ HAM PUANLA SIRALAMAK YANLIŞ OLURDU ve bu ölçüldü: veri setinde tek
+    yorumlu bir sürü 5.0 var, oysa `Baja Black Beans, Corn and Rice`
+    **247 yorumla** 5.0 tutuyor. Ham puan ikisini eşit sayar ve sayfanın
+    tepesine kimsenin denemediği tarifi koyar — sosyal kanıt tam da burada,
+    yani bir iniş sayfasında, en çok gereken şey.
+
+    Puanı olmayan tarif (veri setinin ~%17'si) 0 değil ORTALAMA sayılıyor:
+    "puanlanmamış" ile "kötü" aynı şey değil, ama az yorumlu bir kayıt da
+    çok yorumlu iyi bir kaydın önüne geçmemeli.
+    """
+    rating = float(card.get("rating") or 0.0)
+    votes = int(card.get("review_count") or 0)
+    if rating <= 0:
+        return RATING_PRIOR_MEAN * 0.5   # hiç puanlanmamış: ortalamanın altı
+    m = RATING_PRIOR_COUNT
+    return (votes / (votes + m)) * rating + (m / (votes + m)) * RATING_PRIOR_MEAN
+
+
 def sort_key(card: dict):
     """
-    Listeleme sırası: önce süresi bilinen ve KISA olanlar.
+    Listeleme sırası: EN BEĞENİLEN önce (ağırlıklı puan), eşitlikte kısa olan.
 
-    Sıra keyfi bırakılamaz — ChromaDB `get` ekleme sırasında döndürüyor, yani
-    liste veri her yeniden yüklendiğinde değişirdi. Bir pin aylarca dolaşıyor;
-    indiği sayfanın kararlı olması gerekiyor.
+    ⚠️ ÖNCEDEN SÜREYE GÖRE ARTAN sıralanıyordu ve bunun bedeli ölçüldü: en
+    kısa tarif her zaman en az "yemek" olan şey oluyordu, yani sayfa 5
+    dakikalık bir atıştırmalıkla açılıyordu. Aynı havuzda 247 yorumlu 5.0
+    puanlı bir yemek dururken.
+
+    Sıra hâlâ TAMAMEN DETERMİNİSTİK — asıl şart oydu: bir pin aylarca
+    dolaşıyor, indiği sayfanın kararlı olması gerekiyor. Ad son ayırıcı
+    olarak duruyor ki eşit puan+süredeki tarifler de sabit sırayla gelsin.
     """
     minutes = card.get("total_time_min")
-    if minutes is None:
-        return (1, 0.0, card.get("name", ""))
-    return (0, float(minutes), card.get("name", ""))
+    minutes = float(minutes) if minutes is not None else 10_000.0
+    return (-quality_score(card), minutes, card.get("name", ""))
