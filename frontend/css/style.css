@@ -458,6 +458,35 @@ body.signing-in .signin-overlay {
   padding: 2.5rem 1.5rem 4rem;
 }
 
+/* Sayfa süslemesi — uygulama ikonunun ta kendisi, içi dolu olmayan ince
+   turuncu çizgi hâliyle. Şekil `scripts/olive_branch.py`'de tanımlı ve buradaki
+   SVG ile ikon PNG'leri AYNI sayılardan üretiliyor (`scripts/make_icons.py`),
+   yani "sayfadaki çizgi = ikondaki şekil" iddiası elle korunmuyor.
+
+   PSEUDO-ELEMAN DEĞİL `background-image`: arka plan görseli her zaman elemanın
+   KENDİ içeriğinin ALTINDA boyanıyor, yani metnin üstüne düşmesi mümkün değil
+   ve hiçbir z-index ayarı gerekmiyor. `::before` + `z-index: -1` yolu `.page`'i
+   bir yığın bağlamına çevirirdi; o da içindeki koleksiyon seçicisini (z-index
+   100) ve modalları (200) kenar çubuğunun (40) ALTINA düşürebilirdi.
+
+   Yol KÖK-GÖRECELİ: `/discover/homemade-bread` gibi iç içe bir adreste göreceli
+   yol 404 verir (Faz 29'da tam bu yaşandı, sayfa stilsiz açılmıştı).
+
+   Yalnızca `has-sidebar`, yani giriş sonrası uygulama sayfaları — herkese açık
+   gizlilik sayfası sade kalıyor. */
+body.has-sidebar .page {
+  background-image: url('/icons/olive-branch.svg');
+  background-repeat: no-repeat;
+  background-position: right 0.25rem top 1.5rem;
+  background-size: 168px 168px;
+}
+
+/* Dar ekranda başlık ve alt başlık süslemenin bulunduğu köşeye sarıyor, üstelik
+   süsleme ekran genişliğinin yarısını kaplıyor — orada süs değil gürültü olur. */
+@media (max-width: 900px) {
+  body.has-sidebar .page { background-image: none; }
+}
+
 .page-title {
   font-family: 'Playfair Display', serif;
   font-size: 2.4rem;

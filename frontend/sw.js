@@ -82,6 +82,7 @@ const PRECACHE = [
   '/icons/icon-512.png',
   '/icons/icon-maskable-512.png',
   '/icons/apple-touch-icon.png',
+  '/icons/olive-branch.svg',
 ];
 
 self.addEventListener('install', (event) => {

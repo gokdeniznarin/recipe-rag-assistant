@@ -1,5 +1,5 @@
 """
-PWA ikonlarını üretir (frontend/icons/).
+PWA ikonlarını ve sayfa süslemesini üretir (frontend/icons/).
 
     python scripts/make_icons.py
 
@@ -8,27 +8,35 @@ palet değişirse ya da yeni bir boyut gerekirse elle Photoshop'a dönmek yerine
 sayıyı değiştirip tekrar çalıştırmak yeterli. (Aynı gerekçeyle Pillow'a bağımlılık
 eklenmedi: PNG encoder'ı stdlib `zlib` + `struct` ile ~20 satır.)
 
-TASARIM: marka işareti zaten sidebar'daki ✦ (dört köşeli parıltı). İkonu ondan
-türetmek tutarlılık sağlıyor — kullanıcı ana ekranda gördüğü şeyi uygulamanın
-içinde de görüyor. Şekil bir astroid: sqrt(|x|) + sqrt(|y|) <= 1.
+TASARIM: marka işareti bir ZEYTİN DALI — beyaz zemin üstünde koyu zeytin yeşili
+dal/yaprak, turuncu taneler. Şeklin kendisi `olive_branch.py`'de tanımlı ve
+BURADAKİ PNG'ler ile sayfalardaki SVG silüeti aynı sayılardan türetiliyor;
+gerekçesi o dosyanın başında.
+
+⚠️ İKİ ÇIKTI DA BU SCRIPT'TEN geliyor (PNG + SVG). Ayrı ayrı üretilselerdi
+"sayfadaki çizgi = ikondaki şekil" iddiası ilk düzenlemede sessizce bozulurdu.
 
 TÜM İKONLAR OPAK ve TAM KARE (kendi köşe yuvarlaması YOK):
   - iOS `apple-touch-icon`'u kendisi yuvarlıyor; biz de yuvarlarsak köşelerde
     çift kesim ya da beyaz köşe artığı oluşur.
   - Alfa kanalı yok, çünkü iOS şeffaf ikonu SİYAH zemine bindiriyor.
+
+KENAR YUMUŞATMA: eskiden piksel başına 3x3 örnek alınıyordu (şekil bir eşitsizlikle
+tanımlıydı, "içinde miyim" dışında bir bilgi vermiyordu). Zeytin dalı İŞARETLİ
+MESAFE ile tanımlı, yani her pikselde kenara olan uzaklık biliniyor — kapsama
+oranı tek örnekle, doğrudan hesaplanıyor. Hem daha doğru hem 9 kat ucuz.
 """
-import math
 import os
 import struct
 import zlib
 
+import olive_branch as branch
+
+WHITE = (0xFF, 0xFF, 0xFF)
 OLIVE = (0x2D, 0x3B, 0x2D)
-CREAM = (0xF5, 0xF0, 0xE8)
 ORANGE = (0xE8, 0x82, 0x4A)
 
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend", "icons")
-
-SS = 3  # supersampling: kenar yumuşatma için piksel başına SS×SS örnek
 
 
 def write_png(path, width, height, rgb_rows):
@@ -51,74 +59,71 @@ def write_png(path, width, height, rgb_rows):
         f.write(png)
 
 
-def sparkle_hit(x, y, cx, cy, r):
-    """Dört köşeli parıltının içinde miyiz? (astroid: sqrt|dx| + sqrt|dy| <= 1)"""
-    dx = abs(x - cx) / r
-    dy = abs(y - cy) / r
-    if dx > 1.0 or dy > 1.0:
-        return False
-    return math.sqrt(dx) + math.sqrt(dy) <= 1.0
+def render(size, fill):
+    """Beyaz zemin + zeytin yeşili dal + turuncu taneler.
 
-
-def render(size, mark_r, small_r):
-    """Olive zemin + krem ana parıltı + turuncu küçük parıltı.
-
-    mark_r / small_r: kenar uzunluğuna ORANLA yarıçap. maskable ikonda küçük
-    verilir, çünkü Android ikonun kenarlarını kırpabiliyor (güvenli alan =
+    `fill`: şeklin kareyi ne kadarını kaplayacağı. maskable ikonda küçük
+    veriliyor, çünkü Android ikonun kenarlarını kırpabiliyor (güvenli alan =
     ortadaki %80'lik daire).
     """
-    cx, cy = 0.5, 0.53                      # ana parıltı: optik olarak hafif aşağıda
-    sx, sy = 0.5 + mark_r * 0.95, 0.53 - mark_r * 0.95   # küçük parıltı: sağ üst
+    unit = 100.0 / (size * fill)              # bir pikselin birim cinsinden boyu
+    offset = (100.0 - 100.0 / fill) / 2.0     # şekli ortalamak için kaydırma
 
     rows = []
-    inv = 1.0 / (SS * size)
-    weight = 1.0 / (SS * SS)
-
     for py in range(size):
+        y = (py + 0.5) * unit + offset
         row = bytearray()
         for px in range(size):
-            cream_cov = 0
-            orange_cov = 0
-            for sy_i in range(SS):
-                y = (py * SS + sy_i + 0.5) * inv
-                for sx_i in range(SS):
-                    x = (px * SS + sx_i + 0.5) * inv
-                    if sparkle_hit(x, y, sx, sy, small_r):
-                        orange_cov += 1
-                    elif sparkle_hit(x, y, cx, cy, mark_r):
-                        cream_cov += 1
+            x = (px + 0.5) * unit + offset
+            color = WHITE
 
-            if not cream_cov and not orange_cov:
-                row.extend(OLIVE)
-                continue
+            a = _coverage(branch.sdf_branch(x, y), unit)
+            if a:
+                color = _blend(color, OLIVE, a)
+            a = _coverage(branch.sdf_olives(x, y), unit)
+            if a:
+                color = _blend(color, ORANGE, a)
 
-            a_c = cream_cov * weight
-            a_o = orange_cov * weight
-            a_bg = 1.0 - a_c - a_o
-            for i in range(3):
-                v = OLIVE[i] * a_bg + CREAM[i] * a_c + ORANGE[i] * a_o
-                row.append(max(0, min(255, int(v + 0.5))))
+            row.extend(color)
         rows.append(row)
     return rows
+
+
+def _coverage(distance, unit):
+    """İşaretli mesafe -> pikselin ne kadarı şeklin içinde (0..1)."""
+    return max(0.0, min(1.0, 0.5 - distance / unit))
+
+
+def _blend(base, color, a):
+    return tuple(max(0, min(255, int(base[i] * (1 - a) + color[i] * a + 0.5))) for i in range(3))
 
 
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
 
-    # (dosya, boyut, ana yarıçap, küçük yarıçap)
-    #   "any" ikonlar: işaret rahat büyük.
-    #   maskable: güvenli alan ortadaki %80 daire olduğu için belirgin küçük.
+    # (dosya, boyut, doluluk)
     jobs = [
-        ("icon-192.png", 192, 0.30, 0.105),
-        ("icon-512.png", 512, 0.30, 0.105),
-        ("icon-maskable-512.png", 512, 0.21, 0.075),
-        ("apple-touch-icon.png", 180, 0.30, 0.105),
+        ("icon-192.png", 192, 0.94),
+        ("icon-512.png", 512, 0.94),
+        ("icon-maskable-512.png", 512, 0.74),
+        ("apple-touch-icon.png", 180, 0.94),
     ]
-
-    for name, size, mark_r, small_r in jobs:
+    for name, size, fill in jobs:
         path = os.path.join(OUT_DIR, name)
-        write_png(path, size, size, render(size, mark_r, small_r))
+        write_png(path, size, size, render(size, fill))
         print(f"[OK] {name}  {size}x{size}  {os.path.getsize(path):,} bytes")
+
+    # Sayfa süslemesi: aynı şeklin İÇİ DOLU OLMAYAN, ince turuncu çizgi hâli.
+    #
+    # Saydamlık DOSYANIN İÇİNE gömülü, CSS'te değil: süsleme `background-image`
+    # olarak kullanılıyor ve bir arka plan görselinin saydamlığı CSS'ten ayrı
+    # ayarlanamıyor. (Pseudo-eleman + `opacity` yolu da vardı ama `z-index: -1`
+    # gerektiriyordu; o da `.page`'i bir yığın bağlamına çevirip içindeki
+    # koleksiyon seçicisini/modalları kenar çubuğunun ALTINA düşürebilirdi.)
+    svg_path = os.path.join(OUT_DIR, "olive-branch.svg")
+    with open(svg_path, "w", encoding="utf-8") as f:
+        f.write(branch.svg(stroke_width=1.6, opacity=0.45))
+    print(f"[OK] olive-branch.svg  {os.path.getsize(svg_path):,} bytes")
 
 
 if __name__ == "__main__":
