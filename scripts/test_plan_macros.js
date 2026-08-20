@@ -110,7 +110,9 @@ function macrosOf(dayCol) {
     el,
     className: el.className,
     title: el.title,
-    values: [...el.innerHTML.matchAll(/day-macro-value">(-?[\d.]+)/g)].map(m => m[1]),
+    // `[^"]*`: uzun sayilar `day-macro-value--long` sinifi da tasiyor. Dar bir
+    // regex o degerleri sessizce ATLAR ve dizi 4 yerine 3 elemanli gelirdi.
+    values: [...el.innerHTML.matchAll(/day-macro-value[^"]*">(-?[\d.]+)/g)].map(m => m[1]),
     labels: [...el.innerHTML.matchAll(/day-macro-label">([a-z]+)</g)].map(m => m[1]),
   };
 }
@@ -236,6 +238,27 @@ const entry = (date, slot, over) => ({ date, slot, recipe_id: '1', recipe: recip
   const m = macrosOf(byId['week-grid'].children[0]);
   check('bogus (0 / negative) numbers are skipped, not subtracted',
         JSON.stringify(m.values) === '["0","25","10","5"]', JSON.stringify(m.values));
+}
+
+// ── 9b. Uzun sayı işaretleniyor (masaüstünde dar hücre) ──
+// Ölçüldü: günlerin %0.12'sinde kalori 5 haneye çıkıyor. Masaüstünde dört
+// ölçüm yan yanayken hücre ~30px ve 5 haneli sayı taşıp komşusuna giriyor.
+// CSS bunu kendi başına çözemez (yazı tipi boyutu içeriğin uzunluğuna göre
+// seçilemez), o yüzden sınıfı JS koyuyor.
+{
+  const { ctx, byId } = build();
+  ctx.__test.render([
+    entry(MONDAY, 'lunch',  { calories: 20000, protein_content: 9, carbohydrate_content: 900, fat_content: 90 }),
+    entry(MONDAY, 'dinner', { calories: 20000, protein_content: 9, carbohydrate_content: 900, fat_content: 90 }),
+  ], MONDAY);
+  const html = macrosOf(byId['week-grid'].children[0]).el.innerHTML;
+  const longs = [...html.matchAll(/day-macro-value([^"]*)">(-?[\d.]+)/g)]
+    .map(m => ({ long: m[1].includes('--long'), text: m[2] }));
+  // 40000 (5 hane) ve 1800g (4 hane + birim) uzun; 18 ve 180g degil.
+  check('long numbers get the shrink class',
+        longs[0].long && longs[2].long, JSON.stringify(longs));
+  check('short numbers do NOT get it',
+        !longs[1].long && !longs[3].long, JSON.stringify(longs));
 }
 
 // ── 10. Alan adları backend kartıyla aynı ────────────────

@@ -38,14 +38,20 @@
  * bayat bir kopyanın hataya SEBEP olduğu durumda doğru araç bu.
  */
 
-// v3: günlük besin toplamı. Normalde sürüm arttırmak GEREKMİYOR (yukarıdaki
-// 3. madde), ama bu değişiklik yukarıdaki İSTİSNANIN ta kendisi: ızgaranın satır
-// sayısı 4'ten 5'e çıktı ve `grid-auto-flow: column` yüzünden ESKİ style.css +
-// YENİ plan.js karışımı beşinci öğeyi bir sonraki SÜTUNA atar — hafta ızgarası
-// görünür biçimde dağılır. Titrek mobil bağlantıda `catch` bloğu tam da böyle bir
-// karışım üretebiliyor (Faz 29'da yaşandı). Sürümü arttırmak eski önbelleği
-// komple silip taze precache kuruyor, yani o pencere hiç açılmıyor.
-const CACHE_VERSION = 'v3';
+// v3 → v4: günün besin toplamı ve plan sayfasının geniş yerleşimi. Normalde
+// sürüm arttırmak GEREKMİYOR (yukarıdaki 3. madde), ama ikisi de yukarıdaki
+// İSTİSNANIN ta kendisi — önbellekteki kopyanın KENDİSİ hata üretiyor. İkisi de
+// ölçüldü, varsayılmadı:
+//   v3: ızgaranın satır sayısı 4'ten 5'e çıktı. `grid-auto-flow: column` altında
+//       ESKİ style.css + YENİ plan.js, beşinci öğeyi bir sonraki SÜTUNA atıyor;
+//       toplam x=526'ya düşüyor oysa o günün slotu x=474'te — ızgara dağılıyor.
+//   v4: plan sayfası `.page--wide` ile genişledi. ESKİ plan.html (o sınıf yok) +
+//       YENİ style.css, dört ölçümü 96px'lik sütunda yan yana dizmeye çalışıyor:
+//       hücre 22px, sayı 27.8px, +3px taşma — rakamlar birbirine giriyor.
+// Titrek mobil bağlantıda `catch` bloğu tam da böyle bir karışım üretebiliyor
+// (Faz 29'da yaşandı). Sürümü arttırmak eski önbelleği komple silip taze
+// precache kuruyor, yani o pencere hiç açılmıyor.
+const CACHE_VERSION = 'v4';
 const CACHE_NAME = `recipe-assistant-${CACHE_VERSION}`;
 
 // Uygulama kabuğu. Çevrimdışıyken bu liste sayesinde sayfalar AÇILIYOR

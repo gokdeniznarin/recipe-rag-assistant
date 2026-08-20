@@ -474,6 +474,12 @@ body.signing-in .signin-overlay {
 
    Yalnızca `has-sidebar`, yani giriş sonrası uygulama sayfaları — herkese açık
    gizlilik sayfası sade kalıyor. */
+/* Yedi günlük ızgaranın sayfası. 780px bir OKUMA genişliği — tarif, gizlilik ve
+   arama sayfaları için doğru, takvim için değil: yediye bölününce gün başına 96px
+   kalıyor, tarif adları beş altı satıra sarıyor ve günün dört ölçümü 2×2'ye
+   sıkışmak zorunda kalıyor. Burada genişliğin kendisi çözüm. */
+.page--wide { max-width: 1180px; }
+
 body.has-sidebar .page {
   background-image: url('/icons/olive-branch.svg');
   background-repeat: no-repeat;
@@ -2143,6 +2149,23 @@ body.has-sidebar .page {
     grid-column: 2 / -1;
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+}
+
+/* Masaüstünde dört ölçüm TEK SIRA — telefondaki düzenin aynısı.
+   ⚠️ Eşik SEÇİLMEDİ, ÖLÇÜLDÜ: `.page--wide` 1180px'e kadar büyüdüğü için sütun
+   genişliği pencereye bağlı ve 1200px'in ALTINDA dört hücre "1398" gibi dört haneli
+   bir sayıyı taşırıyor (1150px'te +1px, 1100px'te +3px ölçüldü). 1240 biraz pay
+   bırakıyor; altında taban kuralı (2×2) devrede kalıyor. */
+@media (min-width: 1240px) {
+  .day-macros {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.15rem;
+  }
+
+  /* Yalnızca BURADA gerekiyor: dar hücre yalnızca dördü yan yanayken oluşuyor.
+     2×2 düzende hücre 44-61px, telefonda 78-165px — oralarda uzun sayı zaten
+     sığıyor ve küçültmek gereksiz yere okunaklılık kaybettirirdi. */
+  .day-macro-value--long { font-size: 0.72rem; }
 }
 
 @media (max-width: 620px) {

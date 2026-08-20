@@ -250,14 +250,22 @@ function renderDayMacros(date) {
 
   // Kaçış gerekmiyor: basılan her şey ya yukarıdaki sabit listeden ya da
   // `Math.round` çıktısından geliyor — kullanıcı verisi geçmiyor.
-  el.innerHTML = MACROS.map((macro, i) => `
+  el.innerHTML = MACROS.map((macro, i) => {
+    const text = String(Math.round(totals[i])) + macro.unit;
+    // Uzun sayı işaretleniyor. CSS bunu KENDİ BAŞINA yapamaz: yazı tipi boyutunu
+    // içeriğin uzunluğuna göre seçen bir kural yok (`clamp` pencereye bakar,
+    // metne değil). Ölçüldü: günlerin %0.12'sinde kalori 5 haneye çıkıyor ve
+    // masaüstünde dört ölçüm yan yanayken hücreye sığmıyor; komşusuna giriyor.
+    const long = text.length >= 5 ? ' day-macro-value--long' : '';
+    return `
     <div class="day-macro" title="${macro.title}">
-      <span class="day-macro-value">${Math.round(totals[i])}${
+      <span class="day-macro-value${long}">${Math.round(totals[i])}${
         macro.unit ? `<span class="day-macro-unit">${macro.unit}</span>` : ''
       }</span>
       <span class="day-macro-label">${macro.label}</span>
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   return el;
 }
