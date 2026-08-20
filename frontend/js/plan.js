@@ -108,6 +108,7 @@ const renderWeek = Logger.timed(function () {
     col.appendChild(head);
 
     SLOTS.forEach(slot => col.appendChild(renderSlot(date, slot)));
+    col.appendChild(renderDayMacros(date));
     gridEl.appendChild(col);
   }
 
@@ -184,6 +185,81 @@ function renderSlot(date, slot) {
   });
 
   return cell;
+}
+
+// ── Günün besin toplamı ──────────────────────────────────
+// Kart alanı ↔ ekrandaki etiket TEK yerde eşleşiyor. İki ayrı liste tutulsaydı
+// (biri alan adları, biri başlıklar) sıralarının ayrışması sessiz bir hata olurdu:
+// protein değerini "CARB" başlığı altında göstermek hiçbir şeyi kırmaz.
+//
+// Etiketler kısa çünkü masaüstünde bir gün sütunu yalnızca ~96px (`.page`
+// 780px / 7 gün); tam kelimeler sığmıyor. Açılımları `title` ile veriliyor.
+const MACROS = [
+  { field: 'calories',             label: 'kcal', title: 'Calories',      unit: ''  },
+  { field: 'protein_content',      label: 'prot', title: 'Protein',       unit: 'g' },
+  { field: 'carbohydrate_content', label: 'carb', title: 'Carbohydrates', unit: 'g' },
+  { field: 'fat_content',          label: 'fat',  title: 'Fat',           unit: 'g' },
+];
+
+// Bir günün toplamı. Girdiler üzerinde geziliyor, tarifler üzerinde DEĞİL: aynı
+// tarif iki slotta olabilir ve o iki öğün demek, yani iki kez sayılmalı. (Backend
+// `chromadb get`'i tekilleştiriyor ama o yalnızca ağ maliyeti için — kart her
+// girdinin içine ayrı ayrı gömülüyor.)
+function dayTotals(date) {
+  const totals = MACROS.map(() => 0);
+  let planned = 0;
+  let missing = 0;
+
+  entries.forEach(entry => {
+    if (entry.date !== date) return;
+    planned++;
+
+    // Tarif veri setinden kalkmışsa kart `null` gelir (slot zaten "Recipe
+    // unavailable" gösteriyor). Toplama katacak sayı yok; kaç tane olduğu
+    // sayılıyor ki toplam sessizce eksik kalmasın — `title`'da söyleniyor.
+    if (!entry.recipe) { missing++; return; }
+
+    MACROS.forEach((macro, i) => {
+      const value = Number(entry.recipe[macro.field]);
+      // ⚠️ `Number.isFinite` ŞART. Alan hiç gelmezse `Number(undefined)` NaN olur
+      // ve TEK bir NaN toplamın tamamını NaN yapar — ekranda "NaN kcal". Teorik
+      // değil: Render ile Vercel AYRI AYRI deploy oluyor (atomik değil), yani bu
+      // dosyanın yeni, backend'in hâlâ eski olduğu bir pencere var ve orada kartta
+      // bu üç alan yok. O pencerede toplam 0 görünüyor — eksik, ama bozuk değil.
+      if (Number.isFinite(value) && value > 0) totals[i] += value;
+    });
+  });
+
+  return { totals, planned, missing };
+}
+
+function renderDayMacros(date) {
+  const { totals, planned, missing } = dayTotals(date);
+
+  const el = document.createElement('div');
+  // Boş gün de yazılıyor (hepsi 0) — istenen davranış bu. Yalnızca soluk
+  // duruyor ki dolu günlerin sayıları öne çıksın.
+  el.className = 'day-macros' + (planned === 0 ? ' day-macros--empty' : '');
+
+  // Görünür işaret yerine `title`: eksik tarifin kendisi zaten hemen üstteki
+  // slotta "Recipe unavailable" olarak duruyor, yani ikinci bir uyarı gürültü olur.
+  el.title = missing > 0
+    ? `Daily total. ${missing} planned ${missing === 1 ? 'recipe is' : 'recipes are'} `
+      + `no longer available, so ${missing === 1 ? 'it is' : 'they are'} not counted.`
+    : 'Daily total of the recipes planned for this day (per serving).';
+
+  // Kaçış gerekmiyor: basılan her şey ya yukarıdaki sabit listeden ya da
+  // `Math.round` çıktısından geliyor — kullanıcı verisi geçmiyor.
+  el.innerHTML = MACROS.map((macro, i) => `
+    <div class="day-macro" title="${macro.title}">
+      <span class="day-macro-value">${Math.round(totals[i])}${
+        macro.unit ? `<span class="day-macro-unit">${macro.unit}</span>` : ''
+      }</span>
+      <span class="day-macro-label">${macro.label}</span>
+    </div>
+  `).join('');
+
+  return el;
 }
 
 function showTransientError(msg) {

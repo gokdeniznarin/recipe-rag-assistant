@@ -1807,16 +1807,19 @@ body.has-sidebar .page {
 }
 
 /* ── Hafta ızgarası ─────────────────────────────────────── */
-/* 7 sütun (gün) × 4 satır (başlık + 3 öğün). `grid-auto-flow: column` her günün
-   4 öğesini BİR sütuna diziyor; `.day-col { display: contents }` sayesinde slotlar
+/* 7 sütun (gün) × 5 satır (başlık + 3 öğün + günün besin toplamı).
+   `grid-auto-flow: column` her günün 5 öğesini BİR sütuna diziyor; `.day-col { display: contents }` sayesinde slotlar
    doğrudan bu ızgaraya katılıyor. Sonuç: tüm breakfast'lar TEK satırda hizalanıyor
    (aynı yükseklik), dolayısıyla her sütun eşit boyda oluyor — içerik uzunluğundan
    bağımsız. (Alternatif: sabit yükseklik + kırpma; ama o uzun tarif adlarını
-   keserdi. Satır hizalaması kırpmadan eşitliyor.) */
+   keserdi. Satır hizalaması kırpmadan eşitliyor.) Günün toplamı da aynı sayede
+   yedi günde aynı hizada duruyor.
+   ⚠️ Satır sayısı SABİT yazılı: gün sütununa bir öğe daha eklenirse burada da bir
+   satır açılmalı, yoksa fazla öğe örtük bir satıra düşer ve düzen kayar. */
 .week-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  grid-template-rows: auto auto auto auto;
+  grid-template-rows: auto auto auto auto auto;
   grid-auto-flow: column;
   gap: 0.6rem;
 }
@@ -1957,6 +1960,62 @@ body.has-sidebar .page {
 .plan-slot-change:disabled,
 .plan-slot-remove:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* ── Günün besin toplamı ────────────────────────────────── */
+/* Gün sütununun beşinci ve son satırı (bkz. `.week-grid`). */
+.day-macros {
+  display: grid;
+  /* ⚠️ Masaüstünde bir gün sütunu yalnızca ~96px: `.page` 780px ile sınırlı ve o
+     genişlik yedi güne bölünüyor. Dört ölçümü yan yana koymak "1240" gibi bir
+     sayıyı kırpardı → 2×2. Gün yatay bir satıra dönünce (≤1000px) genişlik
+     bollanıyor, aşağıdaki media query dördünü tek satıra açıyor. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.2rem 0.3rem;
+  padding-top: 0.45rem;
+  /* Kutu değil çizgi: üstünde zaten 21 beyaz slot kutusu var, sekizinci bir kutu
+     daha eklemek yerine ince bir ayıraç — toplam bir slot sanılmasın. */
+  border-top: 1px solid var(--border);
+}
+
+/* Bugünün sütunu baştan ve sondan turuncuyla çerçeveleniyor (`.day-head`in alt
+   çizgisindeki kuralın eşi). */
+.day-col--today .day-macros { border-top-color: var(--accent); }
+
+.day-macro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;      /* uzun sayı hücreyi taşırmasın */
+}
+
+.day-macro-value {
+  font-family: 'Playfair Display', serif;
+  font-size: 0.9rem;
+  line-height: 1.15;
+  color: var(--olive);
+  white-space: nowrap;
+}
+
+.day-macro-unit {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.62em;   /* `em`: değerle birlikte büyüyüp küçülsün */
+  font-weight: 500;
+  margin-left: 0.05rem;
+}
+
+.day-macro-label {
+  font-size: 0.55rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+/* Hiçbir şey planlanmamış gün. Sıfırlar GİZLENMİYOR — istenen davranış bu:
+   "bu güne henüz bir şey koymadım" ile "toplamı hesaplayamadık" aynı şey değil ve
+   yazılı bir 0 bunu net söylüyor. Yalnızca solduruluyor ki dolu günlerin sayıları
+   öne çıksın. */
+.day-macros--empty { opacity: 0.4; }
+
 /* ── Tarif seçici modalı ────────────────────────────────── */
 .modal--wide { max-width: 520px; }
 
@@ -2042,7 +2101,7 @@ body.has-sidebar .page {
    öğünleri yan yana. 1000px altında zaten sıkışmaya başlıyor. */
 @media (max-width: 1000px) {
   /* Tek sütun, her gün bir satır. Masaüstündeki `grid-auto-flow: column` +
-     4-satır düzenini SIFIRLA, yoksa günler yanlış akar. */
+     5-satır düzenini SIFIRLA, yoksa günler yanlış akar. */
   .week-grid {
     grid-template-columns: 1fr;
     grid-template-rows: none;
@@ -2071,6 +2130,19 @@ body.has-sidebar .page {
     border-right-color: var(--accent);
     border-bottom-color: transparent;
   }
+
+  /* Başlık iki satırı birden kapsıyor (öğünler + toplam), yoksa sağ kenarındaki
+     dikey çizgi yalnızca üst satır boyunca uzanıp gün bloğunu yarıda keserdi.
+     `span 2` kullanılıyor, `1 / -1` DEĞİL: bu ızgarada satırların hepsi örtük ve
+     `-1` örtük satırları görmez — sessizce tek satıra düşerdi. */
+  .day-head { grid-row: span 2; }
+
+  /* Toplam, gün başlığının değil ÖĞÜNLERİN altına hizalanıyor; burada genişlik
+     bol olduğu için dördü yan yana. */
+  .day-macros {
+    grid-column: 2 / -1;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 620px) {
@@ -2087,6 +2159,7 @@ body.has-sidebar .page {
     border-bottom: 2px solid var(--border);
     padding-right: 0;
     padding-bottom: 0.4rem;
+    grid-row: auto;   /* ≤1000px'teki iki satırlık sol raylı düzen burada yok */
   }
 
   .day-col--today .day-head {
@@ -2095,6 +2168,10 @@ body.has-sidebar .page {
   }
 
   .plan-slot { min-height: 0; }
+
+  /* Tek sütunlu ızgarada "2. sütun" diye bir şey yok: `2 / -1` başlangıç ve
+     bitiş çizgisini AYNI yere denk getirip düzeni bozardı. */
+  .day-macros { grid-column: 1 / -1; }
 
   .week-bar { gap: 0.5rem; }
   .week-label { font-size: 1rem; }

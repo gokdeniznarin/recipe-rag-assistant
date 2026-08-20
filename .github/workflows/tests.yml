@@ -90,6 +90,12 @@ jobs:
       - name: Auth guard (public vs protected pages)
         run: node scripts/test_auth_guard.js
 
+      # Günlük besin toplamı EKRANA SAYI basıyor ve yanlış bir sayı kendini belli
+      # etmiyor: sayfa kusursuz görünür, toplam sessizce yanlış olur. En sinsi hâli,
+      # kartın makro alanlarının bir gün düşmesi — o zaman her gün 0 yazar.
+      - name: Meal plan daily totals
+        run: node scripts/test_plan_macros.js
+
       # Kaydolduktan sonra geldiği tarife dönüş. İki ayrı risk: saklanan yol
       # doğrudan window.location'a gidiyor (açık yönlendirme), ve sessionStorage
       # sekmeye özel ama kullanıcıya özel değil (aynı sekmede bir sonraki

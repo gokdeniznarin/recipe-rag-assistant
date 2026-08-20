@@ -438,6 +438,27 @@ class TestGetMealPlanEndpoint:
             "chicken breast", "tomatoes", "olive oil", "garlic",
         ]
 
+    def test_card_carries_every_macro_the_daily_total_needs(
+        self, auth_client, api, collection, monkeypatch,
+    ):
+        """Plan sayfası her günün altına o günün besin toplamını yazıyor ve o
+        toplamı KARTTAN hesaplıyor (ayrı bir istek yok).
+
+        Bu dört alandan biri karttan düşerse hiçbir şey patlamaz — istek 200
+        döner, ızgara çizilir, yalnızca ekrandaki toplam sessizce eksik ya da
+        sıfır görünür. Tam da görülmesi zor olan bozulma bu.
+        """
+        main, _ = api
+        monkeypatch.setattr(main, "get_week", MagicMock(return_value=[
+            {"date": "2026-07-27", "slot": "dinner", "recipe_id": "17450"},
+        ]))
+        r = auth_client.get("/api/meal-plan?week=2026-07-27&include_details=true")
+        card = r.json()["entries"][0]["recipe"]
+        assert card["calories"] == 300.0
+        assert card["protein_content"] == 25.0
+        assert card["carbohydrate_content"] == 10.0
+        assert card["fat_content"] == 5.0
+
     def test_without_details_no_chromadb_call(self, auth_client, api, collection, monkeypatch):
         main, _ = api
         monkeypatch.setattr(main, "get_week", MagicMock(return_value=[

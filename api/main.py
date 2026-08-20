@@ -117,6 +117,18 @@ def _recipe_card(recipe_id: str, meta: dict, doc: str) -> dict:
         "category": meta["category"],
         "total_time_min": meta["total_time_min"],
         "calories": meta["calories"],
+        # Kalorinin yanındaki üç makro. Plan sayfası her günün altına o günün
+        # toplamını yazıyor ve toplamı İSTEMCİ hesaplıyor — girdiler zaten
+        # `include_details=true` ile kartlarını taşıdığı için ne ek bir istek ne de
+        # ayrı bir endpoint gerekiyor. Kart bunları taşımasaydı tek çıkar yol her slot
+        # için ayrıca /api/recipes/{id} çağırmaktı — Faz 11'de favorilerden
+        # kaldırılan N+1'in aynısı.
+        # Doğrudan indeksleniyor (`.get` değil): dört makro `calories` ile aynı
+        # sözlük literalinde yazılıyor (load_to_chromadb.py) ve ilk ingestion'dan
+        # beri var — biri varsa dördü de var. Detay endpoint'i de öyle okuyor.
+        "protein_content": meta["protein_content"],
+        "carbohydrate_content": meta["carbohydrate_content"],
+        "fat_content": meta["fat_content"],
         "ingredients": _ingredients_list(meta),
         # Faz 20: tarif fotoğrafı. Eski kayıtlarda alan olmayabileceği için
         # .get ile okunuyor; frontend boş/bozuk URL'de metin kartına düşüyor.

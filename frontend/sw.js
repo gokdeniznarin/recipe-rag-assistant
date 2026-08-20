@@ -38,7 +38,14 @@
  * bayat bir kopyanın hataya SEBEP olduğu durumda doğru araç bu.
  */
 
-const CACHE_VERSION = 'v2';
+// v3: günlük besin toplamı. Normalde sürüm arttırmak GEREKMİYOR (yukarıdaki
+// 3. madde), ama bu değişiklik yukarıdaki İSTİSNANIN ta kendisi: ızgaranın satır
+// sayısı 4'ten 5'e çıktı ve `grid-auto-flow: column` yüzünden ESKİ style.css +
+// YENİ plan.js karışımı beşinci öğeyi bir sonraki SÜTUNA atar — hafta ızgarası
+// görünür biçimde dağılır. Titrek mobil bağlantıda `catch` bloğu tam da böyle bir
+// karışım üretebiliyor (Faz 29'da yaşandı). Sürümü arttırmak eski önbelleği
+// komple silip taze precache kuruyor, yani o pencere hiç açılmıyor.
+const CACHE_VERSION = 'v3';
 const CACHE_NAME = `recipe-assistant-${CACHE_VERSION}`;
 
 // Uygulama kabuğu. Çevrimdışıyken bu liste sayesinde sayfalar AÇILIYOR
